@@ -91,6 +91,17 @@ Both endpoints delegate to `custodian/engine.py` through an injectable
 `CustodianRunner` seam and are guaranteed to degrade to `400` rather than surface
 a `500` if the engine errors.
 
+A stored policy can be **dry-run** against Azure (M1.4):
+
+- `POST /api/policies/{id}/dryrun[?subscription_id=…]` — evaluate a persisted
+  policy's `spec` with `engine.run_policy(dry_run=True)` and return the **matched
+  resources** without mutating anything. Resolves the target subscription via
+  `repo.get_subscription` → `SubscriptionContext` (defaulting to the configured
+  subscription when none is given). An unknown policy id or `subscription_id`
+  returns `404`. In `FINOPS_MOCK=1` mode the match set comes from
+  `fixtures/custodian_policy_result.json`, so dry-runs are fully offline; no
+  remediation action is ever executed.
+
 ## Quickstart (mock mode, no Azure needed)
 
 Prerequisites: Docker with Compose v2 (`docker compose`).
@@ -111,7 +122,7 @@ Then open:
 - **Grafana** → http://localhost:3000 (anonymous viewer enabled) → *FinOps* folder
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend).
 - **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`,
-  `/api/policies/validate`, `/api/custodian/schema`, …).
+  `/api/policies/validate`, `/api/custodian/schema`, `/api/policies/{id}/dryrun`, …).
 
 Run the backend on a schedule instead of one-shot: the `backend` service also
 supports `command: ["scheduler"]`.
@@ -182,7 +193,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 142 tests, **~98% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 147 tests, **~98% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).

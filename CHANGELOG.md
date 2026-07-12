@@ -6,6 +6,19 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **M1.4 — Policy dry-run endpoint.** New `POST /api/policies/{id}/dryrun`
+  [`?subscription_id=…`] route: it loads a persisted policy (`404` if missing),
+  optionally resolves a target subscription via `repo.get_subscription` →
+  `SubscriptionContext` (`404` if unknown, else the default subscription), and
+  evaluates the policy's `spec` with `engine.run_policy(dry_run=True)` — returning
+  the **matched resources** without mutating anything. It reuses the M1.3
+  `get_custodian_runner` injection seam and, in `FINOPS_MOCK=1` mode, sources the
+  match set from `fixtures/custodian_policy_result.json`, so dry-runs are fully
+  offline and **never** touch the remediation action executor. TDD:
+  `test_policy_dryrun_api.py` (5 tests, DB-backed + injected `FakeCustodianRunner`)
+  covers matched-resources, explicit-subscription, unknown-policy/​unknown-
+  subscription `404`s, and a spy proving no action executor runs — 100% line
+  coverage on the changed code.
 - **M1.3 — Policy validation + Custodian schema endpoints.** Two new FastAPI
   routes exposing the offline surface of the Cloud Custodian engine:
   `POST /api/policies/validate` (dry-run schema-validate a policy `spec`; returns
