@@ -2,19 +2,30 @@
 pydantic==2.11.7
 pydantic-settings==2.7.1
 python-dotenv==1.2.2  # >=1.2.2 fixes CVE-2026-28684 (symlink file-overwrite)
-typer==0.15.1
-click==8.1.8  # transitive: typer 0.15.1 breaks on click>=8.2 (make_metavar() signature change)
+typer==0.16.0  # >=0.16 supports click>=8.2 (0.15.1 breaks make_metavar() on the click c7n-azure pins)
+click==8.3.3  # transitive: c7n-azure 0.7.50 pins click==8.3.3 (kept in sync with typer above)
 httpx==0.28.1
 
 # --- Azure ---
-azure-identity==1.19.0
-azure-mgmt-resourcegraph==8.0.0
-azure-mgmt-costmanagement==4.0.1
+# NOTE: c7n-azure 0.7.50 pins many azure-mgmt-* packages to exact versions; the
+# entries below are aligned to those pins so `pip install` resolves cleanly.
+azure-identity==1.25.3  # c7n-azure 0.7.50 pin
+azure-mgmt-resourcegraph==7.0.0  # c7n-azure 0.7.50 pin; inventory.py QueryRequest API is unchanged
 azure-monitor-query==1.4.0
-azure-mgmt-advisor==9.0.0
-azure-mgmt-compute==33.0.0
-azure-mgmt-network==28.0.0
-six==1.17.0  # transitive: azure-mgmt-resourcegraph 8.0.0 imports it but doesn't declare it
+azure-mgmt-advisor==9.0.0  # matches the c7n-azure 0.7.50 pin
+azure-mgmt-compute==34.1.0  # c7n-azure 0.7.50 pin
+azure-mgmt-network==28.1.0  # c7n-azure 0.7.50 pin
+six==1.17.0  # transitive: azure-mgmt-resourcegraph imports it but doesn't declare it
+# azure-mgmt-costmanagement is intentionally NOT pinned here: cost.py calls the
+# Cost Management *REST* API directly (httpx), so the SDK is unused, and c7n-azure
+# 0.7.50 hard-pins it to 1.0.0 — leaving it unpinned lets that transitive win.
+
+# --- Policy engine (Cloud Custodian) ---
+# c7n is the open-source rules engine (the same one Stacklet packages); c7n-azure
+# adds the Azure resource providers. Importing c7n_azure.entry registers azure.*
+# resource types. Reuses the AZURE_* credentials already configured for collection.
+c7n==0.9.51
+c7n-azure==0.7.50
 
 # --- AI ---
 anthropic==0.69.0  # >=0.45 required for the `thinking` param (adaptive thinking); 0.42 rejects it
@@ -28,4 +39,4 @@ alembic==1.14.0
 # --- API / scheduler ---
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-apscheduler==3.11.0
+apscheduler==3.11.2  # c7n-azure 0.7.50 pin (was 3.11.0)

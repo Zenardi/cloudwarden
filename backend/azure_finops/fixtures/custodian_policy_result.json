@@ -1,0 +1,40 @@
+{
+  "policy_name": "stopped-azure-vms",
+  "resource_type": "azure.vm",
+  "dry_run": true,
+  "matched": 2,
+  "resources": [
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-batch/providers/Microsoft.Compute/virtualMachines/vm-batch-02",
+      "name": "vm-batch-02",
+      "type": "Microsoft.Compute/virtualMachines",
+      "location": "westeurope",
+      "resourceGroup": "rg-batch",
+      "properties": {
+        "hardwareProfile": {"vmSize": "Standard_D8s_v5"},
+        "instanceView": {
+          "statuses": [
+            {"code": "PowerState/deallocated", "displayStatus": "VM deallocated"}
+          ]
+        }
+      },
+      "tags": {"env": "dev", "owner": "data-team"}
+    },
+    {
+      "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-idle-03",
+      "name": "vm-idle-03",
+      "type": "Microsoft.Compute/virtualMachines",
+      "location": "eastus",
+      "resourceGroup": "rg-app",
+      "properties": {
+        "hardwareProfile": {"vmSize": "Standard_D4s_v5"},
+        "instanceView": {
+          "statuses": [
+            {"code": "PowerState/stopped", "displayStatus": "VM stopped"}
+          ]
+        }
+      },
+      "tags": {"env": "staging", "owner": "web-team"}
+    }
+  ]
+}

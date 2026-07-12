@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **M1.1 — Cloud Custodian engine wrapper.** New `custodian/` package embedding
+  [Cloud Custodian](https://cloudcustodian.io/) (`c7n` + `c7n-azure`) as the
+  policy engine (the same open-source rules engine Stacklet packages
+  commercially). `custodian/engine.py` exposes `validate_policy()`, `run_policy()`,
+  and `get_schema()` behind an injectable `CustodianRunner` protocol so every
+  later milestone (policy CRUD, scheduled evaluation, drift detection,
+  remediation-as-policy) calls one mockable seam instead of the c7n CLI or live
+  Azure. `LiveCustodianRunner` drives c7n's Python API (`c7n.schema.validate`/
+  `generate`, importing `c7n_azure.entry` once to register the 112 `azure.*`
+  resource types) and reports health via `resilience.REGISTRY`; in `FINOPS_MOCK=1`
+  mode `run_policy` returns the recorded `fixtures/custodian_policy_result.json`
+  so dry-runs are fully offline. TDD: `test_custodian_engine.py` (17 tests, 100%
+  line coverage on the package) with a `FakeCustodianRunner` double — no test
+  touches live Azure or c7n network paths.
+
 - **Phase 0 — Scaffold:** project layout, `pyproject.toml` (Ruff + pytest),
   `Makefile`, `.env.example`, Docker Compose (TimescaleDB + backend + Grafana,
   frontend behind a profile), nonroot backend image (uid 65532).
@@ -89,6 +104,20 @@ All notable changes to this project are documented here. Format loosely follows
   file-overwrite) and added a backend healthcheck to `docker-compose.yml`. Trivy
   found no secrets in the code. Remaining advisories are base-image (Debian) OS
   packages — tracked, resolved as the pinned base image updates.
+- **Security (Trivy) — Cloud Custodian transitive pins (M1.1).** `c7n-azure==0.7.50`
+  (the latest release) hard-pins (`==`) `cryptography==46.0.7` (GHSA-537c-gmf6-5ccf,
+  HIGH) and `pyjwt==2.12.1` (CVE-2026-48526, HIGH); they cannot be bumped without a
+  `ResolutionImpossible` conflict against the mandated engine, and no newer c7n
+  release relaxes them. Both are transitive Azure-auth-library deps (`msal`/`adal`);
+  the app performs no attacker-controlled JWT verification of its own. Tracked
+  upstream — resolved when Cloud Custodian relaxes these pins. The three
+  `starlette` advisories reported by Trivy are pre-existing (via `fastapi`,
+  unchanged by this PR), not introduced by the Custodian dependency. To align
+  cleanly with c7n's pin matrix this milestone also bumped `azure-identity`
+  1.19.0→1.25.3, `azure-mgmt-compute` 33.0.0→34.1.0, `azure-mgmt-network`
+  28.0.0→28.1.0, `apscheduler` 3.11.0→3.11.2, `click` 8.1.8→8.3.3 (+ `typer`
+  0.15.1→0.16.0), pinned `azure-mgmt-resourcegraph` 8.0.0→7.0.0, and dropped the
+  unused `azure-mgmt-costmanagement` SDK pin (`cost.py` calls the REST API directly).
 - **Frontend upgraded to Next.js 15 / React 19.** Bumped `next` 14.2.35 → 15.5.20,
   `react`/`react-dom` 18.3.1 → 19.2.7 (+ matching `@types`), and pinned `postcss`
   8.5.10 via an override. Clears all 5 HIGH + remaining Next.js/postcss CVEs — the

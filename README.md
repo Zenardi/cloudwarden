@@ -55,6 +55,19 @@ Two Azure credentials by design: a **read-only SP** for collection (Reader +
 Cost Management Reader + Monitoring Reader) and a **separate write-scoped SP**
 for remediation.
 
+### Policy engine (Cloud Custodian)
+
+Governance-as-code is built on **[Cloud Custodian](https://cloudcustodian.io/)**
+(`c7n` + `c7n-azure`) — the open-source rules engine (the same one Stacklet
+packages commercially). The `custodian/` package wraps c7n's `validate` / `run` /
+`schema` operations behind an injectable `CustodianRunner` so every milestone
+(policy CRUD, scheduled evaluation, drift detection, remediation-as-policy) calls
+one mockable entry point — `validate_policy()`, `run_policy()`, `get_schema()` —
+instead of the c7n CLI or live Azure. Importing `c7n_azure.entry` registers the
+`azure.*` resource types (`azure.vm`, `azure.disk`, …); the engine reuses the same
+`AZURE_*` credentials as the collectors and, in `FINOPS_MOCK=1` mode, evaluates
+policies against a recorded fixture so dry-runs run fully offline.
+
 ## Quickstart (mock mode, no Azure needed)
 
 Prerequisites: Docker with Compose v2 (`docker compose`).
@@ -125,9 +138,10 @@ backend/azure_finops/
   analysis/    (rollup/rules/idle/pricing/savings — Phase 2)
   ai/          (base/anthropic/openai/factory/prompt — Phase 3)
   remediation/ (executor/guardrails/approval — Phase 5)
+  custodian/   engine.py (Cloud Custodian c7n + c7n-azure policy engine — M1)
   storage/     schema.py db.py repository.py
   api/         main.py
-  fixtures/    inventory.json cost.json
+  fixtures/    inventory.json cost.json custodian_policy_result.json
 grafana/       provisioning/ + dashboards/finops-cost.json
 frontend/      (Next.js — Phase 4)
 docker-compose.yml  Makefile  .env.example
