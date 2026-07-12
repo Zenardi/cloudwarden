@@ -80,3 +80,17 @@ input[type="checkbox"] { width: auto; }
 .validation li { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; }
 .badge.valid { color: var(--green); border-color: var(--green); }
 .badge.invalid { color: var(--red); border-color: var(--red); }
+/* Collection membership chips (M2.3) */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px 2px 10px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--panel2);
+  color: var(--text); font-size: 12px;
+}
+.chip button {
+  border: none; background: transparent; color: var(--muted); padding: 0 4px;
+  border-radius: 999px; line-height: 1; font-size: 14px;
+}
+.chip button:hover { color: var(--red); }
+.member-add { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.member-add select { width: auto; min-width: 200px; }

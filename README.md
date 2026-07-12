@@ -101,6 +101,16 @@ and enabled state, and offers a JSON policy-spec editor with a **Validate** butt
 validation errors inline without navigating away, plus per-row Enable/Disable and
 Delete.
 
+Policies can be grouped into named **collections** (M2.3) — a many-to-many
+grouping (à la Stacklet policy collections) persisted in a `policy_collections`
+table plus a `collection_policies` join. A policy may belong to any number of
+collections, and **deleting a collection never deletes the member policies** (only
+the membership rows). The API is `GET/POST /api/collections`,
+`GET/DELETE /api/collections/{id}`, and
+`POST/DELETE /api/collections/{id}/policies/{policy_id}` (adding an unknown policy
+or collection returns `404`); a **Collections** page manages collections and their
+membership in the UI.
+
 Two API endpoints expose the engine's offline surface (M1.3):
 
 - `POST /api/policies/validate` — dry-run schema-validate a policy `spec` (a
@@ -143,13 +153,14 @@ including the frontend. Use `make up-core` for db + backend + grafana only.
 Then open:
 
 - **Web UI (Next.js)** → http://localhost:3001 — overview, cost explorer,
-  recommendation review/approve, **subscription management**, and a **Policies**
-  editor (author / validate / enable / delete Cloud Custodian policies).
+  recommendation review/approve, **subscription management**, a **Policies**
+  editor (author / validate / enable / delete Cloud Custodian policies), and
+  **Collections** (group policies into named sets).
 - **Grafana** → http://localhost:3000 (anonymous viewer enabled) → *FinOps* folder
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend).
 - **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`,
   `/api/policies` CRUD, `/api/policies/validate`, `/api/custodian/schema`,
-  `/api/policies/{id}/dryrun`, …).
+  `/api/policies/{id}/dryrun`, `/api/collections`, …).
 
 Run the backend on a schedule instead of one-shot: the `backend` service also
 supports `command: ["scheduler"]`.
@@ -220,7 +231,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 160 tests, **~98% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 174 tests, **~98% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).

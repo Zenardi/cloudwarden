@@ -18,7 +18,13 @@ from sqlalchemy.exc import IntegrityError
 
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
-from ..models import PolicyCreate, PolicyUpdate, ValidateRequest, ValidateResult
+from ..models import (
+    CollectionCreate,
+    PolicyCreate,
+    PolicyUpdate,
+    ValidateRequest,
+    ValidateResult,
+)
 from ..remediation import approval as remediation
 from ..resilience import REGISTRY
 from ..storage import repository as repo
@@ -305,6 +311,64 @@ def dryrun_policy(
         "matched": result.get("matched", len(resources)),
         "resources": resources,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Policy collections (M2.3) — many-to-many grouping
+# --------------------------------------------------------------------------- #
+@app.get("/api/collections")
+def list_collections() -> list[dict[str, Any]]:
+    with session_scope() as session:
+        return repo.list_collections(session)
+
+
+@app.post("/api/collections", status_code=201)
+def create_collection(body: CollectionCreate) -> dict[str, Any]:
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    try:
+        with session_scope() as session:
+            return repo.create_collection(session, name=name, description=body.description)
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="collection name already exists") from exc
+
+
+@app.get("/api/collections/{collection_id}")
+def get_collection(collection_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        collection = repo.get_collection(session, collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+    return collection
+
+
+@app.delete("/api/collections/{collection_id}")
+def delete_collection(collection_id: int) -> dict[str, Any]:
+    """Delete a collection (and its memberships) — member policies are preserved."""
+    with session_scope() as session:
+        ok = repo.delete_collection(session, collection_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="collection not found")
+    return {"id": collection_id, "deleted": True}
+
+
+@app.post("/api/collections/{collection_id}/policies/{policy_id}")
+def add_policy_to_collection(collection_id: int, policy_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        collection = repo.add_policy_to_collection(session, collection_id, policy_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail="collection or policy not found")
+    return collection
+
+
+@app.delete("/api/collections/{collection_id}/policies/{policy_id}")
+def remove_policy_from_collection(collection_id: int, policy_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        collection = repo.remove_policy_from_collection(session, collection_id, policy_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail="collection or membership not found")
+    return collection
 
 
 @app.get("/api/summary")

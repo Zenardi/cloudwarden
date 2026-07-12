@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **M2.3 — Policy collections.** Group policies into named **collections** (à la
+  Stacklet policy collections). New `policy_collections` table + a
+  `collection_policies` many-to-many join (both FKs `ON DELETE CASCADE`), so a
+  policy can belong to any number of collections and **deleting a collection never
+  deletes the member policies** — only the memberships. Repository adds
+  `create_collection` / `get_collection` / `list_collections` / `delete_collection`
+  / `add_policy_to_collection` / `remove_policy_from_collection` (+ a
+  `_collection_public` serializer that embeds members); the API adds
+  `GET/POST /api/collections`, `GET/DELETE /api/collections/{id}`, and
+  `POST/DELETE /api/collections/{id}/policies/{policy_id}` (unknown policy or
+  collection → `404`, duplicate name → `409`), with `CollectionCreate` /
+  `CollectionRecord` models. A new Next.js **Collections** page manages collections
+  and membership. TDD: `test_policy_collections.py` (14 tests, DB-backed) covers
+  the repo + API happy paths and the delete-keeps-policies / unknown-policy-404 /
+  multi-collection-membership invariants — 100% line coverage on the changed code.
 - **M2.2 — Policy editor UI (Next.js).** A new **Policies** page
   (`frontend/app/policies/page.tsx`) plus a header nav link, consuming the M2.1
   CRUD API. Lists stored policies (name, resource type, source, `validation_status`

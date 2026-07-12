@@ -89,6 +89,23 @@ export interface ValidationResult {
   errors: string[];
 }
 
+export interface CollectionPolicyRef {
+  id: number;
+  name: string;
+  resource_type: string;
+  enabled: boolean;
+}
+
+export interface Collection {
+  id: number;
+  name: string;
+  description?: string | null;
+  policy_count: number;
+  policies: CollectionPolicyRef[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface AISummary {
   executive_summary: string;
   total_potential_savings: number;

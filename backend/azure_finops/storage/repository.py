@@ -269,6 +269,97 @@ def set_policy_enabled(session: Session, policy_id: int, enabled: bool) -> dict[
 
 
 # --------------------------------------------------------------------------- #
+# Policy collections (many-to-many grouping)
+# --------------------------------------------------------------------------- #
+def _collection_public(session: Session, rec: schema.PolicyCollection) -> dict[str, Any]:
+    """Serialize a collection with its member policies (id/name/type/enabled)."""
+    members = (
+        session.query(schema.Policy)
+        .join(schema.CollectionPolicy, schema.CollectionPolicy.policy_id == schema.Policy.id)
+        .filter(schema.CollectionPolicy.collection_id == rec.id)
+        .order_by(schema.Policy.name.asc())
+        .all()
+    )
+    return {
+        "id": rec.id,
+        "name": rec.name,
+        "description": rec.description,
+        "policy_count": len(members),
+        "policies": [
+            {"id": p.id, "name": p.name, "resource_type": p.resource_type, "enabled": p.enabled}
+            for p in members
+        ],
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+    }
+
+
+def create_collection(
+    session: Session, *, name: str, description: str | None = None
+) -> dict[str, Any]:
+    """Persist a new collection. Raises on a duplicate ``name``."""
+    rec = schema.PolicyCollection(name=name, description=description)
+    session.add(rec)
+    session.flush()
+    return _collection_public(session, rec)
+
+
+def get_collection(session: Session, collection_id: int) -> dict[str, Any] | None:
+    rec = session.get(schema.PolicyCollection, collection_id)
+    return _collection_public(session, rec) if rec is not None else None
+
+
+def list_collections(session: Session) -> list[dict[str, Any]]:
+    recs = session.query(schema.PolicyCollection).order_by(schema.PolicyCollection.name.asc()).all()
+    return [_collection_public(session, r) for r in recs]
+
+
+def delete_collection(session: Session, collection_id: int) -> bool:
+    """Delete a collection and its memberships — never the member policies."""
+    rec = session.get(schema.PolicyCollection, collection_id)
+    if rec is None:
+        return False
+    session.execute(
+        delete(schema.CollectionPolicy).where(
+            schema.CollectionPolicy.collection_id == collection_id
+        )
+    )
+    session.delete(rec)
+    session.flush()
+    return True
+
+
+def add_policy_to_collection(
+    session: Session, collection_id: int, policy_id: int
+) -> dict[str, Any] | None:
+    """Add a policy to a collection (idempotent). ``None`` if either doesn't exist."""
+    collection = session.get(schema.PolicyCollection, collection_id)
+    if collection is None:
+        return None
+    if session.get(schema.Policy, policy_id) is None:
+        return None
+    if session.get(schema.CollectionPolicy, (collection_id, policy_id)) is None:
+        session.add(schema.CollectionPolicy(collection_id=collection_id, policy_id=policy_id))
+        session.flush()
+    return _collection_public(session, collection)
+
+
+def remove_policy_from_collection(
+    session: Session, collection_id: int, policy_id: int
+) -> dict[str, Any] | None:
+    """Remove a membership. ``None`` if the collection or membership is absent."""
+    collection = session.get(schema.PolicyCollection, collection_id)
+    if collection is None:
+        return None
+    link = session.get(schema.CollectionPolicy, (collection_id, policy_id))
+    if link is None:
+        return None
+    session.delete(link)
+    session.flush()
+    return _collection_public(session, collection)
+
+
+# --------------------------------------------------------------------------- #
 # Inventory + cost
 # --------------------------------------------------------------------------- #
 def upsert_resources(session: Session, resources: list[m.ResourceRecord]) -> int:

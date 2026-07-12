@@ -139,6 +139,25 @@ class PolicyRecord(BaseModel):
     updated_at: str | None = None
 
 
+class CollectionCreate(BaseModel):
+    """Inbound shape for creating a policy collection."""
+
+    name: str
+    description: str | None = None
+
+
+class CollectionRecord(BaseModel):
+    """A persisted policy collection with its members, as returned by the repository."""
+
+    id: int
+    name: str
+    description: str | None = None
+    policy_count: int = 0
+    policies: list[dict] = Field(default_factory=list)
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
 class AISummary(BaseModel):
     executive_summary: str = ""
     total_potential_monthly_savings: float = 0.0

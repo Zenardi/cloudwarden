@@ -79,6 +79,44 @@ class Policy(Base):
     )
 
 
+class PolicyCollection(Base):
+    """A named group of policies (a "policy collection", à la Stacklet).
+
+    Membership is many-to-many via ``collection_policies``; a policy may belong to
+    any number of collections. Deleting a collection removes only its membership
+    rows (``ON DELETE CASCADE`` on the join) — never the member policies.
+    """
+
+    __tablename__ = "policy_collections"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(256), unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CollectionPolicy(Base):
+    """Join row binding a policy to a collection (composite PK, no duplicates).
+
+    Both foreign keys are ``ON DELETE CASCADE`` so removing either side cleans up
+    the membership without orphan rows — deleting a *collection* drops its
+    memberships (policies survive); deleting a *policy* drops its memberships.
+    """
+
+    __tablename__ = "collection_policies"
+
+    collection_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("policy_collections.id", ondelete="CASCADE"), primary_key=True
+    )
+    policy_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("policies.id", ondelete="CASCADE"), primary_key=True
+    )
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Run(Base):
     __tablename__ = "runs"
 
