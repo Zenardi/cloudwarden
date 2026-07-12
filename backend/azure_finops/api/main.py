@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from ..custodian import engine as custodian
+from ..custodian.engine import CustodianRunner
+from ..models import ValidateRequest, ValidateResult
 from ..remediation import approval as remediation
 from ..resilience import REGISTRY
 from ..storage import repository as repo
@@ -99,6 +102,59 @@ def decide_recommendation(rec_id: int, body: Decision) -> dict[str, Any]:
     if not ok:
         raise HTTPException(status_code=404, detail="recommendation not found")
     return {"id": rec_id, "status": status}
+
+
+# --------------------------------------------------------------------------- #
+# Governance-as-code: policy validation + Custodian schema (M1.3)
+# --------------------------------------------------------------------------- #
+def get_custodian_runner() -> CustodianRunner | None:
+    """Injection seam for the Custodian engine.
+
+    Returns ``None`` so the engine falls back to its cached ``LiveCustodianRunner``
+    (real, offline c7n for validate/schema). Tests override this dependency with a
+    ``FakeCustodianRunner`` to keep the API suite fully offline.
+    """
+    return None
+
+
+@app.post("/api/policies/validate")
+def validate_policy(
+    body: ValidateRequest,
+    runner: Annotated[CustodianRunner | None, Depends(get_custodian_runner)] = None,
+) -> ValidateResult:
+    """Dry-run validate a Cloud Custodian policy spec — never persists, never 500s.
+
+    A malformed body (no ``policies`` list) is bad input → ``400``. A well-formed
+    spec is validated by the engine and reported as ``{valid, errors}`` with
+    ``200`` even when invalid (validation ran and produced errors).
+    """
+    spec = body.spec
+    if not isinstance(spec, dict) or not spec.get("policies"):
+        raise HTTPException(status_code=400, detail="malformed policy: expected a 'policies' list")
+    try:
+        result = custodian.validate_policy(spec, runner=runner)
+    except Exception as exc:  # noqa: BLE001 - degrade to 400, never surface a 500
+        raise HTTPException(status_code=400, detail=f"validation failed: {exc}") from exc
+    return ValidateResult(valid=bool(result.get("valid")), errors=list(result.get("errors") or []))
+
+
+@app.get("/api/custodian/schema")
+def custodian_schema(
+    resource_type: str | None = None,
+    runner: Annotated[CustodianRunner | None, Depends(get_custodian_runner)] = None,
+) -> dict[str, Any]:
+    """List Azure resource types (no arg) or return one type's filters/actions/schema.
+
+    An unknown ``resource_type`` is bad input → ``400``; any engine error degrades
+    to ``400`` rather than a ``500``.
+    """
+    try:
+        result = custodian.get_schema(resource_type, runner=runner)
+    except Exception as exc:  # noqa: BLE001 - degrade to 400, never surface a 500
+        raise HTTPException(status_code=400, detail=f"schema lookup failed: {exc}") from exc
+    if isinstance(result, dict) and result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @app.get("/api/summary")

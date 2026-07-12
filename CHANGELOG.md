@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **M1.3 — Policy validation + Custodian schema endpoints.** Two new FastAPI
+  routes exposing the offline surface of the Cloud Custodian engine:
+  `POST /api/policies/validate` (dry-run schema-validate a policy `spec`; returns
+  `{"valid", "errors"}` and **never persists**) and
+  `GET /api/custodian/schema[?resource_type=…]` (list registered `azure.*`
+  resource types, or one type's `filters`/`actions`/schema). Both delegate to
+  `custodian/engine.py` through an injectable `CustodianRunner` seam (a new
+  `get_custodian_runner` FastAPI dependency tests override with a
+  `FakeCustodianRunner`) and are hardened to **never raise** — malformed input,
+  unknown resource types, or an engine blow-up all degrade to `400` instead of a
+  `500`. New `ValidateRequest` / `ValidateResult` pydantic models. TDD:
+  `test_policy_validation_api.py` (10 fully-offline tests, TestClient + injected
+  fake) covering the valid / invalid / malformed and schema happy / error paths
+  at 100% line coverage on the changed code.
 - **M1.2 — Policy domain model & storage.** New `policies` table (`Policy` ORM in
   `storage/schema.py`) persisting governance-as-code rules: `id`, unique `name`,
   indexed `resource_type`, the parsed Custodian body as JSONB `spec`,

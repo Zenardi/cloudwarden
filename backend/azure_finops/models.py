@@ -83,6 +83,24 @@ class Recommendation(BaseModel):
     evidence: dict = Field(default_factory=dict)
 
 
+class ValidateRequest(BaseModel):
+    """Inbound shape for the dry-run policy-validation endpoint.
+
+    ``spec`` is a parsed Cloud Custodian policy collection — i.e. a mapping with a
+    ``policies`` list. Kept permissive (defaults to ``{}``) so the endpoint can
+    return a clean ``400`` for a malformed body rather than a framework ``422``.
+    """
+
+    spec: dict = Field(default_factory=dict)
+
+
+class ValidateResult(BaseModel):
+    """Outcome of validating a policy spec: ``valid`` plus any error strings."""
+
+    valid: bool = False
+    errors: list[str] = Field(default_factory=list)
+
+
 class PolicyCreate(BaseModel):
     """Inbound shape for creating a governance policy (API validation)."""
 

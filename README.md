@@ -76,6 +76,21 @@ and a `source` (`custom` | `library` | `imported`). CRUD lives behind
 `update_policy` / `delete_policy` / `set_policy_enabled`) alongside the cost and
 recommendation tables.
 
+Two API endpoints expose the engine's offline surface (M1.3):
+
+- `POST /api/policies/validate` — dry-run schema-validate a policy `spec` (a
+  parsed Custodian `{"policies": [...]}` body). Returns `{"valid", "errors"}`;
+  **never persists** anything. A well-formed but schema-invalid policy still
+  returns `200` with `valid: false` and a populated `errors` array; a malformed
+  body (no `policies` list) or an unknown resource type is rejected with `400`.
+- `GET /api/custodian/schema[?resource_type=azure.vm]` — list the registered
+  `azure.*` resource types, or return one type's `filters` / `actions` / JSON
+  schema. An unknown `resource_type` returns `400`.
+
+Both endpoints delegate to `custodian/engine.py` through an injectable
+`CustodianRunner` seam and are guaranteed to degrade to `400` rather than surface
+a `500` if the engine errors.
+
 ## Quickstart (mock mode, no Azure needed)
 
 Prerequisites: Docker with Compose v2 (`docker compose`).
@@ -95,7 +110,8 @@ Then open:
   recommendation review/approve, and **subscription management**.
 - **Grafana** → http://localhost:3000 (anonymous viewer enabled) → *FinOps* folder
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend).
-- **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`, …).
+- **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`,
+  `/api/policies/validate`, `/api/custodian/schema`, …).
 
 Run the backend on a schedule instead of one-shot: the `backend` service also
 supports `command: ["scheduler"]`.
@@ -166,7 +182,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 132 tests, **~98% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 142 tests, **~98% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).
