@@ -6,6 +6,27 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **M3.2 — Pull-mode execution orchestrator.** Scheduled evaluation of every enabled
+  Cloud Custodian policy against every enabled subscription, on its own cadence,
+  independent of the cost-collection pipeline (Stacklet-style "pull mode"). New
+  `orchestrator.run_policies(subscription, mock=None)` opens a `PolicyExecution`
+  (`running`) per policy, evaluates it through the M2 engine's single mockable seam
+  `custodian.engine.run_policy`, persists the matched resources as `PolicyMatch`
+  rows, then closes the execution `succeeded` (with `resources_matched` +
+  `actions_taken`) or `failed` (with `error`) — a single policy's failure is
+  isolated to its own row and never aborts its siblings. `run_all_policies(mock=None)`
+  fans that out across every enabled subscription with the same per-subscription
+  isolation as `run_all_subscriptions`, seeding the default subscription on first
+  use. Wired into a new `python -m azure_finops.cli run-policies [--mock]` command
+  and a second, independently-cadenced APScheduler job (`finops-policy-run`) on
+  `POLICY_RUN_INTERVAL_SECONDS` (new `Settings` field + `.env.example`). No test
+  touches live Azure or a real c7n `PolicyCollection` — the engine seam is injected
+  everywhere. TDD: `test_policy_orchestrator.py` (14 tests) covers per-policy and
+  per-subscription failure isolation, the persisted execution/match rows,
+  disabled-subscription skipping, declared-action recording, and the CLI/scheduler
+  wiring. Rather than add a second mock path (a `policy_matches.json` read directly
+  by the orchestrator), the orchestrator delegates entirely to the engine's existing
+  `FINOPS_MOCK` fixture, preserving the "one mockable seam" design.
 - **M3.1 — Execution results domain model & storage.** The persistence foundation
   for recording what Cloud Custodian actually did (à la Stacklet executions), ahead
   of the M3.2 orchestrator. Two new tables, auto-created by `init_db()`:

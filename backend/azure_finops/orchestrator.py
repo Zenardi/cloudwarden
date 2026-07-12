@@ -20,6 +20,7 @@ from .analysis.idle import detect_idle
 from .analysis.rollup import build_rollups
 from .analysis.rules import evaluate_vms, prioritize
 from .analysis.savings import monthly_cost_map
+from .azure._fixtures import retarget
 from .azure.advisor import collect_advisor
 from .azure.context import SubscriptionContext
 from .azure.cost import collect_cost
@@ -27,7 +28,8 @@ from .azure.inventory import collect_inventory
 from .azure.logs import collect_memory
 from .azure.metrics import collect_metrics
 from .config import get_settings
-from .models import AISummary, CostRow, ResourceRecord
+from .custodian import engine as custodian_engine
+from .models import AISummary, CostRow, PolicyMatch, ResourceRecord
 from .storage import repository as repo
 from .storage.db import init_db, session_scope
 
@@ -197,4 +199,139 @@ def run_all_subscriptions(mock: bool | None = None) -> dict[str, Any]:
             logger.exception("subscription %s run failed", ctx.subscription_id)
             results.append({"subscription_id": ctx.subscription_id, "error": str(exc)})
     logger.info("ran %d subscription(s)", len(results))
+    return {"subscriptions": len(results), "runs": results}
+
+
+# --------------------------------------------------------------------------- #
+# Pull-mode policy execution (M3.2): evaluate policies on their own cadence,
+# independent of the cost-collection pipeline above.
+# --------------------------------------------------------------------------- #
+def _new_execution_id() -> str:
+    return f"exec_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+
+def _declared_actions(spec: dict[str, Any]) -> list[str]:
+    """Extract a policy's declared action identifiers from its c7n spec.
+
+    Dry-run pull mode executes no actions, but recording what the policy is
+    *configured* to do gives the execution summary (and the M3.3 UI) real content.
+    Actions may be bare strings (``"stop"``) or mappings (``{"type": "stop"}``).
+    """
+    policies = spec.get("policies") or []
+    if not policies:
+        return []
+    actions = policies[0].get("actions") or []
+    identifiers: list[str] = []
+    for action in actions:
+        if isinstance(action, str):
+            identifiers.append(action)
+        elif isinstance(action, dict) and action.get("type"):
+            identifiers.append(action["type"])
+    return identifiers
+
+
+def _matches_from_result(result: dict[str, Any], subscription_id: str) -> list[PolicyMatch]:
+    """Convert an engine ``run_policy`` result into ``PolicyMatch`` transport rows.
+
+    Fixture-backed (mock) resource ids embed the placeholder subscription, so we
+    retarget them to the run's subscription for distinct, non-colliding ids.
+    """
+    return [
+        PolicyMatch(
+            resource_id=retarget(resource.get("id", ""), subscription_id),
+            resource_type=resource.get("type"),
+        )
+        for resource in result.get("resources", [])
+    ]
+
+
+def run_policies(subscription: SubscriptionContext, mock: bool | None = None) -> dict[str, Any]:
+    """Execute every enabled policy against one subscription (pull mode).
+
+    Each policy gets its own ``PolicyExecution`` (opened ``running``, then closed
+    ``succeeded``/``failed``) plus its ``PolicyMatch`` rows. A single policy's
+    failure is recorded on its own row and does not abort the siblings — the same
+    per-item isolation ``run_all_subscriptions`` applies across subscriptions.
+    """
+    settings = get_settings()
+    if mock is not None:
+        settings.finops_mock = mock
+    init_db()
+    sub_id = subscription.subscription_id
+    with session_scope() as session:
+        policies = repo.list_policies(session, enabled_only=True)
+    logger.info("evaluating %d polic(ies) against subscription %s", len(policies), sub_id)
+
+    executions: list[dict[str, Any]] = []
+    for policy in policies:
+        execution_id = _new_execution_id()
+        with session_scope() as session:
+            repo.create_policy_execution(
+                session,
+                execution_id=execution_id,
+                policy_id=policy["id"],
+                subscription_id=sub_id,
+            )
+        try:
+            result = custodian_engine.run_policy(policy["spec"], subscription=subscription)
+            matches = _matches_from_result(result, sub_id)
+            with session_scope() as session:
+                repo.insert_policy_matches(session, execution_id, matches)
+                repo.finish_policy_execution(
+                    session,
+                    execution_id,
+                    status="succeeded",
+                    resources_matched=len(matches),
+                    actions_taken=_declared_actions(policy["spec"]),
+                )
+            executions.append(
+                {
+                    "execution_id": execution_id,
+                    "policy_id": policy["id"],
+                    "status": "succeeded",
+                    "resources_matched": len(matches),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - per-policy isolation
+            logger.exception("policy %s execution %s failed", policy["id"], execution_id)
+            with session_scope() as session:
+                repo.finish_policy_execution(session, execution_id, status="failed", error=str(exc))
+            executions.append(
+                {
+                    "execution_id": execution_id,
+                    "policy_id": policy["id"],
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            )
+    logger.info("subscription %s: %d execution(s)", sub_id, len(executions))
+    return {"subscription_id": sub_id, "executions": executions}
+
+
+def run_all_policies(mock: bool | None = None) -> dict[str, Any]:
+    """Run pull-mode policy execution once per enabled subscription.
+
+    Seeds the subscriptions table from the env subscription on first use (like
+    ``run_all_subscriptions``), then fans ``run_policies`` out across every enabled
+    row with per-subscription failure isolation.
+    """
+    settings = get_settings()
+    if mock is not None:
+        settings.finops_mock = mock
+    init_db()
+    with session_scope() as session:
+        repo.ensure_default_subscription(session, settings)
+        contexts = [
+            _context_from_record(r, settings.finops_mock)
+            for r in repo.enabled_subscriptions(session)
+        ]
+
+    results: list[dict[str, Any]] = []
+    for ctx in contexts:
+        try:
+            results.append(run_policies(ctx))
+        except Exception as exc:  # noqa: BLE001 - per-subscription isolation
+            logger.exception("subscription %s policy run failed", ctx.subscription_id)
+            results.append({"subscription_id": ctx.subscription_id, "error": str(exc)})
+    logger.info("ran policies for %d subscription(s)", len(results))
     return {"subscriptions": len(results), "runs": results}

@@ -39,9 +39,21 @@ def run(mock: bool = typer.Option(False, "--mock", help="Use fixtures instead of
     typer.echo(f"run complete: {result}")
 
 
+@app.command(name="run-policies")
+def run_policies_cmd(
+    mock: bool = typer.Option(False, "--mock", help="Use fixtures instead of Azure"),
+) -> None:
+    """Execute every enabled policy against every enabled subscription (pull mode)."""
+    _setup_logging()
+    from .orchestrator import run_all_policies
+
+    result = run_all_policies(mock=True if mock else None)
+    typer.echo(f"policy run complete: {result}")
+
+
 @app.command()
 def scheduler() -> None:
-    """Run the pipeline on a fixed interval (RUN_INTERVAL_SECONDS)."""
+    """Run the pipeline and policy execution on their own intervals."""
     _setup_logging()
     from .scheduler import run_scheduler
 

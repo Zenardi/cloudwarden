@@ -135,17 +135,30 @@ changed authored fields (name/resource_type/spec/description) between any two
 revisions. The **Policies** page adds a **History** panel to browse versions and
 compare two side by side.
 
-Every policy run is recorded for audit as a **policy execution** (M3.1) — the
-storage foundation for pull-mode execution (M3.2/M3.3). A `policy_executions` table
-(one row per run: `execution_id` PK, `policy_id` → `policies.id`, `subscription_id`,
-`status` `running|succeeded|failed`, started/finished timestamps, `resources_matched`,
-`actions_taken`, `error`) mirrors the existing `runs` lifecycle, with per-resource
-detail in `policy_matches` (`resource_id`, `resource_type`, `matched_at`,
-`action_taken`, `action_result`). Repository helpers `create_policy_execution` /
-`finish_policy_execution` / `insert_policy_matches` / `get_policy_execution` /
-`list_policy_executions` (filter by policy / subscription / status) /
-`list_policy_matches` give the forthcoming orchestrator a stable write/read surface.
-This milestone is storage-only — no orchestration or API endpoints yet.
+Every policy run is recorded for audit as a **policy execution** (M3.1). A
+`policy_executions` table (one row per run: `execution_id` PK, `policy_id` →
+`policies.id`, `subscription_id`, `status` `running|succeeded|failed`,
+started/finished timestamps, `resources_matched`, `actions_taken`, `error`) mirrors
+the existing `runs` lifecycle, with per-resource detail in `policy_matches`
+(`resource_id`, `resource_type`, `matched_at`, `action_taken`, `action_result`).
+Repository helpers `create_policy_execution` / `finish_policy_execution` /
+`insert_policy_matches` / `get_policy_execution` / `list_policy_executions` (filter
+by policy / subscription / status) / `list_policy_matches` give the orchestrator a
+stable write/read surface.
+
+**Pull-mode execution (M3.2).** A second scheduled loop — independent of the
+cost-collection pipeline — evaluates governance policies on their own cadence.
+`orchestrator.run_policies(subscription)` opens a `PolicyExecution` per enabled
+policy, evaluates it through the engine's single mockable seam
+(`custodian.engine.run_policy`), records the matched resources as `policy_matches`,
+and closes the execution `succeeded` (with `resources_matched` + the policy's
+declared `actions_taken`) or `failed` (with the error) — one policy's failure never
+aborts its siblings. `run_all_policies()` fans that across every enabled
+subscription with the same per-subscription isolation as the cost pipeline. It runs
+via `python -m azure_finops.cli run-policies [--mock]` and as a second APScheduler
+job (`finops-policy-run`) on `POLICY_RUN_INTERVAL_SECONDS`, separate from the
+cost-pipeline `RUN_INTERVAL_SECONDS`. Results storage exists (M3.1); read
+endpoints/UI land in M3.3.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 
@@ -269,7 +282,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 218 tests, **~99% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 232 tests, **~99% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).

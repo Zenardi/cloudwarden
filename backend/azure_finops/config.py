@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     # --- Runtime ---
     finops_mock: bool = True
     run_interval_seconds: int = 86400
+    # Pull-mode policy execution runs on its own cadence, independent of the
+    # cost-collection pipeline above (Stacklet-style per-policy scheduling).
+    policy_run_interval_seconds: int = 86400
     app_data_dir: str = "/data"
 
     # --- Derived helpers ---
