@@ -14,6 +14,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from .ai import factory as ai_factory
+from .ai.prompt import build_payload
 from .analysis.idle import detect_idle
 from .analysis.rollup import build_rollups
 from .analysis.rules import evaluate_vms, prioritize
@@ -24,7 +26,7 @@ from .azure.inventory import collect_inventory
 from .azure.logs import collect_memory
 from .azure.metrics import collect_metrics
 from .config import get_settings
-from .models import CostRow, ResourceRecord
+from .models import AISummary, CostRow, ResourceRecord
 from .storage import repository as repo
 from .storage.db import init_db, session_scope
 
@@ -91,6 +93,27 @@ def run_pipeline(mock: bool | None = None) -> dict[str, Any]:
             + detect_idle(resources, monthly)
         )
 
+        # --- recommend (AI reconciliation + executive summary) ---
+        currency = next((c.currency for c in cost_rows if c.cost_type == "Amortized"), "USD")
+        payload = build_payload(
+            recommendations,
+            cost_rows,
+            currency=currency,
+            max_candidates=settings.ai_max_candidates,
+        )
+        ai_result = ai_factory.generate(payload)
+        ai_summary = AISummary(
+            executive_summary=ai_result.executive_summary,
+            total_potential_monthly_savings=ai_result.total_potential_monthly_savings,
+            currency=ai_result.currency,
+            recommendations=recommendations[:10],
+            provider=ai_result.provider,
+            model=ai_result.model,
+            input_tokens=ai_result.input_tokens,
+            output_tokens=ai_result.output_tokens,
+        )
+        logger.info("AI summary via %s/%s", ai_result.provider, ai_result.model)
+
         # --- store ---
         with session_scope() as session:
             counts["resources"] = repo.upsert_resources(session, resources)
@@ -101,6 +124,8 @@ def run_pipeline(mock: bool | None = None) -> dict[str, Any]:
             counts["recommendations"] = repo.replace_recommendations(
                 session, run_id, recommendations
             )
+            repo.upsert_ai_summary(session, run_id, ai_summary)
+            counts["ai_summary"] = 1
         with session_scope() as session:
             repo.finish_run(session, run_id, status="succeeded")
     except Exception as exc:  # noqa: BLE001 - recorded then re-raised

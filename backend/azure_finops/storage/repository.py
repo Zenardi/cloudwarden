@@ -309,3 +309,12 @@ def latest_recommendations(session: Session, limit: int = 200) -> list[dict[str,
         "LIMIT :limit",
         limit=limit,
     )
+
+
+def latest_ai_summary(session: Session) -> dict[str, Any] | None:
+    rows = _rows(
+        session,
+        "SELECT s.* FROM ai_summaries s JOIN runs r ON s.run_id = r.run_id "
+        "ORDER BY r.started_at DESC LIMIT 1",
+    )
+    return rows[0] if rows else None

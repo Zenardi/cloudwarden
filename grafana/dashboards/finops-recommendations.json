@@ -68,6 +68,19 @@
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
           "rawSql": "SELECT split_part(resource_id,'/',9) AS resource, round(cpu_avg,1) AS cpu_avg, round(cpu_p95,1) AS cpu_p95, round(cpu_max,1) AS cpu_max, round(mem_p95,1) AS mem_p95, mem_available, round(data_completeness*100,0) AS coverage_pct FROM utilization_rollups ORDER BY cpu_p95" }
       ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "AI executive summary (latest run)",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 25 },
+      "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "total_potential_savings" }, "properties": [ { "id": "unit", "value": "currencyUSD" } ] } ] },
+      "options": { "showHeader": true },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT s.executive_summary, round(s.total_potential_savings,2) AS total_potential_savings, s.provider, s.model FROM ai_summaries s JOIN runs r ON s.run_id = r.run_id ORDER BY r.started_at DESC LIMIT 1" }
+      ]
     }
   ]
 }

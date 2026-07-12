@@ -22,3 +22,9 @@ All notable changes to this project are documented here. Format loosely follows
   data_completeness), FinOps rules (shutdown / downsize / idle-orphan) with
   Retail-Prices-based savings and Advisor confidence boosting, prioritized
   recommendations persisted, and a **Recommendations & Savings** Grafana dashboard.
+- **Phase 3 — Pluggable AI layer:** provider abstraction (`AIProvider`) with a
+  deterministic offline Stub, Anthropic (`claude-opus-4-8`, adaptive thinking,
+  strict-JSON + tolerant parse), and OpenAI-compatible (local/Ollama/vLLM)
+  providers — config-selected with a safe fallback so AI is best-effort.
+  Aggregated + sanitized payload, executive summary persisted to `ai_summaries`,
+  `/api/summary` endpoint, and an AI-summary panel on the Recommendations dashboard.

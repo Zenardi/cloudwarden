@@ -78,6 +78,12 @@ def recommendations() -> list[dict[str, Any]]:
         return repo.latest_recommendations(session)
 
 
+@app.get("/api/summary")
+def latest_summary() -> dict[str, Any] | None:
+    with session_scope() as session:
+        return repo.latest_ai_summary(session)
+
+
 @app.get("/api/runs/latest")
 def latest_run() -> dict[str, Any] | None:
     with session_scope() as session:
