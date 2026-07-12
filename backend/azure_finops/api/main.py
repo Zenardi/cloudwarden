@@ -187,6 +187,25 @@ def set_default_subscription(subscription_id: str) -> dict[str, Any]:
     return {"subscription_id": subscription_id, "is_default": True}
 
 
+@app.post("/api/subscriptions/{subscription_id}/test")
+def test_subscription(subscription_id: str) -> dict[str, Any]:
+    """Verify the subscription's credential can reach Azure and see the sub."""
+    from ..azure.connectivity import check_connection
+    from ..config import get_settings
+
+    with session_scope() as session:
+        rec = repo.get_subscription(session, subscription_id)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="subscription not found")
+
+    credential = None
+    if not get_settings().finops_mock and rec.client_id and rec.client_secret:
+        from ..auth import credential_for
+
+        credential = credential_for(rec.tenant_id, rec.client_id, rec.client_secret)
+    return check_connection(rec.subscription_id, credential=credential)
+
+
 @app.post("/api/recommendations/{rec_id}/remediate")
 def remediate(rec_id: int, dry_run: bool = True, actor: str | None = None) -> dict[str, Any]:
     with session_scope() as session:

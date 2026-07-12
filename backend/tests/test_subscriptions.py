@@ -282,3 +282,162 @@ def test_run_pipeline_reports_subscription_id(db) -> None:
 
     out = run_pipeline(mock=True, subscription=SubscriptionContext(SUB_A, display_name="A"))
     assert out["subscription_id"] == SUB_A and "run_id" in out
+
+
+# --------------------------------------------------------------------------- #
+# Connectivity check (test-connection)
+# --------------------------------------------------------------------------- #
+class _Resp:
+    def __init__(self, status: int, payload: dict | None = None) -> None:
+        self.status_code = status
+        self._payload = payload or {}
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _Http:
+    def __init__(self, resp: _Resp | None = None, raise_exc: Exception | None = None) -> None:
+        self._resp = resp
+        self._raise = raise_exc
+
+    def get(self, url: str, headers: dict | None = None) -> _Resp:
+        if self._raise:
+            raise self._raise
+        return self._resp
+
+
+class _Cred:
+    def __init__(self, raise_exc: Exception | None = None) -> None:
+        self._raise = raise_exc
+
+    def get_token(self, scope: str) -> SimpleNamespace:
+        if self._raise:
+            raise self._raise
+        return SimpleNamespace(token="tok")
+
+
+def _go_live(monkeypatch) -> None:
+    from azure_finops.config import get_settings
+
+    monkeypatch.setenv("FINOPS_MOCK", "0")
+    get_settings.cache_clear()
+
+
+def test_check_connection_mock() -> None:
+    from azure_finops.azure.connectivity import check_connection
+
+    r = check_connection(SUB_A)
+    assert r["ok"] is True and r["mock"] is True
+
+
+def test_check_connection_success(monkeypatch) -> None:
+    from azure_finops.azure.connectivity import check_connection
+
+    _go_live(monkeypatch)
+    http = _Http(_Resp(200, {"displayName": "Prod", "state": "Enabled"}))
+    r = check_connection(SUB_A, credential=_Cred(), http=http)
+    assert r["ok"] is True and r["subscription_name"] == "Prod" and r["state"] == "Enabled"
+
+
+def test_check_connection_default_http_client(monkeypatch) -> None:
+    import azure_finops.azure.connectivity as conn
+
+    _go_live(monkeypatch)
+
+    class _CM:
+        def __enter__(self) -> _Http:
+            return _Http(_Resp(200, {"displayName": "X"}))
+
+        def __exit__(self, *a) -> bool:
+            return False
+
+    monkeypatch.setattr(conn.httpx, "Client", lambda **k: _CM())
+    r = conn.check_connection(SUB_A, credential=_Cred())
+    assert r["ok"] is True and r["subscription_name"] == "X"
+
+
+def test_check_connection_access_denied(monkeypatch) -> None:
+    from azure_finops.azure.connectivity import check_connection
+
+    _go_live(monkeypatch)
+    r = check_connection(SUB_A, credential=_Cred(), http=_Http(_Resp(403)))
+    assert r["ok"] is False and "denied" in r["message"].lower()
+
+
+def test_check_connection_not_found(monkeypatch) -> None:
+    from azure_finops.azure.connectivity import check_connection
+
+    _go_live(monkeypatch)
+    r = check_connection(SUB_A, credential=_Cred(), http=_Http(_Resp(404)))
+    assert r["ok"] is False and "404" in r["message"]
+
+
+def test_check_connection_other_status(monkeypatch) -> None:
+    from azure_finops.azure.connectivity import check_connection
+
+    _go_live(monkeypatch)
+    r = check_connection(SUB_A, credential=_Cred(), http=_Http(_Resp(500)))
+    assert r["ok"] is False and "500" in r["message"]
+
+
+def test_check_connection_token_failure(monkeypatch) -> None:
+    from azure_finops.azure.connectivity import check_connection
+
+    _go_live(monkeypatch)
+    r = check_connection(SUB_A, credential=_Cred(raise_exc=RuntimeError("no token")))
+    assert r["ok"] is False and "Token acquisition failed" in r["message"]
+
+
+def test_check_connection_request_failure(monkeypatch) -> None:
+    from azure_finops.azure.connectivity import check_connection
+
+    _go_live(monkeypatch)
+    r = check_connection(SUB_A, credential=_Cred(), http=_Http(raise_exc=RuntimeError("boom")))
+    assert r["ok"] is False and "Request failed" in r["message"]
+
+
+def test_test_subscription_endpoint_mock(db) -> None:
+    from fastapi.testclient import TestClient
+
+    from azure_finops.api.main import app
+    from azure_finops.storage import repository as repo
+    from azure_finops.storage.db import session_scope
+
+    with session_scope() as s:
+        repo.upsert_subscription(s, subscription_id=SUB_A, display_name="A")
+    c = TestClient(app)
+    r = c.post(f"/api/subscriptions/{SUB_A}/test").json()
+    assert r["ok"] is True and r["mock"] is True
+    assert c.post("/api/subscriptions/nope/test").status_code == 404
+
+
+def test_test_subscription_endpoint_live_credential(db, monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    import azure_finops.api.main as apimain
+    from azure_finops.config import get_settings
+    from azure_finops.storage import repository as repo
+    from azure_finops.storage.db import session_scope
+
+    with session_scope() as s:
+        repo.upsert_subscription(
+            s, subscription_id=SUB_A, display_name="A", client_id="c", client_secret="x"
+        )
+
+    captured: dict = {}
+
+    def fake_check(sid, credential=None, http=None):
+        captured["sid"] = sid
+        captured["cred"] = credential
+        return {"ok": True, "message": "stub"}
+
+    monkeypatch.setattr("azure_finops.auth.credential_for", lambda t, c, sec: "DEDICATED")
+    monkeypatch.setattr("azure_finops.azure.connectivity.check_connection", fake_check)
+    monkeypatch.setenv("FINOPS_MOCK", "0")
+    get_settings.cache_clear()
+    c = TestClient(apimain.app)
+    r = c.post(f"/api/subscriptions/{SUB_A}/test").json()
+    assert r["ok"] is True
+    assert captured["cred"] == "DEDICATED" and captured["sid"] == SUB_A
+    get_settings.cache_clear()

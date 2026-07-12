@@ -18,6 +18,9 @@ export default function Subscriptions() {
   const [isEdit, setIsEdit] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
+  const [tests, setTests] = useState<
+    Record<string, { ok: boolean; message: string; mock?: boolean; subscription_name?: string }>
+  >({});
 
   const load = useCallback(async () => {
     try {
@@ -109,6 +112,19 @@ export default function Subscriptions() {
       apiPost(`/api/runs?mock=true&subscription_id=${encodeURIComponent(s.subscription_id)}`)
     );
 
+  async function test(s: Subscription) {
+    setBusy(`test:${s.subscription_id}`);
+    setErr("");
+    try {
+      const r = await apiPost(`/api/subscriptions/${s.subscription_id}/test`);
+      setTests((prev) => ({ ...prev, [s.subscription_id]: r }));
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <>
       <h1>Subscriptions</h1>
@@ -197,6 +213,7 @@ export default function Subscriptions() {
             <th>Subscription ID</th>
             <th>Auth</th>
             <th>State</th>
+            <th>Connection</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -217,7 +234,32 @@ export default function Subscriptions() {
                   </span>
                 </td>
                 <td>
+                  {b("test") ? (
+                    <span className="muted">testing…</span>
+                  ) : tests[s.subscription_id] ? (
+                    <div>
+                      <span
+                        className={`badge ${tests[s.subscription_id].ok ? "approved" : "rejected"}`}
+                      >
+                        {tests[s.subscription_id].ok
+                          ? tests[s.subscription_id].mock
+                            ? "mock ok"
+                            : "connected"
+                          : "failed"}
+                      </span>
+                      <div className="hint" style={{ marginTop: 4, maxWidth: 220 }}>
+                        {tests[s.subscription_id].message}
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td>
                   <div className="row-actions">
+                    <button onClick={() => test(s)} disabled={b("test")}>
+                      {b("test") ? "…" : "Test"}
+                    </button>
                     <button onClick={() => run(s)} disabled={b("run")}>
                       {b("run") ? "…" : "Run"}
                     </button>
@@ -240,7 +282,7 @@ export default function Subscriptions() {
           })}
           {subs.length === 0 && !err && (
             <tr>
-              <td colSpan={5} className="muted">
+              <td colSpan={6} className="muted">
                 No subscriptions yet. Add one above.
               </td>
             </tr>

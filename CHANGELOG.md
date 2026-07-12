@@ -56,9 +56,14 @@ All notable changes to this project are documented here. Format loosely follows
   one pipeline run each — used by the CLI `run`, the scheduler, and `POST /api/runs`
   (which also accepts `?subscription_id=…` to run a single subscription). The env
   `AZURE_SUBSCRIPTION_ID` is seeded as the default subscription on first start.
+- **Test connection** per subscription (`POST /api/subscriptions/{id}/test` + a
+  "Test" button on the Subscriptions page): acquires an ARM token with that
+  subscription's credential and GETs the subscription to confirm the SP can see
+  it, returning a friendly ok/denied/not-found result (mock mode reports without
+  calling Azure).
 
 ### Testing
-- Test suite raised to **96 tests / ~98% line coverage** (95% gate enforced via
+- Test suite raised to **106 tests / ~98% line coverage** (95% gate enforced via
   `[tool.coverage.report] fail_under`). Adds a Postgres-backed integration suite
   (testcontainers) covering repository/orchestrator/API/approval/CLI/scheduler,
   fake-client tests for every live-Azure path, and resilience/auth/provider
