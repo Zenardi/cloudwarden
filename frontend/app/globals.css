@@ -105,3 +105,9 @@ input[type="checkbox"] { width: auto; }
   white-space: pre-wrap; margin: 2px 0; }
 .diff .old { color: var(--red); }
 .diff .new { color: var(--green); }
+
+/* Execution history drill-down (M3.3) */
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: var(--panel2); }
+.exec-detail { background: var(--bg); padding: 10px 12px; }
+.exec-detail table { margin-bottom: 0; }

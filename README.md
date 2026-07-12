@@ -157,8 +157,15 @@ aborts its siblings. `run_all_policies()` fans that across every enabled
 subscription with the same per-subscription isolation as the cost pipeline. It runs
 via `python -m azure_finops.cli run-policies [--mock]` and as a second APScheduler
 job (`finops-policy-run`) on `POLICY_RUN_INTERVAL_SECONDS`, separate from the
-cost-pipeline `RUN_INTERVAL_SECONDS`. Results storage exists (M3.1); read
-endpoints/UI land in M3.3.
+cost-pipeline `RUN_INTERVAL_SECONDS`.
+
+The run history is exposed for review (M3.3): `GET /api/policy-executions`
+(newest-first, filterable by `policy_id` / `subscription_id` / `status` + `limit`),
+`GET /api/policy-executions/{id}` (`404` when unknown), and
+`GET /api/policy-executions/{id}/matches` (the matched-resource drill-down). The
+**Executions** page in the Next.js UI (`frontend/app/executions/`) renders that
+history with filter dropdowns and an expandable per-row drill-down into the matched
+resources.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 
@@ -203,14 +210,16 @@ Then open:
 
 - **Web UI (Next.js)** → http://localhost:3001 — overview, cost explorer,
   recommendation review/approve, **subscription management**, a **Policies**
-  editor (author / validate / enable / delete Cloud Custodian policies), and
-  **Collections** (group policies into named sets).
+  editor (author / validate / enable / delete Cloud Custodian policies),
+  **Collections** (group policies into named sets), and an **Executions** page
+  (pull-mode policy-run history with policy/subscription/status filters and a
+  per-row drill-down into matched resources).
 - **Grafana** → http://localhost:3000 (anonymous viewer enabled) → *FinOps* folder
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend).
 - **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`,
   `/api/policies` CRUD, `/api/policies/validate`, `/api/custodian/schema`,
   `/api/policies/{id}/dryrun`, `/api/policies/{id}/versions`,
-  `/api/policies/sync`, `/api/collections`, …).
+  `/api/policies/sync`, `/api/collections`, `/api/policy-executions`, …).
 
 Run the backend on a schedule instead of one-shot: the `backend` service also
 supports `command: ["scheduler"]`.
@@ -282,7 +291,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 232 tests, **~99% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 243 tests, **~99% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).

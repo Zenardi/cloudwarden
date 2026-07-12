@@ -441,6 +441,47 @@ def trigger_run(mock: bool = False, subscription_id: str | None = None) -> dict[
 
 
 # --------------------------------------------------------------------------- #
+# Policy executions (M3.3 — pull-mode execution history & drill-down)
+# --------------------------------------------------------------------------- #
+@app.get("/api/policy-executions")
+def policy_executions(
+    policy_id: int | None = None,
+    subscription_id: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """List executions newest-first, filtered by any combination of the args.
+
+    Blank query-string filters (an "all" dropdown) normalize to no filter.
+    """
+    with session_scope() as session:
+        return repo.list_policy_executions(
+            session,
+            policy_id=policy_id,
+            subscription_id=subscription_id or None,
+            status=status or None,
+            limit=limit,
+        )
+
+
+@app.get("/api/policy-executions/{execution_id}")
+def get_policy_execution(execution_id: str) -> dict[str, Any]:
+    with session_scope() as session:
+        execution = repo.get_policy_execution(session, execution_id)
+    if execution is None:
+        raise HTTPException(status_code=404, detail="execution not found")
+    return execution
+
+
+@app.get("/api/policy-executions/{execution_id}/matches")
+def policy_execution_matches(execution_id: str) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        if repo.get_policy_execution(session, execution_id) is None:
+            raise HTTPException(status_code=404, detail="execution not found")
+        return repo.list_policy_matches(session, execution_id)
+
+
+# --------------------------------------------------------------------------- #
 # Subscriptions (multi-subscription management)
 # --------------------------------------------------------------------------- #
 class SubscriptionIn(BaseModel):

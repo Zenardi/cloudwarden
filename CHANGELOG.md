@@ -6,6 +6,23 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **M3.3 — Execution history API & UI.** The read/review surface over the pull-mode
+  runs from M3.2. Three thin FastAPI endpoints over the M3.1 repository helpers:
+  `GET /api/policy-executions` (newest-first, filterable by any combination of
+  `policy_id` / `subscription_id` / `status`, with `limit`; blank query-string
+  filters normalize to "no filter" so an "all" dropdown returns everything),
+  `GET /api/policy-executions/{execution_id}` (`404 execution not found` when
+  unknown), and `GET /api/policy-executions/{execution_id}/matches` (the
+  matched-resource drill-down, also `404` for an unknown execution). New Next.js
+  **Executions** page (`frontend/app/executions/page.tsx`, linked from `Nav.tsx`):
+  a history table with policy / subscription / status filter dropdowns that
+  re-query the API on change, and a click-to-expand per-row drill-down that lazily
+  fetches and caches each execution's matched resources (`resource_id` /
+  `resource_type` / `action_taken`). Added `PolicyExecution` / `PolicyMatch`
+  TypeScript interfaces to `lib/api.ts`. TDD: `test_policy_execution_api.py`
+  (11 `TestClient` tests) covers the empty list, each filter alone and combined,
+  `limit`, blank-filter normalization, both `404`s (asserting the specific detail),
+  and the known-id happy paths — `api/main.py` at 100% coverage.
 - **M3.2 — Pull-mode execution orchestrator.** Scheduled evaluation of every enabled
   Cloud Custodian policy against every enabled subscription, on its own cadence,
   independent of the cost-collection pipeline (Stacklet-style "pull mode"). New

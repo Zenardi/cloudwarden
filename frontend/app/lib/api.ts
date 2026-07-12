@@ -115,6 +115,26 @@ export const listPolicyVersions = (id: number): Promise<PolicyVersion[]> =>
 export const diffPolicyVersions = (id: number, from: number, to: number): Promise<PolicyDiff> =>
   apiGet<PolicyDiff>(`/api/policies/${id}/versions/diff?from_version=${from}&to_version=${to}`);
 
+export interface PolicyExecution {
+  execution_id: string;
+  policy_id: number;
+  subscription_id?: string | null;
+  status: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  resources_matched: number;
+  actions_taken: any[];
+  error?: string | null;
+}
+
+export interface PolicyMatch {
+  resource_id: string;
+  resource_type?: string | null;
+  matched_at?: string | null;
+  action_taken?: string | null;
+  action_result?: Record<string, any>;
+}
+
 export interface CollectionPolicyRef {
   id: number;
   name: string;

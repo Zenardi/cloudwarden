@@ -10,6 +10,7 @@ export default function Nav() {
       <Link href="/policies">Policies</Link>
       <Link href="/collections">Collections</Link>
       <Link href="/runs">Runs</Link>
+      <Link href="/executions">Executions</Link>
       <Link href="/remediation">Remediation</Link>
       <Link href="/subscriptions">Subscriptions</Link>
     </nav>
