@@ -1,27 +1,48 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 export const GRAFANA_BASE = process.env.NEXT_PUBLIC_GRAFANA_BASE || "http://localhost:3000";
 
-export async function apiGet<T = any>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
-  return res.json();
+/**
+ * Error thrown for a non-2xx response. Carries the HTTP `status` and the parsed
+ * JSON `body` (when present) so callers can surface, e.g., a 422 validation
+ * payload inline instead of just a status string. `message` keeps the historic
+ * `"<METHOD> <path> → <status>"` format so `String(err)` stays readable.
+ */
+export class ApiError extends Error {
+  status: number;
+  body: any;
+  constructor(method: string, path: string, status: number, body: any) {
+    super(`${method} ${path} → ${status}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
 }
 
-export async function apiPost<T = any>(path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
+    method,
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache: "no-store",
   });
-  if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
+  if (!res.ok) {
+    let parsed: any = undefined;
+    try {
+      parsed = await res.json();
+    } catch {
+      /* no JSON body */
+    }
+    throw new ApiError(method, path, res.status, parsed);
+  }
   return res.json();
 }
 
-export async function apiDelete<T = any>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}`);
-  return res.json();
-}
+export const apiGet = <T = any>(path: string): Promise<T> => request<T>("GET", path);
+export const apiPost = <T = any>(path: string, body?: unknown): Promise<T> =>
+  request<T>("POST", path, body);
+export const apiPut = <T = any>(path: string, body?: unknown): Promise<T> =>
+  request<T>("PUT", path, body);
+export const apiDelete = <T = any>(path: string): Promise<T> => request<T>("DELETE", path);
 
 export interface Subscription {
   subscription_id: string;
@@ -47,6 +68,25 @@ export interface Recommendation {
   priority: number;
   rationale?: string | null;
   status: string;
+}
+
+export interface Policy {
+  id: number;
+  name: string;
+  resource_type: string;
+  spec: Record<string, any>;
+  description?: string | null;
+  enabled: boolean;
+  version: number;
+  source: string;
+  validation_status?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
 }
 
 export interface AISummary {

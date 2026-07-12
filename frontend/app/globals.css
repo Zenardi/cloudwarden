@@ -64,3 +64,19 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 input[type="checkbox"] { width: auto; }
 .form-actions { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
 .check { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+/* Policy spec editor (M2.2) */
+.policy-editor {
+  font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; width: 100%; min-height: 220px; resize: vertical;
+  white-space: pre; overflow-wrap: normal; overflow-x: auto; tab-size: 2;
+}
+.policy-editor:focus { outline: none; border-color: var(--accent); }
+.field.wide { grid-column: 1 / -1; }
+.validation { border-radius: 8px; padding: 10px 12px; margin-top: 6px; font-size: 13px; }
+.validation.ok { color: var(--green); background: rgba(63,185,104,.1); border: 1px solid var(--green); }
+.validation.bad { color: var(--red); background: rgba(226,88,90,.1); border: 1px solid var(--red); }
+.validation ul { margin: 6px 0 0; padding-left: 18px; }
+.validation li { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; }
+.badge.valid { color: var(--green); border-color: var(--green); }
+.badge.invalid { color: var(--red); border-color: var(--red); }

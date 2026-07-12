@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **M2.2 — Policy editor UI (Next.js).** A new **Policies** page
+  (`frontend/app/policies/page.tsx`) plus a header nav link, consuming the M2.1
+  CRUD API. Lists stored policies (name, resource type, source, `validation_status`
+  and enabled badges, version) with per-row Edit / Enable-Disable / Delete, and a
+  policy-spec editor with a **Validate** button (calls `POST /api/policies/validate`
+  and shows schema errors inline without saving) and **Create/Update** that surfaces
+  `422` validation errors and `409` duplicate-name errors inline **without
+  navigating away**. `lib/api.ts` gains an `apiPut` helper, an `ApiError` that
+  carries the response `status`/`body` (so 422 payloads render inline), and `Policy`
+  / `ValidationResult` types; `globals.css` gains `.policy-editor` + validation
+  styling. No backend changes — verified via `next build` (clean TypeScript compile)
+  and an end-to-end mock-mode walkthrough (`docker compose up`).
 - **M2.1 — Policy CRUD API.** A validate-on-write REST surface over the M1.2
   `policies` table: `GET /api/policies[?enabled=]`, `GET /api/policies/{id}`,
   `POST /api/policies`, `PUT /api/policies/{id}`, `DELETE /api/policies/{id}`, and

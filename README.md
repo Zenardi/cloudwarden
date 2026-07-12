@@ -94,6 +94,13 @@ Writes never persist an invalid policy — every stored row has passed schema
 validation, so the API tags responses `validation_status: "valid"`. Validation
 goes through the same injectable `CustodianRunner` seam as the M1.3 endpoints.
 
+A **Policies** page in the Next.js UI (M2.2, `frontend/app/policies/`) drives this
+API: it lists stored policies with their resource type, source, validation status
+and enabled state, and offers a JSON policy-spec editor with a **Validate** button
+(inline schema feedback, no save) and **Create/Update** that surfaces `422`
+validation errors inline without navigating away, plus per-row Enable/Disable and
+Delete.
+
 Two API endpoints expose the engine's offline surface (M1.3):
 
 - `POST /api/policies/validate` — dry-run schema-validate a policy `spec` (a
@@ -136,7 +143,8 @@ including the frontend. Use `make up-core` for db + backend + grafana only.
 Then open:
 
 - **Web UI (Next.js)** → http://localhost:3001 — overview, cost explorer,
-  recommendation review/approve, and **subscription management**.
+  recommendation review/approve, **subscription management**, and a **Policies**
+  editor (author / validate / enable / delete Cloud Custodian policies).
 - **Grafana** → http://localhost:3000 (anonymous viewer enabled) → *FinOps* folder
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend).
 - **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`,
