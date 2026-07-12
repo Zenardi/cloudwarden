@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **M2.1 — Policy CRUD API.** A validate-on-write REST surface over the M1.2
+  `policies` table: `GET /api/policies[?enabled=]`, `GET /api/policies/{id}`,
+  `POST /api/policies`, `PUT /api/policies/{id}`, `DELETE /api/policies/{id}`, and
+  `POST /api/policies/{id}/enabled?enabled=`. Every write is **gated by Cloud
+  Custodian schema validation** — `POST`/`PUT` validate the `spec` first and return
+  `422` with an `errors` array **without persisting** when it is invalid; a
+  duplicate `name` returns `409` (caught from the DB unique constraint); an unknown
+  id returns `404`; `PUT` re-validates a changed `spec` and bumps `version`. Since
+  no invalid policy is ever stored, responses carry `validation_status: "valid"`.
+  Validation reuses the M1.3 `get_custodian_runner` injection seam, and a new
+  `PolicyUpdate` pydantic model backs partial updates. TDD:
+  `test_policies_api.py` (13 tests, DB-backed + injected `FakeCustodianRunner`)
+  covers list/filter, get, create (201/422-no-row/409), update (re-validate/404/409),
+  delete (200→404), and the enable toggle — 100% line coverage on the changed code.
 - **M1.4 — Policy dry-run endpoint.** New `POST /api/policies/{id}/dryrun`
   [`?subscription_id=…`] route: it loads a persisted policy (`404` if missing),
   optionally resolves a target subscription via `repo.get_subscription` →
