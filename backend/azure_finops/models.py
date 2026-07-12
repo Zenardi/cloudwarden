@@ -139,6 +139,19 @@ class PolicyRecord(BaseModel):
     updated_at: str | None = None
 
 
+class PolicyVersionRecord(BaseModel):
+    """An immutable snapshot of a policy at one version (M2.5 history)."""
+
+    policy_id: int
+    version: int
+    name: str
+    resource_type: str
+    spec: dict = Field(default_factory=dict)
+    description: str | None = None
+    actor: str | None = None
+    created_at: str | None = None
+
+
 class CollectionCreate(BaseModel):
     """Inbound shape for creating a policy collection."""
 

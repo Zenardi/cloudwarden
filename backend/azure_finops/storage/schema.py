@@ -79,6 +79,32 @@ class Policy(Base):
     )
 
 
+class PolicyVersion(Base):
+    """An immutable snapshot of a policy taken each time its content changes.
+
+    ``create_policy`` seeds version 1 and every content-changing ``update_policy``
+    appends the next number, so the row set is an append-only audit trail. The
+    snapshot copies the policy's authored fields (``name``/``resource_type``/
+    ``spec``/``description``) — enough to render history and diff any two revisions
+    without reconstructing state. ``actor`` records who made the change (reserved
+    for when auth lands; ``NULL`` until then). Rows cascade-delete with the policy.
+    """
+
+    __tablename__ = "policy_versions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    policy_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("policies.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(256))
+    resource_type: Mapped[str] = mapped_column(String(128))
+    spec: Mapped[dict] = mapped_column(JSONB, default=dict)
+    description: Mapped[str | None] = mapped_column(Text)
+    actor: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class PolicyCollection(Base):
     """A named group of policies (a "policy collection", à la Stacklet).
 

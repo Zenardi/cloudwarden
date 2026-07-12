@@ -6,6 +6,22 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **M2.5 — Policy version history & diff.** Every content change to a policy is
+  captured as an immutable snapshot for audit and rollback. New `policy_versions`
+  table (FK to `policies`, `ON DELETE CASCADE`) recording `version` + the authored
+  fields (`name`/`resource_type`/`spec`/`description`) + `actor`. `create_policy`
+  seeds a **version-1** snapshot; `update_policy` now snapshots the new state and
+  bumps the number **only when an authored field actually changes** — a no-op
+  update (nothing supplied, or every value already equal) leaves the row and its
+  history untouched. Repository adds `list_versions` (newest-first; `None` for an
+  unknown policy), a pure `diff_versions` field-level diff, and a DB-backed
+  `diff_policy_versions`. The API adds `GET /api/policies/{id}/versions` (`404`
+  when missing) and `GET /api/policies/{id}/versions/diff?from_version&to_version`
+  (`404` for an unknown policy/version). The **Policies** page gains a **History**
+  panel that lists versions and compares any two. TDD: `test_policy_versions.py`
+  (17 tests — pure-diff + DB-backed repo + API) covers create-seeds-v1 /
+  create-on-change / monotonic numbers / no-version-on-noop / newest-first /
+  unknown-404 / field diff — 100% line coverage on the changed code.
 - **M2.4 — GitOps policy sync.** New `custodian/gitops.py` with
   `sync_policies(git_client=None, runner=None)` and a `POST /api/policies/sync`
   endpoint: it clones/pulls a configured Git repo (`GITOPS_REPO_URL` /
