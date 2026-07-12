@@ -85,10 +85,15 @@ The table is exposed as a **validate-on-write CRUD API** (M2.1):
   success, `422` with an `errors` array (and **no row written**) when the spec
   fails Custodian validation, `409` on a duplicate `name`.
 - `PUT /api/policies/{id}` — partial update; a changed `spec` is **re-validated**
-  (`422`) and the `version` bumps. `404` if missing, `409` on a name collision.
+  (`422`) and the `version` bumps **only when an authored field actually changes**.
+  `404` if missing, `409` on a name collision.
 - `DELETE /api/policies/{id}` — remove (`404` if missing).
 - `POST /api/policies/{id}/enabled?enabled=true|false` — toggle the enabled flag
   (`404` if missing).
+- `GET /api/policies/{id}/versions` — the policy's version history, newest-first
+  (`404` if missing).
+- `GET /api/policies/{id}/versions/diff?from_version=&to_version=` — field-level
+  diff between two stored versions (`404` for an unknown policy/version).
 
 Writes never persist an invalid policy — every stored row has passed schema
 validation, so the API tags responses `validation_status: "valid"`. Validation
@@ -119,6 +124,16 @@ are **skipped and reported** (non-fatal), the sync is **idempotent** (a no-op
 re-sync writes nothing), and a clone/pull failure returns a structured error
 rather than a `500`. The Git client is an injectable seam, so the whole pipeline
 is unit-tested offline against a fixture repo.
+
+Every content change to a policy is captured as an immutable **version** (M2.5) in
+a `policy_versions` table (`ON DELETE CASCADE` with the policy). `create_policy`
+seeds version 1 and each content-changing `update_policy` appends the next number
+— a no-op update writes nothing — so the rows form an append-only audit trail.
+`GET /api/policies/{id}/versions` lists them newest-first and
+`GET /api/policies/{id}/versions/diff?from_version=&to_version=` returns the set of
+changed authored fields (name/resource_type/spec/description) between any two
+revisions. The **Policies** page adds a **History** panel to browse versions and
+compare two side by side.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 
@@ -169,7 +184,8 @@ Then open:
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend).
 - **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`,
   `/api/policies` CRUD, `/api/policies/validate`, `/api/custodian/schema`,
-  `/api/policies/{id}/dryrun`, `/api/policies/sync`, `/api/collections`, …).
+  `/api/policies/{id}/dryrun`, `/api/policies/{id}/versions`,
+  `/api/policies/sync`, `/api/collections`, …).
 
 Run the backend on a schedule instead of one-shot: the `backend` service also
 supports `command: ["scheduler"]`.
@@ -241,7 +257,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 187 tests, **~98% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 204 tests, **~99% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).

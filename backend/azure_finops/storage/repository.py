@@ -188,6 +188,44 @@ def _policy_public(rec: schema.Policy) -> dict[str, Any]:
     }
 
 
+# Authored fields captured in each version snapshot and compared to detect a
+# real (content-changing) update. ``enabled``/``source`` are lifecycle state, not
+# policy content, so they neither snapshot nor diff.
+_VERSIONED_FIELDS = ("name", "resource_type", "spec", "description")
+
+
+def _policy_version_public(rec: schema.PolicyVersion) -> dict[str, Any]:
+    """Serialize a policy-version snapshot into a JSON-friendly dict."""
+    return {
+        "policy_id": rec.policy_id,
+        "version": rec.version,
+        "name": rec.name,
+        "resource_type": rec.resource_type,
+        "spec": rec.spec,
+        "description": rec.description,
+        "actor": rec.actor,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+    }
+
+
+def _snapshot_policy_version(
+    session: Session, rec: schema.Policy, actor: str | None = None
+) -> None:
+    """Append an immutable snapshot of ``rec`` at its current ``version``."""
+    session.add(
+        schema.PolicyVersion(
+            policy_id=rec.id,
+            version=rec.version,
+            name=rec.name,
+            resource_type=rec.resource_type,
+            spec=rec.spec,
+            description=rec.description,
+            actor=actor,
+        )
+    )
+    session.flush()
+
+
 def create_policy(
     session: Session,
     *,
@@ -196,8 +234,13 @@ def create_policy(
     spec: dict[str, Any],
     description: str | None = None,
     source: str = "custom",
+    actor: str | None = None,
 ) -> dict[str, Any]:
-    """Persist a new policy (enabled, version 1). Raises on a duplicate ``name``."""
+    """Persist a new policy (enabled, version 1). Raises on a duplicate ``name``.
+
+    Seeds the version history with a version-1 snapshot so the created state is
+    always the first entry in the audit trail.
+    """
     rec = schema.Policy(
         name=name,
         resource_type=resource_type,
@@ -207,6 +250,7 @@ def create_policy(
     )
     session.add(rec)
     session.flush()
+    _snapshot_policy_version(session, rec, actor=actor)
     return _policy_public(rec)
 
 
@@ -231,22 +275,87 @@ def update_policy(
     resource_type: str | None = None,
     spec: dict[str, Any] | None = None,
     description: str | None = None,
+    actor: str | None = None,
 ) -> dict[str, Any] | None:
-    """Apply the supplied fields and bump ``version``. Returns ``None`` if missing."""
+    """Apply the supplied fields; bump ``version`` and snapshot only on a real change.
+
+    Only fields whose new value differs from the stored one are applied. When at
+    least one authored field changes, ``version`` increments and a new
+    :class:`~schema.PolicyVersion` snapshot of the resulting state is appended. A
+    no-op update (nothing supplied, or every value already equal) leaves the row
+    and its history untouched. Returns ``None`` if the policy is missing.
+    """
     rec = session.get(schema.Policy, policy_id)
     if rec is None:
         return None
-    if name is not None:
+    changed = False
+    if name is not None and name != rec.name:
         rec.name = name
-    if resource_type is not None:
+        changed = True
+    if resource_type is not None and resource_type != rec.resource_type:
         rec.resource_type = resource_type
-    if spec is not None:
+        changed = True
+    if spec is not None and spec != rec.spec:
         rec.spec = spec
-    if description is not None:
+        changed = True
+    if description is not None and description != rec.description:
         rec.description = description
-    rec.version += 1
-    session.flush()
+        changed = True
+    if changed:
+        rec.version += 1
+        session.flush()
+        _snapshot_policy_version(session, rec, actor=actor)
     return _policy_public(rec)
+
+
+def list_versions(session: Session, policy_id: int) -> list[dict[str, Any]] | None:
+    """Return a policy's version snapshots newest-first, or ``None`` if it's missing."""
+    if session.get(schema.Policy, policy_id) is None:
+        return None
+    recs = (
+        session.query(schema.PolicyVersion)
+        .filter(schema.PolicyVersion.policy_id == policy_id)
+        .order_by(schema.PolicyVersion.version.desc())
+        .all()
+    )
+    return [_policy_version_public(r) for r in recs]
+
+
+def diff_versions(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
+    """Field-level diff of two version snapshots (pure — no DB).
+
+    Returns ``{"changed_fields": [...sorted...], "changes": {field: {old, new}}}``
+    over the authored fields (name/resource_type/spec/description).
+    """
+    changes: dict[str, Any] = {}
+    for field in _VERSIONED_FIELDS:
+        if old.get(field) != new.get(field):
+            changes[field] = {"old": old.get(field), "new": new.get(field)}
+    return {"changed_fields": sorted(changes), "changes": changes}
+
+
+def diff_policy_versions(
+    session: Session, policy_id: int, from_version: int, to_version: int
+) -> dict[str, Any] | None:
+    """Diff two stored versions of a policy. ``None`` if the policy or a version is missing."""
+    if session.get(schema.Policy, policy_id) is None:
+        return None
+    snaps = {
+        v.version: v
+        for v in session.query(schema.PolicyVersion)
+        .filter(
+            schema.PolicyVersion.policy_id == policy_id,
+            schema.PolicyVersion.version.in_((from_version, to_version)),
+        )
+        .all()
+    }
+    if from_version not in snaps or to_version not in snaps:
+        return None
+    diff = diff_versions(
+        _policy_version_public(snaps[from_version]),
+        _policy_version_public(snaps[to_version]),
+    )
+    return {"from_version": from_version, "to_version": to_version, **diff}
 
 
 def delete_policy(session: Session, policy_id: int) -> bool:

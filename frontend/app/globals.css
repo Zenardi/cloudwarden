@@ -94,3 +94,14 @@ input[type="checkbox"] { width: auto; }
 .chip button:hover { color: var(--red); }
 .member-add { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 .member-add select { width: auto; min-width: 200px; }
+
+.history-controls { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-top: 8px; }
+.history-controls .field { min-width: 140px; }
+.history-controls select { width: auto; min-width: 120px; }
+.diff { border-radius: 8px; padding: 10px 12px; margin-top: 10px; font-size: 13px;
+  background: var(--panel2); border: 1px solid var(--border); }
+.diff ul { margin: 6px 0 0; padding-left: 18px; }
+.diff li { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+  white-space: pre-wrap; margin: 2px 0; }
+.diff .old { color: var(--red); }
+.diff .new { color: var(--green); }

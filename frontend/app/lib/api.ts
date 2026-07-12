@@ -89,6 +89,32 @@ export interface ValidationResult {
   errors: string[];
 }
 
+export interface PolicyVersion {
+  policy_id: number;
+  version: number;
+  name: string;
+  resource_type: string;
+  spec: Record<string, any>;
+  description?: string | null;
+  actor?: string | null;
+  created_at?: string | null;
+}
+
+export interface PolicyDiff {
+  from_version: number;
+  to_version: number;
+  changed_fields: string[];
+  changes: Record<string, { old: any; new: any }>;
+}
+
+/** A policy's version history, newest-first. */
+export const listPolicyVersions = (id: number): Promise<PolicyVersion[]> =>
+  apiGet<PolicyVersion[]>(`/api/policies/${id}/versions`);
+
+/** Field-level diff between two stored versions of a policy. */
+export const diffPolicyVersions = (id: number, from: number, to: number): Promise<PolicyDiff> =>
+  apiGet<PolicyDiff>(`/api/policies/${id}/versions/diff?from_version=${from}&to_version=${to}`);
+
 export interface CollectionPolicyRef {
   id: number;
   name: string;

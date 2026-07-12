@@ -11,7 +11,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
@@ -268,6 +268,30 @@ def set_policy_enabled(policy_id: int, enabled: bool = True) -> dict[str, Any]:
     if updated is None:
         raise HTTPException(status_code=404, detail="policy not found")
     return _policy_view(updated)
+
+
+@app.get("/api/policies/{policy_id}/versions")
+def list_policy_versions(policy_id: int) -> list[dict[str, Any]]:
+    """List a policy's version history newest-first. ``404`` when the policy is missing."""
+    with session_scope() as session:
+        versions = repo.list_versions(session, policy_id)
+    if versions is None:
+        raise HTTPException(status_code=404, detail="policy not found")
+    return versions
+
+
+@app.get("/api/policies/{policy_id}/versions/diff")
+def diff_policy_versions(
+    policy_id: int,
+    from_version: Annotated[int, Query(ge=1)],
+    to_version: Annotated[int, Query(ge=1)],
+) -> dict[str, Any]:
+    """Field-level diff between two stored versions. ``404`` if the policy/version is absent."""
+    with session_scope() as session:
+        diff = repo.diff_policy_versions(session, policy_id, from_version, to_version)
+    if diff is None:
+        raise HTTPException(status_code=404, detail="policy or version not found")
+    return diff
 
 
 @app.post("/api/policies/sync")

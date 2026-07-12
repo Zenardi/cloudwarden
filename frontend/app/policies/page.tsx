@@ -1,7 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, apiDelete, apiGet, apiPost, apiPut, Policy, ValidationResult } from "../lib/api";
+import {
+  ApiError,
+  apiDelete,
+  apiGet,
+  apiPost,
+  apiPut,
+  diffPolicyVersions,
+  listPolicyVersions,
+  Policy,
+  PolicyDiff,
+  PolicyVersion,
+  ValidationResult,
+} from "../lib/api";
+
+/** Render a field value for the diff: objects as JSON, null/empty as a placeholder. */
+function fmtValue(v: any): string {
+  if (v === null || v === undefined || v === "") return "∅";
+  return typeof v === "object" ? JSON.stringify(v) : String(v);
+}
 
 const TEMPLATE = `{
   "policies": [
@@ -50,6 +68,12 @@ export default function Policies() {
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState("");
+  const [historyId, setHistoryId] = useState<number | null>(null);
+  const [historyName, setHistoryName] = useState("");
+  const [versions, setVersions] = useState<PolicyVersion[]>([]);
+  const [fromV, setFromV] = useState<number | null>(null);
+  const [toV, setToV] = useState<number | null>(null);
+  const [diff, setDiff] = useState<PolicyDiff | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -164,6 +188,44 @@ export default function Policies() {
     return act(`del:${p.id}`, () => apiDelete(`/api/policies/${p.id}`));
   };
 
+  async function openHistory(p: Policy) {
+    setHistoryId(p.id);
+    setHistoryName(p.name);
+    setDiff(null);
+    setErr("");
+    setBusy(`hist:${p.id}`);
+    try {
+      const vs = await listPolicyVersions(p.id);
+      setVersions(vs);
+      // Preselect the two most recent versions (or the sole version twice).
+      setToV(vs[0]?.version ?? null);
+      setFromV((vs[1] ?? vs[0])?.version ?? null);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function closeHistory() {
+    setHistoryId(null);
+    setVersions([]);
+    setDiff(null);
+  }
+
+  async function compare() {
+    if (historyId === null || fromV === null || toV === null) return;
+    setBusy("diff");
+    setErr("");
+    try {
+      setDiff(await diffPolicyVersions(historyId, fromV, toV));
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <>
       <h1>Policies</h1>
@@ -241,6 +303,107 @@ export default function Policies() {
         </div>
       </div>
 
+      {historyId !== null && (
+        <div className="panel-form">
+          <div className="form-actions" style={{ justifyContent: "space-between", marginTop: 0 }}>
+            <h2 style={{ margin: 0 }}>History — {historyName}</h2>
+            <button onClick={closeHistory}>Close</button>
+          </div>
+          <p className="sub" style={{ marginTop: 4 }}>
+            Every content change is snapshotted as an immutable version. Pick two to compare.
+          </p>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Version</th>
+                <th>Resource type</th>
+                <th>Description</th>
+                <th>Actor</th>
+                <th>When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {versions.map((v) => (
+                <tr key={v.version}>
+                  <td className="num">v{v.version}</td>
+                  <td className="muted">{v.resource_type}</td>
+                  <td className="muted">{v.description || "—"}</td>
+                  <td className="muted">{v.actor || "—"}</td>
+                  <td className="muted">
+                    {v.created_at ? new Date(v.created_at).toLocaleString() : "—"}
+                  </td>
+                </tr>
+              ))}
+              {versions.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    No versions recorded.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {versions.length > 0 && (
+            <>
+              <div className="history-controls">
+                <div className="field">
+                  <label>From</label>
+                  <select
+                    value={fromV ?? ""}
+                    onChange={(e) => setFromV(Number(e.target.value))}
+                  >
+                    {versions.map((v) => (
+                      <option key={v.version} value={v.version}>
+                        v{v.version}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>To</label>
+                  <select value={toV ?? ""} onChange={(e) => setToV(Number(e.target.value))}>
+                    {versions.map((v) => (
+                      <option key={v.version} value={v.version}>
+                        v{v.version}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button onClick={compare} disabled={busy === "diff"}>
+                  {busy === "diff" ? "Comparing…" : "Compare"}
+                </button>
+              </div>
+
+              {diff && (
+                <div className="diff">
+                  {diff.changed_fields.length === 0 ? (
+                    <>
+                      No differences between v{diff.from_version} and v{diff.to_version}.
+                    </>
+                  ) : (
+                    <>
+                      <strong>
+                        Changed v{diff.from_version} → v{diff.to_version}:
+                      </strong>
+                      <ul>
+                        {diff.changed_fields.map((f) => (
+                          <li key={f}>
+                            <code>{f}</code>: <span className="old">{fmtValue(diff.changes[f].old)}</span>{" "}
+                            → <span className="new">{fmtValue(diff.changes[f].new)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <table>
         <thead>
           <tr>
@@ -275,6 +438,9 @@ export default function Policies() {
                 <td>
                   <div className="row-actions">
                     <button onClick={() => edit(p)}>Edit</button>
+                    <button onClick={() => openHistory(p)} disabled={b("hist")}>
+                      History
+                    </button>
                     <button onClick={() => toggle(p)} disabled={b("toggle")}>
                       {p.enabled ? "Disable" : "Enable"}
                     </button>
