@@ -28,3 +28,8 @@ All notable changes to this project are documented here. Format loosely follows
   providers — config-selected with a safe fallback so AI is best-effort.
   Aggregated + sanitized payload, executive summary persisted to `ai_summaries`,
   `/api/summary` endpoint, and an AI-summary panel on the Recommendations dashboard.
+- **Phase 4 — FastAPI API + Next.js UI:** review/approve endpoints
+  (`POST /api/recommendations/{id}/decision`, `GET /api/runs`) plus a Next.js
+  (App Router, standalone output) UI — overview (KPIs + AI summary + Grafana
+  links), cost explorer, recommendations review/approve, and run history/trigger.
+  Served via the `frontend` compose profile (`make up-all`).

@@ -11,8 +11,9 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from ..resilience import REGISTRY
 from ..storage import repository as repo
@@ -78,6 +79,23 @@ def recommendations() -> list[dict[str, Any]]:
         return repo.latest_recommendations(session)
 
 
+class Decision(BaseModel):
+    decision: str  # approve | reject
+    actor: str | None = None
+
+
+@app.post("/api/recommendations/{rec_id}/decision")
+def decide_recommendation(rec_id: int, body: Decision) -> dict[str, Any]:
+    status = {"approve": "approved", "reject": "rejected"}.get(body.decision)
+    if status is None:
+        raise HTTPException(status_code=400, detail="decision must be 'approve' or 'reject'")
+    with session_scope() as session:
+        ok = repo.decide_recommendation(session, rec_id, status, body.actor)
+    if not ok:
+        raise HTTPException(status_code=404, detail="recommendation not found")
+    return {"id": rec_id, "status": status}
+
+
 @app.get("/api/summary")
 def latest_summary() -> dict[str, Any] | None:
     with session_scope() as session:
@@ -88,6 +106,12 @@ def latest_summary() -> dict[str, Any] | None:
 def latest_run() -> dict[str, Any] | None:
     with session_scope() as session:
         return repo.latest_run(session)
+
+
+@app.get("/api/runs")
+def runs(limit: int = 20) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        return repo.list_runs(session, limit=limit)
 
 
 @app.post("/api/runs")

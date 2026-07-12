@@ -1,0 +1,55 @@
+:root {
+  --bg: #0f1420;
+  --panel: #171e2e;
+  --panel2: #1e2740;
+  --border: #2a3550;
+  --text: #e6ecff;
+  --muted: #9aa7c7;
+  --accent: #4f8cff;
+  --green: #3fb968;
+  --amber: #e0a44a;
+  --red: #e2585a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.nav {
+  display: flex; gap: 18px; align-items: center;
+  padding: 12px 24px; background: var(--panel); border-bottom: 1px solid var(--border);
+}
+.nav .brand { font-weight: 700; color: #fff; margin-right: 12px; }
+.container { max-width: 1120px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 13px; margin: 26px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.card .value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+.card .value.green { color: var(--green); }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 8px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; background: var(--panel2); }
+tbody tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--border); color: var(--muted); }
+.badge.low, .badge.approved { color: var(--green); border-color: var(--green); }
+.badge.medium { color: var(--amber); border-color: var(--amber); }
+.badge.high, .badge.rejected { color: var(--red); border-color: var(--red); }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); padding: 6px 12px; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.approve { border-color: var(--green); color: var(--green); }
+button.reject { border-color: var(--red); color: var(--red); }
+button:disabled { opacity: .45; cursor: default; }
+.row-actions { display: flex; gap: 6px; }
+.err { color: var(--red); background: rgba(226,88,90,.1); border: 1px solid var(--red); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; }
+.muted { color: var(--muted); }
+.summary { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; padding: 16px; }
+.links { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }

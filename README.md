@@ -14,8 +14,8 @@ default; any OpenAI-compatible/local model).
 | 0 | Scaffold (config, auth, resilience, storage, Docker, CI tooling) | ✅ done |
 | 1 | **MVP:** cost + inventory → Postgres/Timescale → Grafana cost dashboard | ✅ done, verified |
 | 2 | Metrics collector + FinOps rules (shutdown/downsize/idle) + savings | 🔜 scaffolded |
-| 3 | Pluggable AI recommendations + executive summary | 🔜 scaffolded |
-| 4 | FastAPI + Next.js UI (review/approve) | 🔜 API done, UI pending |
+| 3 | Pluggable AI recommendations + executive summary | ✅ done |
+| 4 | FastAPI + Next.js UI (review/approve) | ✅ done |
 | 5 | Guarded remediation (deallocate/resize/delete, dry-run default) | 🔜 scaffolded |
 
 The MVP runs fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
@@ -70,6 +70,8 @@ Then open:
 - **Grafana** → http://localhost:3000 (anonymous viewer enabled) → *FinOps* folder
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend).
 - **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`, …).
+- **Web UI (Next.js)** → run `make up-all` (or `docker compose --profile frontend up -d --build`),
+  then http://localhost:3001 — overview, cost explorer, and recommendation review/approve.
 
 Run the backend on a schedule instead of one-shot: the `backend` service also
 supports `command: ["scheduler"]`.

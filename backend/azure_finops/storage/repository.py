@@ -318,3 +318,19 @@ def latest_ai_summary(session: Session) -> dict[str, Any] | None:
         "ORDER BY r.started_at DESC LIMIT 1",
     )
     return rows[0] if rows else None
+
+
+def decide_recommendation(
+    session: Session, rec_id: int, status: str, actor: str | None = None
+) -> bool:
+    rec = session.get(schema.Recommendation, rec_id)
+    if rec is None:
+        return False
+    rec.status = status
+    rec.decided_at = datetime.now(UTC)
+    rec.decided_by = actor
+    return True
+
+
+def list_runs(session: Session, limit: int = 20) -> list[dict[str, Any]]:
+    return _rows(session, "SELECT * FROM runs ORDER BY started_at DESC LIMIT :limit", limit=limit)
