@@ -76,6 +76,24 @@ and a `source` (`custom` | `library` | `imported`). CRUD lives behind
 `update_policy` / `delete_policy` / `set_policy_enabled`) alongside the cost and
 recommendation tables.
 
+The table is exposed as a **validate-on-write CRUD API** (M2.1):
+
+- `GET /api/policies[?enabled=true|false]` — list policies (optionally filtered by
+  enabled state).
+- `GET /api/policies/{id}` — fetch one (`404` if missing).
+- `POST /api/policies` — **validate the spec first**, then persist: `201` on
+  success, `422` with an `errors` array (and **no row written**) when the spec
+  fails Custodian validation, `409` on a duplicate `name`.
+- `PUT /api/policies/{id}` — partial update; a changed `spec` is **re-validated**
+  (`422`) and the `version` bumps. `404` if missing, `409` on a name collision.
+- `DELETE /api/policies/{id}` — remove (`404` if missing).
+- `POST /api/policies/{id}/enabled?enabled=true|false` — toggle the enabled flag
+  (`404` if missing).
+
+Writes never persist an invalid policy — every stored row has passed schema
+validation, so the API tags responses `validation_status: "valid"`. Validation
+goes through the same injectable `CustodianRunner` seam as the M1.3 endpoints.
+
 Two API endpoints expose the engine's offline surface (M1.3):
 
 - `POST /api/policies/validate` — dry-run schema-validate a policy `spec` (a
@@ -122,7 +140,8 @@ Then open:
 - **Grafana** → http://localhost:3000 (anonymous viewer enabled) → *FinOps* folder
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend).
 - **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`,
-  `/api/policies/validate`, `/api/custodian/schema`, `/api/policies/{id}/dryrun`, …).
+  `/api/policies` CRUD, `/api/policies/validate`, `/api/custodian/schema`,
+  `/api/policies/{id}/dryrun`, …).
 
 Run the backend on a schedule instead of one-shot: the `backend` service also
 supports `command: ["scheduler"]`.
@@ -193,7 +212,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 147 tests, **~98% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 160 tests, **~98% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).

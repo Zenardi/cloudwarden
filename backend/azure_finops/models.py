@@ -111,6 +111,19 @@ class PolicyCreate(BaseModel):
     source: str = "custom"  # custom | library | imported
 
 
+class PolicyUpdate(BaseModel):
+    """Inbound shape for updating a policy — every field optional (partial update).
+
+    When ``spec`` is provided it is re-validated before the write; the other fields
+    are applied as-is. Omitted fields are left unchanged.
+    """
+
+    name: str | None = None
+    resource_type: str | None = None
+    spec: dict | None = None
+    description: str | None = None
+
+
 class PolicyRecord(BaseModel):
     """A persisted governance policy as returned by the repository."""
 

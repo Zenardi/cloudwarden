@@ -14,10 +14,11 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
-from ..models import ValidateRequest, ValidateResult
+from ..models import PolicyCreate, PolicyUpdate, ValidateRequest, ValidateResult
 from ..remediation import approval as remediation
 from ..resilience import REGISTRY
 from ..storage import repository as repo
@@ -155,6 +156,112 @@ def custodian_schema(
     if isinstance(result, dict) and result.get("error"):
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+# --------------------------------------------------------------------------- #
+# Policy CRUD (M2.1) — validate-on-write governance-as-code
+# --------------------------------------------------------------------------- #
+def _policy_view(policy: dict[str, Any]) -> dict[str, Any]:
+    """Every persisted policy passed validate-on-write, so surface its status."""
+    return {**policy, "validation_status": "valid"}
+
+
+def _require_valid_spec(spec: dict[str, Any], runner: CustodianRunner | None) -> None:
+    """Reject a spec that fails Custodian validation with ``422`` (no persistence)."""
+    result = custodian.validate_policy(spec, runner=runner)
+    if not result.get("valid"):
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "policy validation failed", "errors": result.get("errors") or []},
+        )
+
+
+@app.get("/api/policies")
+def list_policies(enabled: bool | None = None) -> list[dict[str, Any]]:
+    """List policies, optionally filtered by ``?enabled=true``/``false``."""
+    with session_scope() as session:
+        if enabled is None:
+            policies = repo.list_policies(session)
+        elif enabled:
+            policies = repo.list_policies(session, enabled_only=True)
+        else:
+            policies = [p for p in repo.list_policies(session) if not p["enabled"]]
+    return [_policy_view(p) for p in policies]
+
+
+@app.get("/api/policies/{policy_id}")
+def get_policy(policy_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        policy = repo.get_policy(session, policy_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="policy not found")
+    return _policy_view(policy)
+
+
+@app.post("/api/policies", status_code=201)
+def create_policy(
+    body: PolicyCreate,
+    runner: Annotated[CustodianRunner | None, Depends(get_custodian_runner)] = None,
+) -> dict[str, Any]:
+    """Validate the spec, then persist. ``422`` if invalid (no row), ``409`` on dup name."""
+    _require_valid_spec(body.spec, runner)
+    try:
+        with session_scope() as session:
+            created = repo.create_policy(
+                session,
+                name=body.name,
+                resource_type=body.resource_type,
+                spec=body.spec,
+                description=body.description,
+                source=body.source,
+            )
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="policy name already exists") from exc
+    return _policy_view(created)
+
+
+@app.put("/api/policies/{policy_id}")
+def update_policy(
+    policy_id: int,
+    body: PolicyUpdate,
+    runner: Annotated[CustodianRunner | None, Depends(get_custodian_runner)] = None,
+) -> dict[str, Any]:
+    """Apply a partial update (re-validating ``spec`` when supplied). ``404``/``409``."""
+    if body.spec is not None:
+        _require_valid_spec(body.spec, runner)
+    try:
+        with session_scope() as session:
+            updated = repo.update_policy(
+                session,
+                policy_id,
+                name=body.name,
+                resource_type=body.resource_type,
+                spec=body.spec,
+                description=body.description,
+            )
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="policy name already exists") from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="policy not found")
+    return _policy_view(updated)
+
+
+@app.delete("/api/policies/{policy_id}")
+def delete_policy(policy_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        ok = repo.delete_policy(session, policy_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="policy not found")
+    return {"id": policy_id, "deleted": True}
+
+
+@app.post("/api/policies/{policy_id}/enabled")
+def set_policy_enabled(policy_id: int, enabled: bool = True) -> dict[str, Any]:
+    with session_scope() as session:
+        updated = repo.set_policy_enabled(session, policy_id, enabled)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="policy not found")
+    return _policy_view(updated)
 
 
 @app.post("/api/policies/{policy_id}/dryrun")
