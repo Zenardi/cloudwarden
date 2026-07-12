@@ -44,6 +44,16 @@ def write_credential() -> Any:
     )
 
 
+def credential_for(tenant_id: str | None, client_id: str | None, client_secret: str | None) -> Any:
+    """Per-subscription credential: a dedicated SP when creds are supplied,
+    otherwise the shared read SP (env / Managed Identity / CLI). The tenant falls
+    back to the env tenant so only client_id/secret are strictly required."""
+    if client_id and client_secret:
+        s = get_settings()
+        return _make_credential(tenant_id or s.azure_tenant_id, client_id, client_secret)
+    return read_credential()
+
+
 def arm_token(credential: Any = None) -> str:
     cred = credential or read_credential()
     return cred.get_token(ARM_SCOPE).token

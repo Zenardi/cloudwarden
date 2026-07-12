@@ -27,6 +27,10 @@ logger = logging.getLogger("azure_finops.api")
 async def lifespan(_: FastAPI):
     try:
         init_db()
+        from ..config import get_settings
+
+        with session_scope() as session:
+            repo.ensure_default_subscription(session, get_settings())
     except Exception:  # noqa: BLE001 - endpoints will surface DB errors individually
         logger.exception("init_db failed at startup")
     yield
@@ -116,10 +120,71 @@ def runs(limit: int = 20) -> list[dict[str, Any]]:
 
 
 @app.post("/api/runs")
-def trigger_run(mock: bool = False) -> dict[str, Any]:
-    from ..orchestrator import run_pipeline
+def trigger_run(mock: bool = False, subscription_id: str | None = None) -> dict[str, Any]:
+    """Trigger a pipeline run. With no ``subscription_id`` this fans out across
+    every enabled subscription; with one it runs just that subscription."""
+    from ..orchestrator import run_all_subscriptions, run_one_subscription
 
-    return run_pipeline(mock=True if mock else None)
+    mock_flag = True if mock else None
+    if subscription_id:
+        result = run_one_subscription(subscription_id, mock=mock_flag)
+        if result is None:
+            raise HTTPException(status_code=404, detail="subscription not found")
+        return result
+    return run_all_subscriptions(mock=mock_flag)
+
+
+# --------------------------------------------------------------------------- #
+# Subscriptions (multi-subscription management)
+# --------------------------------------------------------------------------- #
+class SubscriptionIn(BaseModel):
+    subscription_id: str
+    display_name: str
+    tenant_id: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None  # None keeps existing, "" clears, else sets
+    enabled: bool = True
+
+
+@app.get("/api/subscriptions")
+def list_subscriptions() -> list[dict[str, Any]]:
+    with session_scope() as session:
+        return repo.list_subscriptions(session)
+
+
+@app.post("/api/subscriptions")
+def upsert_subscription(body: SubscriptionIn) -> dict[str, Any]:
+    sub_id = body.subscription_id.strip()
+    if not sub_id or not body.display_name.strip():
+        raise HTTPException(status_code=400, detail="subscription_id and display_name are required")
+    with session_scope() as session:
+        return repo.upsert_subscription(
+            session,
+            subscription_id=sub_id,
+            display_name=body.display_name.strip(),
+            tenant_id=body.tenant_id,
+            client_id=body.client_id,
+            client_secret=body.client_secret,
+            enabled=body.enabled,
+        )
+
+
+@app.delete("/api/subscriptions/{subscription_id}")
+def delete_subscription(subscription_id: str) -> dict[str, Any]:
+    with session_scope() as session:
+        ok = repo.delete_subscription(session, subscription_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    return {"subscription_id": subscription_id, "deleted": True}
+
+
+@app.post("/api/subscriptions/{subscription_id}/default")
+def set_default_subscription(subscription_id: str) -> dict[str, Any]:
+    with session_scope() as session:
+        ok = repo.set_default_subscription(session, subscription_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    return {"subscription_id": subscription_id, "is_default": True}
 
 
 @app.post("/api/recommendations/{rec_id}/remediate")

@@ -18,23 +18,28 @@ import httpx
 from ..config import Settings, get_settings
 from ..models import CostRow
 from ..resilience import REGISTRY, with_retry
-from ._fixtures import load_fixture
+from ._fixtures import load_fixture, retarget
+from .context import SubscriptionContext
 
 logger = logging.getLogger("azure_finops.azure.cost")
 
 _API_VERSION = "2024-08-01"
 
 
-def collect_cost(client: Any = None) -> list[CostRow]:  # noqa: ARG001 - parity with other collectors
+def collect_cost(
+    client: Any = None, subscription: SubscriptionContext | None = None
+) -> list[CostRow]:  # noqa: ARG001 - parity with other collectors
     settings = get_settings()
+    sub_id = subscription.subscription_id if subscription else settings.azure_subscription_id
     if settings.finops_mock:
-        rows = _mock_rows(settings)
+        rows = _mock_rows(settings, sub_id)
         REGISTRY.set("cost", ok=True)
         return rows
-    return _collect_live(settings)
+    cred = subscription.credential if subscription else None
+    return _collect_live(settings, sub_id, cred)
 
 
-def _mock_rows(settings: Settings) -> list[CostRow]:
+def _mock_rows(settings: Settings, subscription_id: str) -> list[CostRow]:
     data = load_fixture("cost")
     currency = data.get("currency", "USD")
     today = dt.date.today()
@@ -48,8 +53,8 @@ def _mock_rows(settings: Settings) -> list[CostRow]:
                 out.append(
                     CostRow(
                         usage_date=day,
-                        resource_id=str(res["resource_id"]).lower(),
-                        subscription_id=settings.azure_subscription_id,
+                        resource_id=retarget(str(res["resource_id"]).lower(), subscription_id),
+                        subscription_id=subscription_id,
                         resource_type=res.get("resource_type"),
                         location=res.get("location"),
                         service_name=res.get("service_name"),
@@ -123,12 +128,14 @@ def _parse_response(payload: dict[str, Any], cost_type: str) -> list[CostRow]:
 
 
 @with_retry()
-def _collect_live(settings: Settings) -> list[CostRow]:
+def _collect_live(
+    settings: Settings, subscription_id: str, credential: Any = None
+) -> list[CostRow]:
     from ..auth import arm_token
 
-    token = arm_token()
+    token = arm_token(credential)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    url = _query_url(settings.azure_subscription_id)
+    url = _query_url(subscription_id)
     out: list[CostRow] = []
     with httpx.Client(timeout=60.0) as http:
         for cost_type in ("Amortized", "Actual"):

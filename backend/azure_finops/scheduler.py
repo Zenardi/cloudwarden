@@ -7,14 +7,14 @@ import logging
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from .config import get_settings
-from .orchestrator import run_pipeline
+from .orchestrator import run_all_subscriptions
 
 logger = logging.getLogger("azure_finops.scheduler")
 
 
 def _safe_run() -> None:
     try:
-        run_pipeline()
+        run_all_subscriptions()
     except Exception:  # noqa: BLE001 - keep the scheduler alive
         logger.exception("scheduled run failed")
 

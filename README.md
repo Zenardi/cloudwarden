@@ -61,17 +61,20 @@ Prerequisites: Docker with Compose v2 (`docker compose`).
 
 ```bash
 cp .env.example .env            # defaults to FINOPS_MOCK=1
-make up                         # starts db (TimescaleDB) + backend (API) + grafana
+make up                         # db (TimescaleDB) + backend (API) + grafana + web UI
 make seed                       # runs one mock pipeline → populates the DB
 ```
 
+`make up` (equivalently a plain `docker compose up -d`) starts the **full stack**,
+including the frontend. Use `make up-core` for db + backend + grafana only.
+
 Then open:
 
+- **Web UI (Next.js)** → http://localhost:3001 — overview, cost explorer,
+  recommendation review/approve, and **subscription management**.
 - **Grafana** → http://localhost:3000 (anonymous viewer enabled) → *FinOps* folder
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend).
 - **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`, …).
-- **Web UI (Next.js)** → run `make up-all` (or `docker compose --profile frontend up -d --build`),
-  then http://localhost:3001 — overview, cost explorer, and recommendation review/approve.
 
 Run the backend on a schedule instead of one-shot: the `backend` service also
 supports `command: ["scheduler"]`.
@@ -88,6 +91,17 @@ supports `command: ["scheduler"]`.
 For remediation (Phase 5), additionally set the write SP (`AZURE_REMEDIATION_*`),
 `REMEDIATION_ENABLED=true`, and `ALLOWED_RESOURCE_GROUPS`. Remediation defaults
 to **dry-run**; resources tagged `finops:exclude=true` are never touched.
+
+## Multiple subscriptions
+
+`AZURE_SUBSCRIPTION_ID` is seeded as the **default** subscription on first start.
+Add more on the **Subscriptions** page (or `POST /api/subscriptions`): each row
+can reuse the shared env service principal or carry its **own** tenant/client/
+secret (e.g. a different tenant). A run with no target (`make seed`, the
+scheduler, or `POST /api/runs`) **fans out across every enabled subscription**,
+one pipeline run each; the API also accepts `?subscription_id=…` to run just one.
+Per-subscription secrets are stored in Postgres (v1) — a Key Vault / column-
+encryption backing is the intended hardening step.
 
 ## Key configuration
 
@@ -107,7 +121,7 @@ Full list: `.env.example`.
 ```
 backend/azure_finops/
   config.py auth.py resilience.py models.py orchestrator.py scheduler.py cli.py
-  azure/       inventory.py cost.py  (metrics.py logs.py advisor.py — Phase 2)
+  azure/       inventory.py cost.py metrics.py logs.py advisor.py context.py
   analysis/    (rollup/rules/idle/pricing/savings — Phase 2)
   ai/          (base/anthropic/openai/factory/prompt — Phase 3)
   remediation/ (executor/guardrails/approval — Phase 5)
@@ -130,7 +144,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 77 tests, **~98% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 96 tests, **~98% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).

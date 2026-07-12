@@ -58,6 +58,118 @@ def finish_run(session: Session, run_id: str, status: str, notes: str | None = N
 
 
 # --------------------------------------------------------------------------- #
+# Subscriptions (multi-subscription management)
+# --------------------------------------------------------------------------- #
+def _subscription_public(rec: schema.Subscription) -> dict[str, Any]:
+    """Serialize a subscription WITHOUT its secret (secrets never leave the DB)."""
+    return {
+        "subscription_id": rec.subscription_id,
+        "display_name": rec.display_name,
+        "tenant_id": rec.tenant_id,
+        "client_id": rec.client_id,
+        "has_credentials": bool(rec.client_id and rec.client_secret),
+        "enabled": rec.enabled,
+        "is_default": rec.is_default,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+    }
+
+
+def list_subscriptions(session: Session) -> list[dict[str, Any]]:
+    recs = (
+        session.query(schema.Subscription)
+        .order_by(schema.Subscription.is_default.desc(), schema.Subscription.display_name.asc())
+        .all()
+    )
+    return [_subscription_public(r) for r in recs]
+
+
+def get_subscription(session: Session, subscription_id: str) -> schema.Subscription | None:
+    """Internal: returns the ORM record (including the secret) for credential use."""
+    return session.get(schema.Subscription, subscription_id)
+
+
+def enabled_subscriptions(session: Session) -> list[schema.Subscription]:
+    return (
+        session.query(schema.Subscription)
+        .filter(schema.Subscription.enabled.is_(True))
+        .order_by(schema.Subscription.is_default.desc(), schema.Subscription.display_name.asc())
+        .all()
+    )
+
+
+def upsert_subscription(
+    session: Session,
+    *,
+    subscription_id: str,
+    display_name: str,
+    tenant_id: str | None = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+    enabled: bool = True,
+) -> dict[str, Any]:
+    """Create or update a subscription.
+
+    Secret semantics on update: ``client_secret=None`` keeps the existing secret,
+    ``client_secret=""`` clears it, any other value sets it.
+    """
+    rec = session.get(schema.Subscription, subscription_id)
+    make_default = session.query(schema.Subscription).count() == 0
+    if rec is None:
+        rec = schema.Subscription(subscription_id=subscription_id, is_default=make_default)
+        session.add(rec)
+    rec.display_name = display_name
+    rec.tenant_id = tenant_id or None
+    rec.client_id = client_id or None
+    if client_secret is not None:
+        rec.client_secret = client_secret or None
+    rec.enabled = enabled
+    session.flush()
+    return _subscription_public(rec)
+
+
+def delete_subscription(session: Session, subscription_id: str) -> bool:
+    rec = session.get(schema.Subscription, subscription_id)
+    if rec is None:
+        return False
+    was_default = rec.is_default
+    session.delete(rec)
+    session.flush()
+    if was_default:
+        nxt = session.query(schema.Subscription).first()
+        if nxt is not None:
+            nxt.is_default = True
+    return True
+
+
+def set_default_subscription(session: Session, subscription_id: str) -> bool:
+    rec = session.get(schema.Subscription, subscription_id)
+    if rec is None:
+        return False
+    session.query(schema.Subscription).update({schema.Subscription.is_default: False})
+    rec.is_default = True
+    session.flush()
+    return True
+
+
+def ensure_default_subscription(session: Session, settings: Any) -> None:
+    """Seed the subscriptions table from the env subscription if it is empty."""
+    if session.query(schema.Subscription).count() > 0:
+        return
+    sub_id = settings.azure_subscription_id
+    session.add(
+        schema.Subscription(
+            subscription_id=sub_id,
+            display_name=f"Default ({sub_id[:8]}…)" if len(sub_id) > 8 else sub_id,
+            tenant_id=settings.azure_tenant_id,
+            enabled=True,
+            is_default=True,
+        )
+    )
+    session.flush()
+
+
+# --------------------------------------------------------------------------- #
 # Inventory + cost
 # --------------------------------------------------------------------------- #
 def upsert_resources(session: Session, resources: list[m.ResourceRecord]) -> int:

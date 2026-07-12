@@ -30,6 +30,30 @@ class Base(DeclarativeBase):
     pass
 
 
+class Subscription(Base):
+    """A managed Azure subscription.
+
+    Credentials are optional: when ``client_id``/``client_secret`` are set the
+    collectors build a per-subscription ``ClientSecretCredential``; otherwise they
+    fall back to the shared env service principal. ``client_secret`` is stored in
+    plaintext (v1) — a Key Vault / column-encryption backing is a hardening TODO.
+    """
+
+    __tablename__ = "subscriptions"
+
+    subscription_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(256))
+    tenant_id: Mapped[str | None] = mapped_column(String(64))
+    client_id: Mapped[str | None] = mapped_column(String(128))
+    client_secret: Mapped[str | None] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Run(Base):
     __tablename__ = "runs"
 

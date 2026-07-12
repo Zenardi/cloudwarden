@@ -31,11 +31,11 @@ def initdb() -> None:
 
 @app.command()
 def run(mock: bool = typer.Option(False, "--mock", help="Use fixtures instead of Azure")) -> None:
-    """Run the collect -> analyze -> recommend -> store pipeline once."""
+    """Run the pipeline once per enabled subscription (collect -> ... -> store)."""
     _setup_logging()
-    from .orchestrator import run_pipeline
+    from .orchestrator import run_all_subscriptions
 
-    result = run_pipeline(mock=True if mock else None)
+    result = run_all_subscriptions(mock=True if mock else None)
     typer.echo(f"run complete: {result}")
 
 

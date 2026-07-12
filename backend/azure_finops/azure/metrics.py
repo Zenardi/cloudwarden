@@ -17,20 +17,27 @@ from ..config import Settings, get_settings
 from ..metricnames import CPU, DISK_READ_OPS, DISK_WRITE_OPS, MEM_USED_PCT, NET_IN, NET_OUT
 from ..models import MetricSample, ResourceRecord
 from ..resilience import REGISTRY, with_retry
-from ._fixtures import load_fixture
+from ._fixtures import load_fixture, retarget
+from .context import SubscriptionContext
 
 logger = logging.getLogger("azure_finops.azure.metrics")
 
 _VM_TYPE = "microsoft.compute/virtualmachines"
 
 
-def collect_metrics(resources: list[ResourceRecord], client: Any = None) -> list[MetricSample]:
+def collect_metrics(
+    resources: list[ResourceRecord],
+    client: Any = None,
+    subscription: SubscriptionContext | None = None,
+) -> list[MetricSample]:
     settings = get_settings()
     if settings.finops_mock:
-        samples = _mock_samples(settings, resources)
+        sub_id = subscription.subscription_id if subscription else settings.azure_subscription_id
+        samples = _mock_samples(settings, resources, sub_id)
         REGISTRY.set("metrics", ok=True)
         return samples
-    return _collect_live(settings, resources, client)
+    cred = subscription.credential if subscription else None
+    return _collect_live(settings, resources, client, cred)
 
 
 def _evenly(low: float, high: float, n: int) -> list[float]:
@@ -39,13 +46,16 @@ def _evenly(low: float, high: float, n: int) -> list[float]:
     return [low + (high - low) * i / (n - 1) for i in range(n)]
 
 
-def _mock_samples(settings: Settings, resources: list[ResourceRecord]) -> list[MetricSample]:
+def _mock_samples(
+    settings: Settings, resources: list[ResourceRecord], subscription_id: str
+) -> list[MetricSample]:
     profiles = load_fixture("metrics")
     hours = max(settings.metric_lookback_days, 1) * 24
     now = dt.datetime.now(dt.UTC).replace(minute=0, second=0, microsecond=0)
     vm_ids = {r.resource_id for r in resources if r.type == _VM_TYPE}
     out: list[MetricSample] = []
-    for rid, prof in profiles.items():
+    for raw_rid, prof in profiles.items():
+        rid = retarget(str(raw_rid).lower(), subscription_id)
         if rid not in vm_ids:
             continue
         cpu_vals = _evenly(prof["cpu"]["low"], prof["cpu"]["high"], hours)
@@ -111,13 +121,13 @@ def _mock_samples(settings: Settings, resources: list[ResourceRecord]) -> list[M
 
 @with_retry()
 def _collect_live(
-    settings: Settings, resources: list[ResourceRecord], client: Any
+    settings: Settings, resources: list[ResourceRecord], client: Any, credential: Any = None
 ) -> list[MetricSample]:
     from azure.monitor.query import MetricAggregationType, MetricsQueryClient
 
     from ..auth import read_credential
 
-    mq = client or MetricsQueryClient(read_credential())
+    mq = client or MetricsQueryClient(credential or read_credential())
     metric_names = [CPU, NET_IN, NET_OUT, DISK_READ_OPS, DISK_WRITE_OPS]
     timespan = dt.timedelta(days=settings.metric_lookback_days)
     out: list[MetricSample] = []

@@ -37,7 +37,7 @@ def test_orchestrator_records_failure(db, monkeypatch) -> None:
     from azure_finops.storage import repository as repo
     from azure_finops.storage.db import session_scope
 
-    def boom():
+    def boom(*a, **k):
         raise RuntimeError("collector down")
 
     monkeypatch.setattr(orch, "collect_cost", boom)
@@ -114,7 +114,8 @@ def test_api_endpoints(db) -> None:
     assert c.post(f"/api/recommendations/{recs[2]['id']}/remediate").status_code == 409
     assert c.post("/api/recommendations/999999/remediate").status_code == 404
     assert len(c.get("/api/remediation").json()) >= 1
-    assert "run_id" in c.post("/api/runs", params={"mock": True}).json()
+    fanout = c.post("/api/runs", params={"mock": True}).json()
+    assert fanout["subscriptions"] >= 1 and "run_id" in fanout["runs"][0]
 
 
 def test_api_trigger_run_default_param(db) -> None:
@@ -123,7 +124,8 @@ def test_api_trigger_run_default_param(db) -> None:
     from azure_finops.api.main import app
 
     c = TestClient(app)
-    assert "run_id" in c.post("/api/runs").json()
+    body = c.post("/api/runs").json()
+    assert body["subscriptions"] >= 1 and "run_id" in body["runs"][0]
 
 
 def test_approval_flows(db, monkeypatch) -> None:
@@ -230,14 +232,14 @@ def test_scheduler_safe_run(monkeypatch) -> None:
     import azure_finops.scheduler as sched
 
     ran: list[str] = []
-    monkeypatch.setattr(sched, "run_pipeline", lambda: ran.append("ok"))
+    monkeypatch.setattr(sched, "run_all_subscriptions", lambda: ran.append("ok"))
     sched._safe_run()
     assert ran == ["ok"]
 
     def boom():
         raise RuntimeError("x")
 
-    monkeypatch.setattr(sched, "run_pipeline", boom)
+    monkeypatch.setattr(sched, "run_all_subscriptions", boom)
     sched._safe_run()  # must swallow the error
 
 
@@ -245,7 +247,7 @@ def test_run_scheduler_loop(monkeypatch) -> None:
     import azure_finops.scheduler as sched
 
     events: list[str] = []
-    monkeypatch.setattr(sched, "run_pipeline", lambda: events.append("run"))
+    monkeypatch.setattr(sched, "run_all_subscriptions", lambda: events.append("run"))
 
     class _FakeScheduler:
         def __init__(self, timezone=None):

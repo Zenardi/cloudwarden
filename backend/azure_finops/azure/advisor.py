@@ -12,33 +12,40 @@ from typing import Any
 
 from ..config import Settings, get_settings
 from ..resilience import REGISTRY, with_retry
-from ._fixtures import load_fixture
+from ._fixtures import load_fixture, retarget
+from .context import SubscriptionContext
 
 logger = logging.getLogger("azure_finops.azure.advisor")
 
 
-def _normalize(recs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _normalize(recs: list[dict[str, Any]], subscription_id: str) -> list[dict[str, Any]]:
     for r in recs:
         if r.get("resource_id"):
-            r["resource_id"] = str(r["resource_id"]).lower()
+            r["resource_id"] = retarget(str(r["resource_id"]).lower(), subscription_id)
     return recs
 
 
-def collect_advisor(client: Any = None) -> list[dict[str, Any]]:
+def collect_advisor(
+    client: Any = None, subscription: SubscriptionContext | None = None
+) -> list[dict[str, Any]]:
     settings = get_settings()
+    sub_id = subscription.subscription_id if subscription else settings.azure_subscription_id
     if settings.finops_mock:
         REGISTRY.set("advisor", ok=True)
-        return _normalize(load_fixture("advisor"))
-    return _collect_live(settings, client)
+        return _normalize(load_fixture("advisor"), sub_id)
+    cred = subscription.credential if subscription else None
+    return _collect_live(settings, client, sub_id, cred)
 
 
 @with_retry()
-def _collect_live(settings: Settings, client: Any) -> list[dict[str, Any]]:
+def _collect_live(
+    settings: Settings, client: Any, subscription_id: str, credential: Any = None
+) -> list[dict[str, Any]]:
     from azure.mgmt.advisor import AdvisorManagementClient
 
     from ..auth import read_credential
 
-    advisor = client or AdvisorManagementClient(read_credential(), settings.azure_subscription_id)
+    advisor = client or AdvisorManagementClient(credential or read_credential(), subscription_id)
     out: list[dict[str, Any]] = []
     for rec in advisor.recommendations.list(filter="Category eq 'Cost'"):
         props = getattr(rec, "extended_properties", None) or {}

@@ -53,3 +53,14 @@ button:disabled { opacity: .45; cursor: default; }
 .muted { color: var(--muted); }
 .summary { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; padding: 16px; }
 .links { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+.badge.default { color: var(--accent); border-color: var(--accent); }
+.panel-form { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 18px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { color: var(--muted); font-size: 12px; }
+.field .hint { color: var(--muted); font-size: 11px; }
+input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; width: 100%; }
+input:focus, select:focus { outline: none; border-color: var(--accent); }
+input[type="checkbox"] { width: auto; }
+.form-actions { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
+.check { display: flex; align-items: center; gap: 8px; color: var(--muted); }

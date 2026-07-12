@@ -21,6 +21,7 @@ from .analysis.rollup import build_rollups
 from .analysis.rules import evaluate_vms, prioritize
 from .analysis.savings import monthly_cost_map
 from .azure.advisor import collect_advisor
+from .azure.context import SubscriptionContext
 from .azure.cost import collect_cost
 from .azure.inventory import collect_inventory
 from .azure.logs import collect_memory
@@ -31,6 +32,21 @@ from .storage import repository as repo
 from .storage.db import init_db, session_scope
 
 logger = logging.getLogger("azure_finops.orchestrator")
+
+
+def _context_from_record(record: Any, mock: bool) -> SubscriptionContext:
+    """Build a run context from a `subscriptions` row, minting a per-subscription
+    credential only on the live path when the row carries its own SP creds."""
+    credential = None
+    if not mock and record.client_id and record.client_secret:
+        from .auth import credential_for
+
+        credential = credential_for(record.tenant_id, record.client_id, record.client_secret)
+    return SubscriptionContext(
+        subscription_id=record.subscription_id,
+        credential=credential,
+        display_name=record.display_name,
+    )
 
 
 def _new_run_id() -> str:
@@ -50,20 +66,23 @@ def _enrich_cost(cost_rows: list[CostRow], resources: list[ResourceRecord]) -> N
         c.resource_group = c.resource_group or res.resource_group
 
 
-def run_pipeline(mock: bool | None = None) -> dict[str, Any]:
+def run_pipeline(
+    mock: bool | None = None, subscription: SubscriptionContext | None = None
+) -> dict[str, Any]:
     settings = get_settings()
     if mock is not None:
         settings.finops_mock = mock
 
     init_db()
     run_id = _new_run_id()
-    logger.info("starting run %s (mock=%s)", run_id, settings.finops_mock)
+    sub_id = subscription.subscription_id if subscription else settings.azure_subscription_id
+    logger.info("starting run %s (subscription=%s, mock=%s)", run_id, sub_id, settings.finops_mock)
 
     with session_scope() as session:
         repo.create_run(
             session,
             run_id=run_id,
-            subscription_id=settings.azure_subscription_id,
+            subscription_id=sub_id,
             metric_lookback_days=settings.metric_lookback_days,
             cost_lookback_days=settings.cost_lookback_days,
             mock=settings.finops_mock,
@@ -72,13 +91,13 @@ def run_pipeline(mock: bool | None = None) -> dict[str, Any]:
     counts: dict[str, int] = {}
     try:
         # --- collect ---
-        resources = collect_inventory()
-        cost_rows = collect_cost()
+        resources = collect_inventory(subscription=subscription)
+        cost_rows = collect_cost(subscription=subscription)
         _enrich_cost(cost_rows, resources)
-        metric_samples = collect_metrics(resources)
+        metric_samples = collect_metrics(resources, subscription=subscription)
         if not settings.finops_mock and settings.log_analytics_workspace_id:
             metric_samples += collect_memory(resources)
-        advisor_recs = collect_advisor()
+        advisor_recs = collect_advisor(subscription=subscription)
 
         # --- analyze ---
         now = datetime.now(UTC)
@@ -135,4 +154,47 @@ def run_pipeline(mock: bool | None = None) -> dict[str, Any]:
         raise
 
     logger.info("run %s complete: %s", run_id, counts)
-    return {"run_id": run_id, "counts": counts}
+    return {"run_id": run_id, "subscription_id": sub_id, "counts": counts}
+
+
+def run_one_subscription(subscription_id: str, mock: bool | None = None) -> dict[str, Any] | None:
+    """Run the pipeline for a single subscription by id. Returns None if unknown."""
+    settings = get_settings()
+    if mock is not None:
+        settings.finops_mock = mock
+    init_db()
+    with session_scope() as session:
+        record = repo.get_subscription(session, subscription_id)
+        ctx = _context_from_record(record, settings.finops_mock) if record else None
+    if ctx is None:
+        return None
+    return run_pipeline(subscription=ctx)
+
+
+def run_all_subscriptions(mock: bool | None = None) -> dict[str, Any]:
+    """Run the pipeline once per enabled subscription.
+
+    Seeds the subscriptions table from the env subscription on first use, then
+    fans out one run per enabled row. A single subscription's failure is recorded
+    on its run and does not abort the others.
+    """
+    settings = get_settings()
+    if mock is not None:
+        settings.finops_mock = mock
+    init_db()
+    with session_scope() as session:
+        repo.ensure_default_subscription(session, settings)
+        records = [
+            _context_from_record(r, settings.finops_mock)
+            for r in repo.enabled_subscriptions(session)
+        ]
+
+    results: list[dict[str, Any]] = []
+    for ctx in records:
+        try:
+            results.append(run_pipeline(subscription=ctx))
+        except Exception as exc:  # noqa: BLE001 - per-subscription isolation
+            logger.exception("subscription %s run failed", ctx.subscription_id)
+            results.append({"subscription_id": ctx.subscription_id, "error": str(exc)})
+    logger.info("ran %d subscription(s)", len(results))
+    return {"subscriptions": len(results), "runs": results}
