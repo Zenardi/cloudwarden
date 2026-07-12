@@ -157,6 +157,49 @@ def custodian_schema(
     return result
 
 
+@app.post("/api/policies/{policy_id}/dryrun")
+def dryrun_policy(
+    policy_id: int,
+    subscription_id: str | None = None,
+    runner: Annotated[CustodianRunner | None, Depends(get_custodian_runner)] = None,
+) -> dict[str, Any]:
+    """Evaluate a stored policy against Azure in **dry-run** — matches, never mutates.
+
+    Looks the policy up by id (``404`` if missing) and, when ``subscription_id`` is
+    given, resolves that subscription into a run context (``404`` if unknown);
+    otherwise the engine targets the default subscription. Delegates to
+    ``engine.run_policy(dry_run=True)`` (mock-backed offline) and returns the matched
+    resources — no remediation action is ever executed.
+    """
+    from ..azure.context import SubscriptionContext
+    from ..config import get_settings
+    from ..orchestrator import _context_from_record
+
+    context: SubscriptionContext | None = None
+    with session_scope() as session:
+        policy = repo.get_policy(session, policy_id)
+        if policy is None:
+            raise HTTPException(status_code=404, detail="policy not found")
+        if subscription_id:
+            record = repo.get_subscription(session, subscription_id)
+            if record is None:
+                raise HTTPException(status_code=404, detail="subscription not found")
+            context = _context_from_record(record, get_settings().finops_mock)
+
+    result = custodian.run_policy(policy["spec"], subscription=context, dry_run=True, runner=runner)
+    resources = result.get("resources") or []
+    return {
+        "policy_id": policy_id,
+        "policy_name": policy["name"],
+        "subscription_id": context.subscription_id
+        if context
+        else get_settings().azure_subscription_id,
+        "dry_run": True,
+        "matched": result.get("matched", len(resources)),
+        "resources": resources,
+    }
+
+
 @app.get("/api/summary")
 def latest_summary() -> dict[str, Any] | None:
     with session_scope() as session:
