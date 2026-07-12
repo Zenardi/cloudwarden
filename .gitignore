@@ -25,6 +25,7 @@ node_modules/
 frontend/.next/
 frontend/out/
 frontend/.turbo/
+*.tsbuildinfo
 npm-debug.log*
 yarn-error.log*
 
