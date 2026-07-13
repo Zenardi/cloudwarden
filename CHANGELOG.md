@@ -5,6 +5,20 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **CI hardening.** `.github/workflows/ci.yml` now, in addition to the existing
+  backend (lint + unit/integration tests + 95% coverage gate) and frontend
+  (`next build`) jobs: **builds the whole solution** as container images
+  (`build` job — backend + frontend), runs an **end-to-end** job (`e2e`) that boots
+  the compose stack in mock mode and smoke-tests the pull-mode pipeline
+  (`/health` → seed policy → `run-policies --mock` → assert `/api/policy-executions`,
+  its `/matches`, and `/api/governance/policy-health`), and adds a **Trivy security
+  gate** (`security` job) that scans the filesystem + both images and **fails on any
+  HIGH/CRITICAL CVE — no baseline / `.trivyignore`**. Note: the security job is
+  red-by-design until the pre-existing upstream base-image/transitive CVEs (backend
+  ~25, frontend ~14) are remediated. Add these jobs as **required status checks** in
+  branch protection to block merges.
+
 ### Added
 - **M3.3 — Execution history API & UI.** The read/review surface over the pull-mode
   runs from M3.2. Three thin FastAPI endpoints over the M3.1 repository helpers:

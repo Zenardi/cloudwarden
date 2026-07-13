@@ -5,8 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # --- Lint + unit & DB-backed integration tests + coverage gate ----------- #
   backend:
+    name: Backend (lint + unit/integration tests + coverage)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,10 +28,15 @@ jobs:
         run: |
           ruff check backend
           ruff format --check backend
-      - name: Tests + coverage (fails under 95%)
+      # Docker is available on ubuntu-latest, so the testcontainers `db` fixture
+      # spins up a real Postgres — this run covers unit AND DB-backed integration
+      # tests. Coverage gate (fail_under=95) is enforced via pyproject.
+      - name: Tests + coverage (unit + integration; fails under 95%)
         run: pytest backend/tests --cov=azure_finops --cov-report=term-missing
 
+  # --- Build the Next.js app (tsc typecheck via next build) ---------------- #
   frontend:
+    name: Frontend (next build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,3 +48,92 @@ jobs:
         run: |
           npm ci
           npm run build
+
+  # --- Build the whole solution as container images ------------------------ #
+  build:
+    name: Build images (backend + frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build -t azure-finops-backend ./backend
+      - name: Build frontend image
+        run: docker build -t azure-finops-frontend ./frontend
+
+  # --- End-to-end: boot the stack in mock mode and smoke-test the API ------ #
+  e2e:
+    name: End-to-end (docker compose, mock mode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare env (mock mode)
+        run: cp .env.example .env
+      - name: Build backend image
+        run: docker compose build backend
+      - name: Start stack (db + backend)
+        run: docker compose up -d db backend
+      - name: Wait for the API to be ready
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || true)
+            if [ "$code" = "200" ]; then echo "backend ready after ~$((i*2))s"; exit 0; fi
+            sleep 2
+          done
+          echo "::error::backend did not become ready"; docker compose logs backend; exit 1
+      - name: Smoke-test the pull-mode pipeline end to end
+        run: |
+          set -euo pipefail
+          # Governance health starts empty (no executions yet), not an error.
+          test "$(curl -s http://localhost:8000/api/governance/policy-health)" = "[]"
+          # Seed a policy, run pull-mode execution, then assert results landed.
+          curl -sf -X POST http://localhost:8000/api/policies \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"e2e-vms","resource_type":"azure.vm","spec":{"policies":[{"name":"e2e-vms","resource":"azure.vm","actions":["stop"]}]}}' \
+            -o /dev/null
+          docker compose exec -T backend python -m azure_finops.cli run-policies --mock
+          python3 - <<'PY'
+          import json, urllib.request
+          def get(path):
+              return json.load(urllib.request.urlopen(f"http://localhost:8000{path}"))
+          execs = get("/api/policy-executions")
+          assert execs and execs[0]["status"] == "succeeded", execs
+          matches = get(f"/api/policy-executions/{execs[0]['execution_id']}/matches")
+          assert matches, "expected matched resources"
+          health = get("/api/governance/policy-health")
+          assert len(health) == 1 and health[0]["total_executions"] >= 1, health
+          print(f"e2e OK: {len(execs)} execution(s), {len(matches)} match(es), "
+                f"health total_matches={health[0]['total_matches']}")
+          PY
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # --- Security: Trivy fs + image scans. Fails on ANY HIGH/CRITICAL -------- #
+  # No baseline / .trivyignore: a single HIGH/CRITICAL finding blocks the build.
+  security:
+    name: Security (Trivy — fail on any HIGH/CRITICAL)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sudo sh -s -- -b /usr/local/bin v0.58.1
+          trivy --version
+      - name: Build images to scan
+        run: |
+          docker build -t azure-finops-backend ./backend
+          docker build -t azure-finops-frontend ./frontend
+      # Warm the vuln DB once; subsequent scans reuse the cache.
+      - name: Trivy filesystem scan (dependencies)
+        run: |
+          trivy fs --scanners vuln --severity HIGH,CRITICAL \
+            --exit-code 1 --no-progress .
+      - name: Trivy image scan (backend)
+        run: |
+          trivy image --scanners vuln --severity HIGH,CRITICAL \
+            --exit-code 1 --no-progress azure-finops-backend
+      - name: Trivy image scan (frontend)
+        run: |
+          trivy image --scanners vuln --severity HIGH,CRITICAL \
+            --exit-code 1 --no-progress azure-finops-frontend
