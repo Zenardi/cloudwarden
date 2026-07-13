@@ -990,6 +990,82 @@ jobs:
           print("team-scope OK: create-owns=team list=scoped cross-team=403 remove-member=revoked")
           PY
 
+      - name: Smoke-test SSO / OIDC authentication (M11.3)
+        run: |
+          set -euo pipefail
+          # (1) On the LIVE server (OIDC off — the compose default) the auth routes 404.
+          docker compose exec -T backend python - <<'PY'
+          import urllib.error, urllib.request
+          for path in ("/api/auth/login", "/api/auth/callback?code=x"):
+              try:
+                  urllib.request.urlopen(f"http://localhost:8000{path}")
+                  raise SystemExit(f"expected 404 for {path}")
+              except urllib.error.HTTPError as e:
+                  assert e.code == 404, (path, e.code)
+          print("oidc-off OK: auth routes 404")
+          PY
+          # (2) With OIDC ON (in-process TestClient, real RS256 via a generated keypair,
+          #     no IdP contacted): a valid bearer's subject flows into RBAC (201), an
+          #     expired token is 401, and the callback issues a session cookie.
+          docker compose exec -T backend python - <<'PY'
+          import os, time
+          from cryptography.hazmat.primitives import serialization
+          from cryptography.hazmat.primitives.asymmetric import rsa
+
+          key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+          priv = key.private_bytes(serialization.Encoding.PEM,
+              serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+          pub = key.public_key().public_bytes(serialization.Encoding.PEM,
+              serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+          ISS, CID = "https://idp.ci", "finops-ci"
+          os.environ.update(OIDC_ENABLED="1", RBAC_ENABLED="1", OIDC_ISSUER=ISS,
+              OIDC_CLIENT_ID=CID, OIDC_PUBLIC_KEY=pub,
+              SESSION_SECRET="ci-session-secret-0123456789abcdef")
+
+          import jwt
+          from azure_finops.config import get_settings
+          get_settings.cache_clear()
+          from fastapi.testclient import TestClient
+          from azure_finops.api.main import app, get_oidc_client, get_token_verifier
+          from azure_finops.authz import oidc, rbac
+          from azure_finops.storage import repository as repo
+          from azure_finops.storage.db import session_scope
+
+          def tok(sub="ci-admin@corp", exp_delta=3600):
+              now = int(time.time())
+              return jwt.encode({"sub": sub, "iss": ISS, "aud": CID, "iat": now,
+                                 "exp": now + exp_delta}, priv, algorithm="RS256")
+
+          with session_scope() as s:
+              rbac.seed_default_roles(s)
+              repo.assign_role(s, principal="ci-admin@corp", role_name="admin")
+
+          c = TestClient(app)
+          body = {"name": "oidc-ci-p", "resource_type": "azure.vm",
+                  "spec": {"policies": [{"name": "oidc-ci-p", "resource": "azure.vm"}]}}
+          assert c.post("/api/policies", json=body,
+                        headers={"Authorization": f"Bearer {tok()}"}).status_code == 201
+          assert c.post("/api/policies", json=body,
+                        headers={"Authorization": f"Bearer {tok(exp_delta=-10)}"}).status_code == 401
+
+          class Fake:
+              def authorization_url(self, *, state):
+                  return f"{ISS}/authorize?state={state}"
+
+              def exchange_code(self, *, code):
+                  if code != "good":
+                      raise ValueError("bad code")
+                  return tok("ci-user@corp")
+
+          app.dependency_overrides[get_oidc_client] = lambda: Fake()
+          app.dependency_overrides[get_token_verifier] = lambda: oidc.StaticKeyVerifier(
+              public_key=pub, issuer=ISS, audience=CID)
+          cb = c.get("/api/auth/callback", params={"code": "good", "state": "s"})
+          assert cb.status_code == 200 and cb.json()["principal"] == "ci-user@corp", cb.text
+          assert oidc.SESSION_COOKIE in cb.cookies
+          print("oidc-on OK: bearer->rbac=201 expired=401 callback=session")
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail

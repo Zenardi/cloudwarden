@@ -73,7 +73,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M10.3 | Security & tagging pack — public-IP exposure, permissive NSG, required tags, unencrypted disks (Security Baseline) | ✅ done |
 | M10.4 | CIS Azure compliance pack — CIS controls mapped to c7n policies; posture grouped by control id (CIS Azure) | ✅ done |
 | M11.1 | RBAC model — roles/permissions/role-bindings + a `require_permission` guard on mutating endpoints | ✅ done |
-| M11.2 | Teams & membership — team-scoped multi-tenancy: policies carry an owning team; members see/manage only their team's, admins see all | 🚧 in review |
+| M11.2 | Teams & membership — team-scoped multi-tenancy: policies carry an owning team; members see/manage only their team's, admins see all | ✅ done |
+| M11.3 | SSO / OIDC authentication — verified bearer token (or first-party session) becomes the RBAC principal; login/callback flow; a login-gated UI | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -376,6 +377,23 @@ their access to its resources. Team administration (`POST /api/teams`,
 permission; `GET /api/teams` and `GET /api/teams/{id}/members` are readable. Scoping
 is gated by the same `RBAC_ENABLED` flag — with RBAC off, listings are unscoped and
 the API stays backward-compatible.
+
+**SSO / OIDC authentication (M11.3).** With **`OIDC_ENABLED`**, identity arrives as a
+verified token rather than a plain header. The API accepts either an **OIDC bearer
+token** (`Authorization: Bearer <jwt>`, verified with PyJWT — RS256 signature +
+`exp`/`iss`/`aud` — against a static public key or the issuer's JWKS) or a **first-party
+session cookie** (`finops_session`, a short-lived HS256 JWT minted after login). The
+verified **subject** becomes the RBAC principal (`authz/rbac.principal_from_request`
+delegates to OIDC when enabled), so roles, teams and permissions all key off the SSO
+identity; an expired or invalid credential is **401**. The login flow is
+`GET /api/auth/login` (returns the IdP authorization URL) → IdP → `GET /api/auth/callback`
+(exchanges the code, verifies the token, sets the session cookie) → `POST /api/auth/logout`;
+these routes **404 when OIDC is disabled**. Both the token *verifier* and the OIDC
+*client* are injectable, so the flow is exercised fully offline (no IdP is contacted in
+tests). The Next.js UI gates behind `/login` when `NEXT_PUBLIC_AUTH_ENABLED=true` (off
+by default, so mock dev is unauthenticated). Enable OIDC **and** RBAC together to
+authenticate callers and enforce their permissions; identity is a plain `X-Principal`
+header only while OIDC is off.
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

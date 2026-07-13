@@ -8,6 +8,7 @@ in the repository.
 from __future__ import annotations
 
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
@@ -18,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from .. import reporting
-from ..authz import rbac, teams
+from ..authz import oidc, rbac, teams
 from ..config import get_settings
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
@@ -147,6 +148,25 @@ def get_custodian_runner() -> CustodianRunner | None:
     Returns ``None`` so the engine falls back to its cached ``LiveCustodianRunner``
     (real, offline c7n for validate/schema). Tests override this dependency with a
     ``FakeCustodianRunner`` to keep the API suite fully offline.
+    """
+    return None
+
+
+def get_token_verifier() -> oidc.TokenVerifier | None:
+    """Injection seam for the OIDC token verifier (M11.3).
+
+    Returns ``None`` so verification falls back to the verifier built from settings
+    (a static public key, or the issuer's JWKS endpoint). Tests override this with a
+    static-key verifier to stay fully offline.
+    """
+    return None
+
+
+def get_oidc_client() -> oidc.OIDCClient | None:
+    """Injection seam for the OIDC client (login/callback, M11.3).
+
+    Returns ``None`` so the flow falls back to the HTTP client built from settings.
+    Tests override this with a fake client so no identity provider is contacted.
     """
     return None
 
@@ -614,6 +634,66 @@ def delete_role_binding(principal: str, role: str) -> dict[str, Any]:
     if not ok:
         raise HTTPException(status_code=404, detail="role binding not found")
     return {"principal": principal, "role": role, "deleted": True}
+
+
+# --------------------------------------------------------------------------- #
+# SSO / OIDC authentication (M11.3) — login/callback + first-party session
+# --------------------------------------------------------------------------- #
+def _require_oidc_enabled() -> Any:
+    """404 the auth routes when OIDC is disabled (local/mock dev has no IdP)."""
+    settings = get_settings()
+    if not settings.oidc_enabled:
+        raise HTTPException(status_code=404, detail="OIDC authentication is not enabled")
+    return settings
+
+
+@app.get("/api/auth/login")
+def auth_login(
+    client: Annotated[oidc.OIDCClient | None, Depends(get_oidc_client)] = None,
+) -> dict[str, Any]:
+    """Return the identity provider's authorization URL to redirect the browser to.
+
+    ``404`` when OIDC is disabled. The opaque ``state`` is returned for the caller to
+    round-trip back on the callback (CSRF guard).
+    """
+    settings = _require_oidc_enabled()
+    state = secrets.token_urlsafe(16)
+    return {
+        "authorization_url": oidc.login_url(settings, state=state, client=client),
+        "state": state,
+    }
+
+
+@app.get("/api/auth/callback")
+def auth_callback(
+    code: str,
+    response: Response,
+    state: str | None = None,
+    client: Annotated[oidc.OIDCClient | None, Depends(get_oidc_client)] = None,
+    verifier: Annotated[oidc.TokenVerifier | None, Depends(get_token_verifier)] = None,
+) -> dict[str, Any]:
+    """Exchange the auth ``code``, verify the token, and set a first-party session cookie.
+
+    ``404`` when OIDC is disabled; ``401`` for a code the IdP rejects or a token that
+    fails verification.
+    """
+    settings = _require_oidc_enabled()
+    result = oidc.handle_callback(settings, code=code, client=client, verifier=verifier)
+    response.set_cookie(
+        oidc.SESSION_COOKIE,
+        result["session"],
+        httponly=True,
+        samesite="lax",
+        max_age=oidc.SESSION_TTL_SECONDS,
+    )
+    return {"principal": result["principal"]}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(response: Response) -> dict[str, Any]:
+    """Clear the first-party session cookie (idempotent)."""
+    response.delete_cookie(oidc.SESSION_COOKIE)
+    return {"logged_out": True}
 
 
 # --------------------------------------------------------------------------- #

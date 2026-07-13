@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **SSO / OIDC authentication (M11.3).** New `azure_finops.authz.oidc` module adds an
+  identity layer that feeds the RBAC principal. The API accepts either an OIDC bearer
+  token (`Authorization: Bearer <jwt>`, verified with PyJWT — RS256 signature +
+  `exp`/`iss`/`aud` — against a static public key or the issuer's JWKS) or a first-party
+  session cookie (`finops_session`, a short-lived HS256 JWT issued after login); the
+  verified subject becomes the RBAC principal (`rbac.principal_from_request` delegates to
+  OIDC when enabled), and an expired/invalid credential is **401**. Login flow:
+  `GET /api/auth/login` → IdP → `GET /api/auth/callback` (sets the session cookie) →
+  `POST /api/auth/logout`; these routes **404 when OIDC is disabled**. Gated by
+  **`OIDC_ENABLED`** (off by default, so local/mock dev stays unauthenticated); config
+  adds `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` /
+  `OIDC_PRINCIPAL_CLAIM` / `OIDC_PUBLIC_KEY` / `SESSION_SECRET`. Both the token verifier
+  and the OIDC client are injectable, so the whole flow is unit-tested offline (no IdP
+  contacted). The Next.js UI gates behind `/login` when `NEXT_PUBLIC_AUTH_ENABLED=true`.
 - **Teams & membership — team-scoped multi-tenancy (M11.2).** New `teams` and
   `team_members` tables and an `azure_finops.authz.teams` module scope governance
   resources to an owning team. Policies gain a nullable `team_id`

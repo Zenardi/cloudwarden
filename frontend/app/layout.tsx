@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import AuthGate from "./components/AuthGate";
 import Nav from "./components/Nav";
 
 export const metadata: Metadata = {
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         <Nav />
-        <main className="container">{children}</main>
+        <main className="container">
+          <AuthGate>{children}</AuthGate>
+        </main>
       </body>
     </html>
   );

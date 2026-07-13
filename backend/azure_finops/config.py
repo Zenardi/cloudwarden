@@ -115,6 +115,26 @@ class Settings(BaseSettings):
     # (bindings must be seeded out-of-band).
     rbac_bootstrap_admin: str = ""
 
+    # --- SSO / OIDC authentication (M11.3) ---
+    # When enabled, API requests carry identity as a verified OIDC bearer token (or a
+    # first-party session issued by the login/callback flow); the verified subject
+    # becomes the RBAC principal. Off by default so local/mock dev needs no IdP.
+    oidc_enabled: bool = False
+    oidc_issuer: str = ""  # issuer URL — validates the token ``iss`` and derives endpoints
+    oidc_client_id: str = ""  # OAuth2 client id (also the expected token ``aud``)
+    oidc_client_secret: str = ""  # OAuth2 client secret (authorization-code exchange)
+    oidc_redirect_uri: str = ""  # where the IdP returns the auth code
+    oidc_scopes: str = "openid profile email"
+    # Which verified claim becomes the principal (``sub`` is stable; ``email`` /
+    # ``preferred_username`` are friendlier for binding roles).
+    oidc_principal_claim: str = "sub"
+    # Optional static RS256 public key (PEM) for token verification — an alternative to
+    # fetching the issuer's JWKS endpoint (useful for air-gapped / pinned-key setups).
+    oidc_public_key: str = ""
+    # Secret used to sign our own session tokens (HS256) after a successful login.
+    # Empty falls back to the client secret; set a dedicated value in production.
+    session_secret: str = ""
+
     # --- Runtime ---
     finops_mock: bool = True
     run_interval_seconds: int = 86400
@@ -146,6 +166,31 @@ class Settings(BaseSettings):
     @property
     def allowed_actions_list(self) -> list[str]:
         return [x.strip() for x in self.allowed_actions.split(",") if x.strip()]
+
+    # --- OIDC derived helpers ---
+    @property
+    def oidc_audience(self) -> str:
+        return self.oidc_client_id
+
+    @property
+    def resolved_session_secret(self) -> str:
+        return self.session_secret or self.oidc_client_secret or "dev-insecure-session-secret"
+
+    @property
+    def _oidc_base(self) -> str:
+        return self.oidc_issuer.rstrip("/")
+
+    @property
+    def oidc_jwks_uri(self) -> str:
+        return f"{self._oidc_base}/.well-known/jwks.json"
+
+    @property
+    def oidc_authorization_endpoint(self) -> str:
+        return f"{self._oidc_base}/authorize"
+
+    @property
+    def oidc_token_endpoint(self) -> str:
+        return f"{self._oidc_base}/oauth/token"
 
 
 @lru_cache

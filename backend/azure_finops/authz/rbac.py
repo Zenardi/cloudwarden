@@ -113,7 +113,18 @@ def check_permission(
 
 
 def principal_from_request(request: Request) -> str | None:
-    """Extract the caller principal from the ``X-Principal`` header (``None`` if absent)."""
+    """Resolve the caller principal for RBAC.
+
+    When SSO is enabled (``OIDC_ENABLED``), identity comes from a verified OIDC bearer
+    token or first-party session (M11.3) — a present-but-invalid credential raises
+    ``401``. Otherwise it is the plain ``X-Principal`` header (``None`` if absent), the
+    pre-SSO behaviour that keeps local/mock dev and the existing suites unauthenticated.
+    """
+    settings = get_settings()
+    if settings.oidc_enabled:
+        from . import oidc
+
+        return oidc.principal_from_request(request, settings)
     value = request.headers.get(PRINCIPAL_HEADER)
     return value.strip() if value and value.strip() else None
 
