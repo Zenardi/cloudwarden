@@ -52,7 +52,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M5.2 | Bindings — link a policy collection to an account group with exec config | ✅ done |
 | M5.3 | Binding execution engine — run a binding across its accounts, by cron | ✅ done |
 | M5.4 | Bindings & account-groups UI — create/edit/run bindings, last-run status | ✅ done |
-| M6.1 | Real-time enforcement — Azure Event Grid ingestion endpoint (event mode) | 🚧 in review |
+| M6.1 | Real-time enforcement — Azure Event Grid ingestion endpoint (event mode) | ✅ done |
+| M6.2 | Event-mode policy trigger — react to an event by running matching policies | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -333,6 +334,20 @@ delivery means re-delivery is expected, so the write is idempotent on `event_id`
 (`ON CONFLICT DO NOTHING`) — no duplicate rows. Unrecognized event types are skipped; a
 non-JSON body is `400`. `GET /api/events` returns recent deliveries newest-first. The whole
 flow is fixture-driven and unit-tested without a live Event Grid topic.
+
+**Event-mode policy trigger (M6.2).** Ingestion is only the front door — this is what makes
+it *enforcement*. Each accepted delivery is handed to `custodian.eventmode.handle_event`,
+which selects the policies that both declare an **event-grid `mode`** in their c7n spec
+**and** target the **resource type** the event touched (matching the event's ARM type,
+e.g. `microsoft.compute/virtualmachines`, against the policy's c7n type, e.g. `azure.vm`,
+or an ARM type authored directly), then runs exactly those against the event's subscription
+via the same injectable `CustodianRunner` seam as pull mode. Every reactive run is recorded
+as a `PolicyExecution` tagged **`mode='event'`** (vs `pull` for scheduled/binding runs), so
+the audit trail distinguishes *why* a policy fired. Matching is deliberately conservative:
+an event with **no matching policy**, an **unknown/type-less** resource, or only **pull-mode
+/ disabled** policies is a **safe no-op** — never an error, so the webhook always drains and
+Event Grid never sees a failure to retry. A single failing policy is isolated (recorded
+`failed`) without sinking the others or the delivery.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 

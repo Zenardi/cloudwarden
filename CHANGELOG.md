@@ -47,6 +47,21 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M6.2 — Event-mode policy trigger.** Turns Event Grid ingestion (M6.1) into actual
+  **reactive enforcement**: each accepted delivery is handed to the new
+  `custodian/eventmode.py` `handle_event`, which selects the policies that both declare an
+  **event-grid `mode`** in their c7n spec **and** target the event's **resource type**
+  (matching the event's ARM type — e.g. `microsoft.compute/virtualmachines` — against the
+  policy's c7n type — e.g. `azure.vm` — or an ARM type authored directly), then runs exactly
+  those against the event's subscription via the same injectable `CustodianRunner` seam as
+  pull mode. Each reactive run is recorded as a `PolicyExecution` with a new **`mode`** column
+  set to **`event`** (`pull` for scheduled/binding runs); `create_policy_execution` and the
+  execution serializer carry it through. Wired into `POST /api/events/azure` (via the
+  `get_custodian_runner` dependency, so the API suite stays offline). Deliberately
+  conservative: an event with **no matching policy**, an **unknown/type-less** resource, or
+  only **pull-mode / disabled** policies is a **safe no-op** — never an error, so the webhook
+  always drains and Event Grid never retries; a single failing policy is isolated (recorded
+  `failed`) without sinking the others. Fully unit-tested with an injected `FakeCustodianRunner`.
 - **M6.1 — Azure Event Grid ingestion endpoint.** The ingress point for **real-time
   enforcement** (Cloud Custodian `mode: event`). New **`POST /api/events/azure`** webhook
   completes Event Grid's one-time `SubscriptionValidation` handshake (echoes

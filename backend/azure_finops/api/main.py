@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from ..config import get_settings
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
+from ..custodian.eventmode import handle_event
 from ..events.ingestion import (
     handle_subscription_validation,
     normalize_event,
@@ -556,9 +557,13 @@ def run_binding_endpoint(
 # Real-time enforcement: Azure Event Grid ingestion (M6.1)
 # --------------------------------------------------------------------------- #
 @app.post("/api/events/azure")
-async def ingest_azure_events(request: Request) -> dict[str, Any]:
+async def ingest_azure_events(
+    request: Request,
+    runner: Annotated[CustodianRunner | None, Depends(get_custodian_runner)] = None,
+) -> dict[str, Any]:
     """Event Grid webhook: complete the one-time ``SubscriptionValidation`` handshake,
-    authenticate the delivery (shared key), then normalize + persist each resource event.
+    authenticate the delivery (shared key), normalize + persist each resource event, then
+    **reactively trigger** any matching event-mode policies (M6.2).
 
     Event Grid delivers a JSON array (not CloudEvents). Unauthenticated → ``403``;
     a non-JSON body → ``400``; unrecognized event types are silently skipped.
@@ -576,15 +581,18 @@ async def ingest_azure_events(request: Request) -> dict[str, Any]:
     if validation is not None:
         return validation
 
-    processed = 0
+    normalized_events = []
     with session_scope() as session:
         for raw in events:
             normalized = normalize_event(raw)
             if normalized is None:
                 continue
             repo.insert_event_log(session, normalized)
-            processed += 1
-    return {"received": len(events), "processed": processed}
+            normalized_events.append(normalized)
+    # M6.2: fire event-mode policies for each accepted delivery (no-op when none match).
+    for normalized in normalized_events:
+        handle_event(normalized, runner=runner)
+    return {"received": len(events), "processed": len(normalized_events)}
 
 
 @app.get("/api/events")

@@ -165,6 +165,9 @@ class PolicyExecution(Base):
     binding_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("bindings.id", ondelete="SET NULL"), index=True
     )
+    # How this run was triggered: ``pull`` (scheduled/manual) or ``event`` (reactive,
+    # M6.2 — an Event Grid delivery matched an event-mode policy's resource type).
+    mode: Mapped[str] = mapped_column(String(16), default="pull")
     status: Mapped[str] = mapped_column(String(16), default="running")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
