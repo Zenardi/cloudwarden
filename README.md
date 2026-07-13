@@ -69,7 +69,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M9.3 | Resource compliance explorer (Next.js) — drill policy → matched resources → asset detail | ✅ done |
 | M9.4 | Governance reporting & export — streaming, paginated CSV/JSON + optional scheduled report | ✅ done |
 | M10.1 | Policy packs — installable, versioned bundles of curated policies that materialize into a collection | ✅ done |
-| M10.2 | Cost governance pack — FinOps heuristics as c7n policies (idle VMs, orphan disks/IPs, oversized VMs, untagged) | 🚧 in review |
+| M10.2 | Cost governance pack — FinOps heuristics as c7n policies (idle VMs, orphan disks/IPs, oversized VMs, untagged) | ✅ done |
+| M10.3 | Security & tagging pack — public-IP exposure, permissive NSG, required tags, unencrypted disks (Security Baseline) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -315,6 +316,17 @@ filter machinery **offline** so a policy can be dry-run against recorded/invento
 data — e.g. the idle-VM policy matches the deallocated/stopped fixture VMs but not a
 running one, and the unattached-disk policy matches an `Unattached` disk but not an
 attached one.
+
+**Security & tagging pack (M10.3).** A security-hygiene **directory pack** at
+`azure_finops/packs/security/` that installs into a **Security Baseline** collection.
+Four policies: internet-exposed public IPs (`security-public-ip-exposure`), permissive
+inbound NSG rules — Allow from `0.0.0.0/0` to SSH/RDP via c7n-azure's `ingress` filter
+(`security-nsg-permissive-inbound`), resources missing a mandated `Environment`/`Owner`
+tag (`security-required-tags`), and disks not encrypted with a customer-managed key
+(`security-unencrypted-disk`). Each policy also declares a **remediation action** (a
+marker `tag`) that runs **dry-run only** under a binding (bindings default
+`dry_run=true`). Every policy is schema-valid via the engine, and the required-tags
+policy matches a resource missing a mandated tag (offline `match_resources`).
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

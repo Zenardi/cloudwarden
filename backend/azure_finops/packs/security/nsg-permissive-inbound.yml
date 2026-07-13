@@ -1,0 +1,18 @@
+policies:
+  - name: security-nsg-permissive-inbound
+    resource: azure.networksecuritygroup
+    description: >-
+      Network security groups allowing inbound traffic from any source
+      (0.0.0.0/0) to SSH/RDP (22/3389) expose management ports to the internet.
+    filters:
+      # c7n-azure `ingress` filter: match an inbound rule that ALLOWS the given
+      # ports from `source: '*'` (Internet / 0.0.0.0/0).
+      - type: ingress
+        access: Allow
+        source: '*'
+        ports: '22,3389'
+    actions:
+      # Dry-run only under a binding: mark for review rather than editing rules.
+      - type: tag
+        tags:
+          c7n-security: permissive-nsg

@@ -1,0 +1,18 @@
+policies:
+  - name: security-unencrypted-disk
+    resource: azure.disk
+    description: >-
+      Managed disks not encrypted with a customer-managed key (CMK) fall short of
+      an encryption baseline that mandates key ownership.
+    filters:
+      - type: value
+        key: properties.encryption.type
+        op: not-in
+        value:
+          - EncryptionAtRestWithCustomerKey
+          - EncryptionAtRestWithPlatformAndCustomerKeys
+    actions:
+      # Dry-run only under a binding: mark for review rather than re-keying.
+      - type: tag
+        tags:
+          c7n-security: unencrypted-disk

@@ -1,0 +1,27 @@
+name: security-baseline
+version: 1.0.0
+title: Security Baseline
+collection: Security Baseline
+description: >-
+  A security & tagging-hygiene baseline expressed as Cloud Custodian policies —
+  internet-exposed public IPs, permissive inbound NSG rules, resources missing
+  mandated tags, and disks not encrypted with a customer-managed key. Each
+  policy carries a remediation action (a marker tag) that runs dry-run only
+  under a binding. Installs into the 'Security Baseline' collection.
+policies:
+  - name: security-public-ip-exposure
+    description: >-
+      Public IP addresses with an assigned address are internet-routable
+      endpoints — review whether the exposure is intended.
+  - name: security-nsg-permissive-inbound
+    description: >-
+      Network security groups allowing inbound traffic from any source (0.0.0.0/0)
+      to SSH/RDP (22/3389) expose management ports to the internet.
+  - name: security-required-tags
+    description: >-
+      Resources missing a mandated Environment or Owner tag break ownership,
+      environment segregation, and incident routing.
+  - name: security-unencrypted-disk
+    description: >-
+      Managed disks not encrypted with a customer-managed key (CMK) fall short of
+      an encryption baseline that mandates key ownership.

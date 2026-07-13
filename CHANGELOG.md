@@ -6,6 +6,17 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Security & tagging-hygiene pack (M10.3).** A curated **directory pack** at
+  `backend/azure_finops/packs/security/` (`pack.yaml` manifest + one `*.yml` per
+  policy) that installs into a **Security Baseline** collection. Four policies:
+  `security-public-ip-exposure` (public IPs with an assigned address),
+  `security-nsg-permissive-inbound` (NSGs allowing inbound from `0.0.0.0/0` to
+  SSH/RDP via c7n-azure's `ingress` filter), `security-required-tags` (resources
+  missing a mandated `Environment`/`Owner` tag), and `security-unencrypted-disk`
+  (disks not encrypted with a customer-managed key). Each policy also declares a
+  remediation action (a marker `tag`) that runs **dry-run only** under a binding.
+  Every policy is schema-valid via the engine, and the required-tags policy matches
+  a resource missing a mandated tag (offline `engine.match_resources`).
 - **Cost governance pack — FinOps heuristics as Cloud Custodian policies (M10.2).**
   A curated **directory pack** at `backend/azure_finops/packs/cost/` (`pack.yaml`
   manifest + one `*.yml` per policy) installs into a **Cost Governance** collection.

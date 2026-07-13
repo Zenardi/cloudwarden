@@ -1,0 +1,16 @@
+policies:
+  - name: security-public-ip-exposure
+    resource: azure.publicip
+    description: >-
+      Public IP addresses with an assigned address are internet-routable
+      endpoints — review whether the exposure is intended.
+    filters:
+      - type: value
+        key: properties.ipAddress
+        value: present
+    actions:
+      # Dry-run only under a binding (bindings default dry_run=true): mark the
+      # resource for review rather than mutating exposure.
+      - type: tag
+        tags:
+          c7n-security: public-ip-exposed

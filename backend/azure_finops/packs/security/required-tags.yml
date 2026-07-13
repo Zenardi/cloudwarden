@@ -1,0 +1,19 @@
+policies:
+  - name: security-required-tags
+    resource: azure.vm
+    description: >-
+      Resources missing a mandated Environment or Owner tag break ownership,
+      environment segregation, and incident routing.
+    filters:
+      - or:
+          - type: value
+            key: tags.Environment
+            value: absent
+          - type: value
+            key: tags.Owner
+            value: absent
+    actions:
+      # Dry-run only under a binding: mark the untagged resource for follow-up.
+      - type: tag
+        tags:
+          c7n-security: missing-required-tags

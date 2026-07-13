@@ -793,6 +793,53 @@ jobs:
           print("cost pack OK:", json.dumps({"collection": collection["name"], "policies": 5}))
           PY
 
+      - name: Smoke-test security & tagging pack end to end (M10.3)
+        run: |
+          set -euo pipefail
+          # Through the deployed backend image + HTTP API, against the REAL c7n engine.
+          # Assert the security pack (a directory pack) lists its four policies, every
+          # policy validates (filters + dry-run tag actions), it installs into a
+          # 'Security Baseline' collection, and the required-tags policy matches a
+          # resource missing a mandated tag via the offline filter engine.
+          docker compose exec -T backend python - <<'PY'
+          import json, urllib.request
+          from azure_finops.custodian import engine
+          from azure_finops.packs import registry
+
+          def call(path, method="GET", body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(
+                  f"http://localhost:8000{path}", data=data, method=method,
+                  headers={"Content-Type": "application/json"})
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          entry = next(p for p in call("/api/packs") if p["name"] == "security-baseline")
+          assert entry["policy_count"] == 4, entry
+
+          # every policy validates through the real engine (filters + dry-run actions)
+          pack = registry.get_pack("security-baseline")
+          for policy in pack["policies"]:
+              res = engine.validate_policy({"policies": [policy]})
+              assert res["valid"], (policy["name"], res["errors"])
+
+          report = call("/api/packs/security-baseline/install", method="POST")
+          assert report["ok"] is True, report
+          assert report["added"] + report["unchanged"] == 4, report
+          collection = call(f"/api/collections/{report['collection_id']}")
+          assert collection["name"] == "Security Baseline", collection
+          assert collection["policy_count"] == 4, collection
+
+          # required-tags matches a resource missing a mandated tag, not a tagged one
+          rt = {"policies": [p for p in pack["policies"] if p["name"] == "security-required-tags"]}
+          untagged = {"id": "/vm/u", "name": "vm-untagged", "tags": {"env": "dev"}}
+          tagged = {"id": "/vm/t", "name": "vm-tagged",
+                    "tags": {"Environment": "prod", "Owner": "web"}}
+          matched = {r["name"] for r in engine.match_resources(rt, [untagged, tagged])}
+          assert matched == {"vm-untagged"}, matched
+          print("security pack OK:", json.dumps({"collection": collection["name"], "policies": 4}))
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail
