@@ -44,6 +44,11 @@ class Subscription(Base):
 
     subscription_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     display_name: Mapped[str] = mapped_column(String(256))
+    # Owning cloud (M12.1 multi-cloud). ``server_default='azure'`` backfills any
+    # pre-existing account rows so they read as Azure, matching prior behaviour.
+    provider: Mapped[str] = mapped_column(
+        String(32), default="azure", server_default="azure", index=True
+    )
     tenant_id: Mapped[str | None] = mapped_column(String(64))
     client_id: Mapped[str | None] = mapped_column(String(128))
     client_secret: Mapped[str | None] = mapped_column(Text)

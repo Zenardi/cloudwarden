@@ -75,7 +75,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M11.1 | RBAC model — roles/permissions/role-bindings + a `require_permission` guard on mutating endpoints | ✅ done |
 | M11.2 | Teams & membership — team-scoped multi-tenancy: policies carry an owning team; members see/manage only their team's, admins see all | ✅ done |
 | M11.3 | SSO / OIDC authentication — verified bearer token (or first-party session) becomes the RBAC principal; login/callback flow; a login-gated UI | ✅ done |
-| M11.4 | Audit log — append-only trail of every mutating action (actor, action, target, before/after); `GET /api/audit` + a UI viewer | 🚧 in review |
+| M11.4 | Audit log — append-only trail of every mutating action (actor, action, target, before/after); `GET /api/audit` + a UI viewer | ✅ done |
+| M12.1 | Cloud provider abstraction — a `CloudProvider` interface + registry with Azure behind it; `SubscriptionContext` generalized to `AccountContext`; accounts carry a `provider` (multi-cloud foundation) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -408,6 +409,20 @@ same-transaction rows still order correctly), filterable by `actor` / `action` /
 `target_type` / `target_id` and paginated by `limit`/`offset`; the **Audit** page renders
 it. The log is tamper-evident by construction: there is deliberately no update or delete
 path, in the repository or the API (mutating verbs on `/api/audit` are `405`).
+
+**Cloud provider abstraction (M12.1).** The engine, orchestrator and onboarding talk to
+a **`CloudProvider`** seam (`azure_finops.providers.base`) instead of Azure directly — the
+foundation for extending governance to AWS/GCP through Cloud Custodian. A name-keyed
+**registry** resolves providers: `providers.registry.get("azure")` returns the Azure
+implementation (`providers.azure.AzureProvider`), which owns c7n resource registration,
+the resource registry, and session construction; an unregistered name raises
+`UnknownProviderError` rather than silently defaulting. The per-run context is generalized
+from the Azure-only `SubscriptionContext` to a provider-neutral **`AccountContext`**
+(`provider` + `account_id` + optional credential) — `SubscriptionContext` stays as a
+backward-compatible alias (`subscription_id` → `account_id`), so every collector is
+unchanged. Accounts carry a **`provider` column** (`server_default='azure'`, so existing
+rows read as Azure) exposed via `GET /api/subscriptions`. A pure, behaviour-preserving
+refactor: the entire existing suite stays green.
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

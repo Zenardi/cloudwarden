@@ -29,10 +29,6 @@ logger = logging.getLogger("azure_finops.custodian.engine")
 
 _FIXTURE_NAME = "custodian_policy_result"
 
-# c7n_azure registers ~110 Azure resource types the first time its entry module
-# is imported. Guard so repeated runner construction registers exactly once.
-_azure_registered = False
-
 
 @runtime_checkable
 class CustodianRunner(Protocol):
@@ -48,23 +44,21 @@ class CustodianRunner(Protocol):
         """Return the resource-type listing (no arg) or one type's schema."""
 
 
-def _ensure_azure_registered() -> None:
-    """Import ``c7n_azure.entry`` once so ``azure.*`` resource types register."""
-    global _azure_registered
-    if _azure_registered:
-        return
-    import c7n_azure.entry  # noqa: F401 - side-effecting: registers azure.* resources
-    from c7n.resources import load_resources
+def _azure_provider() -> Any:
+    """The registered Azure provider (owns the c7n registration/registry seam)."""
+    from ..providers import registry
 
-    load_resources(("azure.*",))
-    _azure_registered = True
+    return registry.get("azure")
+
+
+def _ensure_azure_registered() -> None:
+    """Register ``azure.*`` c7n resource types via the Azure provider (idempotent)."""
+    _azure_provider().register_resources()
 
 
 def _azure_registry() -> Any:
     """Return the c7n Azure resource registry (keys are un-prefixed, e.g. ``vm``)."""
-    from c7n.provider import clouds
-
-    return clouds["azure"].resources
+    return _azure_provider().resource_registry()
 
 
 class LiveCustodianRunner:

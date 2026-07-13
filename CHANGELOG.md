@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Cloud provider abstraction — the multi-cloud foundation (M12.1).** New
+  `azure_finops.providers` package introduces a `CloudProvider` interface
+  (`providers.base`) and a name-keyed registry (`providers.registry`) so the engine,
+  orchestrator and onboarding talk to a provider seam instead of Azure directly.
+  `providers.registry.get("azure")` resolves the Azure implementation
+  (`providers.azure.AzureProvider`), which now owns Cloud Custodian resource
+  registration, the c7n resource registry, and session construction; an unregistered
+  name raises `UnknownProviderError` rather than silently defaulting. The Azure-only
+  `SubscriptionContext` is generalized to a provider-neutral **`AccountContext`**
+  (`provider` + `account_id` + optional credential), with `SubscriptionContext` retained
+  as a backward-compatible alias (`subscription_id` maps onto `account_id`) so every
+  existing collector keeps working unchanged. Accounts gain a **`provider` column**
+  (`server_default='azure'`, so pre-existing rows read as Azure) surfaced through
+  `GET /api/subscriptions` and settable via `POST /api/subscriptions`. This is a pure,
+  behaviour-preserving refactor — the entire existing suite stays green.
 - **Audit log — append-only trail of mutating governance actions (M11.4).** New
   `audit_log` table and an `azure_finops.authz.audit` helper. Creating, updating,
   deleting or enabling/disabling a policy writes one row capturing the actor (resolved
