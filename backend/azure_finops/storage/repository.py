@@ -1611,6 +1611,60 @@ def policy_health(session: Session) -> list[dict[str, Any]]:
     )
 
 
+# Reusable count/violation aggregates over v_governance_posture (M9.1). Each
+# grouping SELECTs the same four measures; only the GROUP BY / labels differ.
+_POSTURE_MEASURES = (
+    "COUNT(*) FILTER (WHERE gp.compliant)     AS compliant, "
+    "COUNT(*) FILTER (WHERE gp.non_compliant) AS non_compliant, "
+    "COALESCE(SUM(gp.resources_matched), 0)   AS violations, "
+    "COUNT(*)                                 AS evaluated"
+)
+
+
+def governance_posture(session: Session) -> dict[str, Any]:
+    """Compliance posture (M9.1): compliant vs non-compliant rollups.
+
+    Reads ``v_governance_posture`` — the latest execution per ``(policy,
+    subscription)`` — and aggregates it three ways (by policy, by subscription,
+    by collection) plus a ``totals`` block. ``violations`` sums matched resources.
+    With nothing executed yet the totals are zeroed and the group lists empty —
+    the empty state is data, never an error.
+    """
+    totals = _rows(
+        session,
+        f"SELECT {_POSTURE_MEASURES} FROM v_governance_posture gp",
+    )[0]
+    by_policy = _rows(
+        session,
+        f"SELECT gp.policy_id, gp.policy_name, {_POSTURE_MEASURES} "
+        "FROM v_governance_posture gp "
+        "GROUP BY gp.policy_id, gp.policy_name "
+        "ORDER BY gp.policy_name ASC",
+    )
+    by_subscription = _rows(
+        session,
+        f"SELECT gp.subscription_id, {_POSTURE_MEASURES} "
+        "FROM v_governance_posture gp "
+        "GROUP BY gp.subscription_id "
+        "ORDER BY gp.subscription_id ASC",
+    )
+    by_collection = _rows(
+        session,
+        f"SELECT c.id AS collection_id, c.name AS collection_name, {_POSTURE_MEASURES} "
+        "FROM v_governance_posture gp "
+        "JOIN collection_policies cp ON cp.policy_id = gp.policy_id "
+        "JOIN policy_collections c ON c.id = cp.collection_id "
+        "GROUP BY c.id, c.name "
+        "ORDER BY c.name ASC",
+    )
+    return {
+        "totals": totals,
+        "by_policy": by_policy,
+        "by_subscription": by_subscription,
+        "by_collection": by_collection,
+    }
+
+
 def list_remediation_actions(
     session: Session, limit: int = 100, source: str | None = None
 ) -> list[dict[str, Any]]:

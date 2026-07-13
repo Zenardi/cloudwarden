@@ -501,6 +501,61 @@ jobs:
                 f"binding {bid2} (no channel) dispatched nothing")
           PY
 
+      - name: Smoke-test compliance posture end to end (M9.1)
+        run: |
+          set -euo pipefail
+          # Through the deployed backend image + HTTP API: assert the empty state is
+          # zeroed (never an error), then seed a clean and a violating execution for two
+          # policies (one in a collection) and assert the posture rolls up correctly by
+          # policy, subscription and collection. Fully mock-safe; cleans up after.
+          docker compose exec -T backend python - <<'PY'
+          import json, urllib.request
+          with urllib.request.urlopen("http://localhost:8000/api/governance/posture") as r:
+              body = json.load(r)
+          t = body["totals"]
+          assert t == {"compliant": 0, "non_compliant": 0, "violations": 0, "evaluated": 0}, t
+          assert body["by_policy"] == [] and body["by_subscription"] == [], body
+          assert body["by_collection"] == [], body
+          print("empty posture zeroed OK")
+          PY
+          docker compose exec -T backend python - <<'PY'
+          from azure_finops.storage import repository as repo
+          from azure_finops.storage.db import session_scope
+
+          def seed(s, *, eid, pid, sub, matched):
+              repo.create_policy_execution(s, execution_id=eid, policy_id=pid, subscription_id=sub)
+              repo.finish_policy_execution(s, eid, status="succeeded", resources_matched=matched)
+
+          with session_scope() as s:
+              p_clean = repo.create_policy(
+                  s, name="posture-clean", resource_type="azure.vm",
+                  spec={"policies": [{"name": "posture-clean", "resource": "azure.vm"}]})["id"]
+              p_bad = repo.create_policy(
+                  s, name="posture-bad", resource_type="azure.vm",
+                  spec={"policies": [{"name": "posture-bad", "resource": "azure.vm"}]})["id"]
+              cid = repo.create_collection(s, name="posture-coll")["id"]
+              repo.add_policy_to_collection(s, cid, p_bad)
+              seed(s, eid="pe1", pid=p_clean, sub="sub-a", matched=0)
+              seed(s, eid="pe2", pid=p_bad, sub="sub-a", matched=3)
+              seed(s, eid="pe3", pid=p_bad, sub="sub-b", matched=1)
+          PY
+          docker compose exec -T backend python - <<'PY'
+          import json, urllib.request
+          with urllib.request.urlopen("http://localhost:8000/api/governance/posture") as r:
+              body = json.load(r)
+          t = body["totals"]
+          assert t["evaluated"] == 3 and t["compliant"] == 1 and t["non_compliant"] == 2, t
+          assert t["violations"] == 4, t
+          by_pol = {r["policy_name"]: r for r in body["by_policy"]}
+          assert by_pol["posture-clean"]["compliant"] == 1, by_pol
+          assert by_pol["posture-bad"]["non_compliant"] == 2 and by_pol["posture-bad"]["violations"] == 4, by_pol
+          by_sub = {r["subscription_id"]: r for r in body["by_subscription"]}
+          assert by_sub["sub-a"]["non_compliant"] == 1 and by_sub["sub-b"]["non_compliant"] == 1, by_sub
+          by_coll = {r["collection_name"]: r for r in body["by_collection"]}
+          assert by_coll["posture-coll"]["non_compliant"] == 2 and by_coll["posture-coll"]["violations"] == 4, by_coll
+          print("posture rollup OK:", json.dumps(t))
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail

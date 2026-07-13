@@ -125,6 +125,39 @@ SELECT
 FROM policies p
 JOIN policy_executions e ON e.policy_id = p.id
 GROUP BY p.id, p.name, e.subscription_id;
+
+-- Compliance posture (M9.1): a *current-state* snapshot. The latest execution
+-- per (policy, subscription) decides that pair's posture -- compliant when it
+-- matched nothing, non-compliant when it matched >=1 resource. Ordering mirrors
+-- v_policy_health's last_status ordering: started_at DESC, execution_id DESC (the
+-- id tiebreaker keeps same-timestamp seeds deterministic). One row per evaluated
+-- pair, so an empty table yields no rows (which reads back as zeroed totals).
+CREATE OR REPLACE VIEW v_governance_posture AS
+WITH ranked AS (
+    SELECT
+        e.policy_id,
+        e.subscription_id,
+        e.resources_matched,
+        e.status,
+        e.started_at,
+        ROW_NUMBER() OVER (
+            PARTITION BY e.policy_id, e.subscription_id
+            ORDER BY e.started_at DESC, e.execution_id DESC
+        ) AS rn
+    FROM policy_executions e
+)
+SELECT
+    r.policy_id                     AS policy_id,
+    p.name                          AS policy_name,
+    r.subscription_id               AS subscription_id,
+    r.resources_matched             AS resources_matched,
+    (r.resources_matched > 0)       AS non_compliant,
+    (r.resources_matched = 0)       AS compliant,
+    r.status                        AS last_status,
+    r.started_at                    AS last_execution_at
+FROM ranked r
+JOIN policies p ON p.id = r.policy_id
+WHERE r.rn = 1;
 """
 
 

@@ -63,7 +63,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M8.1 | Notification service & templates — sandboxed Jinja2 render + pluggable transport | ✅ done |
 | M8.2 | Slack & email transports — webhook / SMTP delivery via injected clients, failures captured | ✅ done |
 | M8.3 | Teams, Jira & ServiceNow transports — ITSM integrations (webhook / create issue / create incident) | ✅ done |
-| M8.4 | Per-binding notify config & UI — attach channel+template to a binding; fire on violation; `/notifications` page | 🚧 in review |
+| M8.4 | Per-binding notify config & UI — attach channel+template to a binding; fire on violation; `/notifications` page | ✅ done |
+| M9.1 | Compliance posture dashboard — compliant/non-compliant counts by policy/subscription/collection (API + Grafana) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -238,6 +239,17 @@ grain). `GET /api/governance/policy-health` returns that list (empty until a pol
 has executed — never an error), and a provisioned **Policy Health & Compliance**
 Grafana dashboard visualises success rate, matches over time, and per-policy /
 per-subscription health.
+
+**Compliance posture (M9.1).** The governance console's headline view. The
+`v_governance_posture` SQL view takes the **latest execution per (policy,
+subscription)** and classifies that pair as **compliant** (matched nothing) or
+**non-compliant** (matched ≥1 resource). `GET /api/governance/posture` rolls those
+pairs up three ways — `by_policy`, `by_subscription`, `by_collection` — plus a
+`totals` block (`compliant` / `non_compliant` / `violations` / `evaluated`); with
+nothing executed yet the totals are zeroed and the group lists empty — the empty
+state is data, never an error. A provisioned **Compliance Posture** Grafana
+dashboard visualises the split, the compliance rate, violations over time, and
+per-policy / per-subscription posture tables.
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

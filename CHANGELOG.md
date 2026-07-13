@@ -55,6 +55,21 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M9.1 — Compliance posture dashboard.** The governance console's headline view.
+  New `v_governance_posture` SQL view (`storage/db.py`) takes the **latest execution
+  per (policy, subscription)** — ordered `started_at DESC, execution_id DESC`, mirroring
+  `v_policy_health` — and flags that pair **compliant** (matched nothing) or
+  **non-compliant** (matched ≥1 resource). New repository helper
+  `governance_posture()` (`storage/repository.py`) rolls the view up three ways
+  (`by_policy`, `by_subscription`, `by_collection`) plus a `totals` block
+  (`compliant` / `non_compliant` / `violations` / `evaluated`); the four count/violation
+  measures are shared via a single `_POSTURE_MEASURES` fragment. New endpoint
+  `GET /api/governance/posture` (`api/main.py`) is a thin read over the helper —
+  with nothing executed yet it returns zeroed totals and empty group lists, never an
+  error. New provisioned **Compliance Posture** Grafana dashboard
+  (`grafana/dashboards/governance-posture.json`): posture-split donut, compliance-rate
+  and violation stats, violations-over-time trend, and per-policy / per-subscription
+  posture tables (all `COALESCE`/`NULLIF`-guarded so the empty state renders zeros).
 - **M8.4 — Per-binding notify config & UI.** Wires the M8.1–M8.3 notification
   machinery to **bindings**. New `binding_notifications` table (`storage/schema.py`)
   attaches one or more **(channel, template)** pairs to a binding, with repository CRUD

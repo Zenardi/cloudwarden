@@ -1,0 +1,128 @@
+{
+  "uid": "finops-governance-posture",
+  "title": "FinOps — Compliance Posture",
+  "tags": ["finops", "governance", "posture", "compliance"],
+  "timezone": "",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "time": { "from": "now-30d", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Compliant (policy × subscription)",
+      "description": "Evaluated pairs whose latest execution matched nothing.",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE compliant), 0) AS \"Compliant\" FROM v_governance_posture" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Non-compliant (policy × subscription)",
+      "description": "Evaluated pairs whose latest execution matched >=1 resource.",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE non_compliant), 0) AS \"Non-compliant\" FROM v_governance_posture" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Violations (resources)",
+      "description": "Sum of matched resources across the latest execution per pair.",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "orange" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT COALESCE(SUM(resources_matched), 0) AS \"Violations\" FROM v_governance_posture" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Compliance rate",
+      "description": "Compliant pairs / evaluated pairs. Zero when nothing has executed.",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "min": 0, "max": 1, "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT COALESCE(ROUND(COUNT(*) FILTER (WHERE compliant)::numeric / NULLIF(COUNT(*), 0), 4), 0) AS \"Compliance rate\" FROM v_governance_posture" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "piechart",
+      "title": "Posture split",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "pieType": "donut", "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom", "values": ["value"] }, "tooltip": { "mode": "single", "sort": "none" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE compliant), 0) AS \"Compliant\", COALESCE(COUNT(*) FILTER (WHERE non_compliant), 0) AS \"Non-compliant\" FROM v_governance_posture" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Violations over time (by policy)",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 6 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "showPoints": "always", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "time_series", "rawQuery": true,
+          "rawSql": "SELECT e.started_at AS time, p.name AS metric, e.resources_matched AS value FROM policy_executions e JOIN policies p ON e.policy_id = p.id WHERE e.started_at IS NOT NULL ORDER BY e.started_at" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Posture by policy",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 14 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "non_compliant" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } ] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "non_compliant", "desc": true } ] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT policy_name, COUNT(*) FILTER (WHERE compliant) AS compliant, COUNT(*) FILTER (WHERE non_compliant) AS non_compliant, COALESCE(SUM(resources_matched), 0) AS violations, COUNT(*) AS evaluated FROM v_governance_posture GROUP BY policy_name ORDER BY non_compliant DESC, policy_name ASC" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Posture by subscription",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "non_compliant", "desc": true } ] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT subscription_id, COUNT(*) FILTER (WHERE compliant) AS compliant, COUNT(*) FILTER (WHERE non_compliant) AS non_compliant, COALESCE(SUM(resources_matched), 0) AS violations, COUNT(*) AS evaluated FROM v_governance_posture GROUP BY subscription_id ORDER BY non_compliant DESC, subscription_id ASC" }
+      ]
+    }
+  ]
+}

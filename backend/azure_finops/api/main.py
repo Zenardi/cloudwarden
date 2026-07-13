@@ -712,6 +712,20 @@ def policy_health() -> list[dict[str, Any]]:
         return repo.policy_health(session)
 
 
+@app.get("/api/governance/posture")
+def governance_posture() -> dict[str, Any]:
+    """Compliance posture (M9.1): compliant vs non-compliant counts grouped by
+    policy, subscription and collection, from the latest execution per
+    ``(policy, subscription)``.
+
+    The response is ``{totals, by_policy, by_subscription, by_collection}``. With
+    nothing executed yet the totals are zeroed and the group lists empty — the
+    empty state is data, never an error.
+    """
+    with session_scope() as session:
+        return repo.governance_posture(session)
+
+
 @app.post("/api/assets/query")
 def query_assets(body: AssetQuery) -> list[dict[str, Any]]:
     """Filter AssetDB via an allow-listed, injection-safe query (M4.2).
