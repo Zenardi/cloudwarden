@@ -285,6 +285,46 @@ class AssetRelationship(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AccountGroup(Base):
+    """A named group of subscriptions (accounts) — Stacklet account groups (M5.1).
+
+    Membership is many-to-many via ``account_group_members``; a subscription may
+    belong to any number of groups. Deleting a group removes only its membership
+    rows (``ON DELETE CASCADE`` on the join) — never the member subscriptions.
+    """
+
+    __tablename__ = "account_groups"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(256), unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AccountGroupMember(Base):
+    """Join row binding a subscription to an account group (composite PK).
+
+    Both foreign keys are ``ON DELETE CASCADE`` so removing either side cleans up
+    the membership without orphan rows — deleting a *group* drops its memberships
+    (subscriptions survive); deleting a *subscription* drops its memberships.
+    """
+
+    __tablename__ = "account_group_members"
+
+    group_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("account_groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    subscription_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("subscriptions.subscription_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class CostSnapshot(Base):
     __tablename__ = "cost_snapshots"
 

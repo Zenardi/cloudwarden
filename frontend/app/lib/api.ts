@@ -152,6 +152,22 @@ export interface Collection {
   updated_at?: string | null;
 }
 
+export interface AccountGroupMember {
+  subscription_id: string;
+  display_name: string;
+  enabled: boolean;
+}
+
+export interface AccountGroup {
+  id: number;
+  name: string;
+  description?: string | null;
+  subscription_count: number;
+  subscriptions: AccountGroupMember[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface AISummary {
   executive_summary: string;
   total_potential_savings: number;

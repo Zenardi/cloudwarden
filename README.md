@@ -47,7 +47,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M4.2 | AssetDB — filterable, injection-safe asset query API | ✅ done |
 | M4.3 | AssetDB — asset relationships graph (disk→vm, nic→vm, ip→nic) | ✅ done |
 | M4.4 | AssetDB — asset change history & event metadata (Activity Log) | ✅ done |
-| M4.5 | AssetDB — asset explorer & detail UI (query, config, graph, history) | 🚧 in review |
+| M4.5 | AssetDB — asset explorer & detail UI (query, config, graph, history) | ✅ done |
+| M5.1 | Account groups — organize subscriptions into named, many-to-many groups | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -271,6 +272,16 @@ opens **`/assets/<resource-id>`** — a catch-all route (Azure ids contain slash
 composes the three APIs into one view: the asset's **config** (JSON), its
 **relationships** (M4.3, with links to each neighbour), and its **change-history**
 timeline (M4.4). An unknown id shows a friendly **not-found** state, never a crash.
+
+**Account groups (M5.1).** Subscriptions can be organized into named **account
+groups** (à la Stacklet account groups) so policies can target logical sets of
+accounts. Membership is **many-to-many** (`account_groups` + `account_group_members`,
+both FKs `ON DELETE CASCADE`): a subscription may belong to any number of groups and be
+removed from each independently, and **deleting a group keeps its subscriptions** —
+only the membership rows go. Managed via `GET/POST/DELETE /api/account-groups[/{id}]`
+and `POST/DELETE /api/account-groups/{id}/subscriptions/{subscription_id}` (adding an
+unknown subscription or group returns `404`), with an **`/account-groups`** UI to create
+groups and manage membership. Reuses the existing `subscriptions` records.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 

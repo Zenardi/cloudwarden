@@ -47,6 +47,17 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M5.1 — Account groups.** Organize subscriptions into named **account groups**
+  (à la Stacklet account groups) so policies can target logical sets of accounts. New
+  `account_groups` table + `account_group_members` join (both FKs `ON DELETE CASCADE`),
+  auto-created by `init_db()`. Membership is **many-to-many**: a subscription can belong
+  to any number of groups and be removed from each **independently**, and **deleting a
+  group keeps its subscriptions** (only the membership rows are removed). Repository CRUD
+  + membership, endpoints `GET/POST/DELETE /api/account-groups[/{id}]` and
+  `POST/DELETE /api/account-groups/{id}/subscriptions/{subscription_id}` (adding an
+  unknown subscription or an unknown group returns `404`; duplicate name → `409`), and an
+  **`/account-groups`** UI (with an **Account Groups** nav link) to create groups and
+  manage membership. Builds directly on the existing `subscriptions` records.
 - **M4.5 — Asset explorer & detail UI.** A Next.js **Asset Explorer** (the Stacklet
   AssetDB console) at **`/assets`**: a query form (type / location / id-contains / tag)
   drives the injection-safe M4.2 query API with **pagination**, and each row links to

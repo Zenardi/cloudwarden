@@ -215,6 +215,13 @@ class CollectionCreate(BaseModel):
     description: str | None = None
 
 
+class AccountGroupCreate(BaseModel):
+    """Inbound shape for creating an account group (M5.1)."""
+
+    name: str
+    description: str | None = None
+
+
 class CollectionRecord(BaseModel):
     """A persisted policy collection with its members, as returned by the repository."""
 
