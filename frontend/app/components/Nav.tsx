@@ -11,6 +11,7 @@ export default function Nav() {
       <Link href="/collections">Collections</Link>
       <Link href="/runs">Runs</Link>
       <Link href="/executions">Executions</Link>
+      <Link href="/events">Events</Link>
       <Link href="/assets">Assets</Link>
       <Link href="/remediation">Remediation</Link>
       <Link href="/subscriptions">Subscriptions</Link>

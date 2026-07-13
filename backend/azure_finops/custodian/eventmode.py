@@ -128,6 +128,7 @@ def _run_reactive(
             policy_id=policy["id"],
             subscription_id=sub_id,
             mode="event",
+            event_id=getattr(event, "event_id", None),
         )
     try:
         run_result = run_policy(

@@ -11,7 +11,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
@@ -560,18 +560,25 @@ def run_binding_endpoint(
 @app.post("/api/events/azure")
 async def ingest_azure_events(
     request: Request,
+    response: Response,
     runner: Annotated[CustodianRunner | None, Depends(get_custodian_runner)] = None,
 ) -> dict[str, Any]:
     """Event Grid webhook: complete the one-time ``SubscriptionValidation`` handshake,
     authenticate the delivery (shared key), normalize + persist each resource event, then
-    **reactively trigger** any matching event-mode policies (M6.2).
+    **reactively trigger** any matching event-mode policies (M6.2) and stream the change
+    into the AssetDB (M6.3).
 
     Event Grid delivers a JSON array (not CloudEvents). Unauthenticated → ``403``;
-    a non-JSON body → ``400``; unrecognized event types are silently skipped.
+    a non-JSON body → ``400``; unrecognized event types are silently skipped. When
+    ``EVENT_MODE_ENABLED`` is off (M6.4) the delivery is accepted with ``202`` but
+    stored/triggered nothing.
     """
     settings = get_settings()
     if not verify_event_grid_key(dict(request.headers), dict(request.query_params), settings):
         raise HTTPException(status_code=403, detail="invalid event grid key")
+    if not settings.event_mode_enabled:
+        response.status_code = 202
+        return {"received": 0, "processed": 0, "detail": "event mode disabled"}
     try:
         payload = await request.json()
     except Exception as exc:  # noqa: BLE001 - any parse error is a bad body
@@ -603,6 +610,16 @@ def list_events(limit: int = 50) -> list[dict[str, Any]]:
     """Recent Event Grid deliveries, newest-first (audit / M6.4 status UI)."""
     with session_scope() as session:
         return repo.list_events(session, limit=limit)
+
+
+@app.get("/api/events/recent")
+def recent_events(
+    limit: int = Query(20, ge=1, le=200), offset: int = Query(0, ge=0)
+) -> list[dict[str, Any]]:
+    """Status feed (M6.4): recent deliveries newest-first, paginated, each with the
+    event-mode ``policy_executions`` it triggered. An empty feed is ``[]``, not an error."""
+    with session_scope() as session:
+        return repo.recent_events(session, limit=limit, offset=offset)
 
 
 @app.get("/api/summary")

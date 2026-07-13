@@ -200,6 +200,34 @@ export interface BindingRunResult {
   executions: BindingRunExecution[];
 }
 
+// --- Real-time events status feed (M6.4) ------------------------------------ //
+
+/** One event-mode policy execution reactively triggered by a delivery (M6.2). */
+export interface TriggeredExecution {
+  execution_id: string;
+  policy_id: number;
+  status: string;
+  mode: string;
+  started_at?: string | null;
+}
+
+/** A recent Event Grid delivery plus the executions it triggered (M6.4 feed). */
+export interface RecentEvent {
+  event_id: string;
+  event_type: string;
+  subject: string;
+  resource_id?: string | null;
+  subscription_id?: string | null;
+  event_time?: string | null;
+  received_at?: string | null;
+  status: string;
+  triggered_executions: TriggeredExecution[];
+}
+
+/** Recent deliveries newest-first, paginated, each with its triggered runs (M6.4). */
+export const fetchRecentEvents = (limit = 50, offset = 0): Promise<RecentEvent[]> =>
+  apiGet<RecentEvent[]>(`/api/events/recent?limit=${limit}&offset=${offset}`);
+
 export interface AISummary {
   executive_summary: string;
   total_potential_savings: number;

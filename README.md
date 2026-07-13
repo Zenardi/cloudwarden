@@ -54,7 +54,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M5.4 | Bindings & account-groups UI — create/edit/run bindings, last-run status | ✅ done |
 | M6.1 | Real-time enforcement — Azure Event Grid ingestion endpoint (event mode) | ✅ done |
 | M6.2 | Event-mode policy trigger — react to an event by running matching policies | ✅ done |
-| M6.3 | Real-time AssetDB updates — events stream create/update/delete into inventory | 🚧 in review |
+| M6.3 | Real-time AssetDB updates — events stream create/update/delete into inventory | ✅ done |
+| M6.4 | Event config & status UI — EVENT_MODE_ENABLED gate + recent-events feed | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -362,6 +363,16 @@ only touches the columns an event actually knows, so a prior full ingestion's `c
 `created` on first sight, else `updated` (or `deleted`). An event with **no `resource_id`**
 is ignored (no write). Inventory-streaming and policy-triggering are separate concerns fed by
 one delivery — one keeps the AssetDB current, the other enforces governance.
+
+**Event config & status UI (M6.4).** A master switch and a live feed close out real-time
+enforcement. `EVENT_MODE_ENABLED` gates the whole webhook: when off, `POST
+/api/events/azure` accepts deliveries with **202** but stores/triggers nothing — a clean
+way to pause enforcement without tearing down the Event Grid subscription. **`GET
+/api/events/recent`** is the status feed: recent deliveries newest-first, paginated
+(`limit`/`offset`), each carrying the event-mode **executions it triggered** — the reactive
+`PolicyExecution`s now stamp the `event_id` that fired them, so the feed joins event → runs.
+The Next.js **`/events`** page renders it: event type / resource / subscription / received
+time, and a status badge per triggered run. An empty feed is `[]`, not an error.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 

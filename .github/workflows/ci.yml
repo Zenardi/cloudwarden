@@ -162,7 +162,7 @@ jobs:
           assert created and created[0]["data"].get("actor"), hist
           print(f"assetdb e2e OK: asset state={vm[0]['state']}, actor={created[0]['data']['actor']}")
           PY
-      - name: Assert UI routes render (asset explorer M4.5 + account groups M5.1 + bindings M5.4, mock mode)
+      - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail
           # Wait for the Next.js server, then assert the explorer + a detail route
@@ -174,7 +174,7 @@ jobs:
             sleep 2
           done
           detail="/assets/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-app/providers/microsoft.compute/virtualmachines/vm-web-01"
-          for path in "/assets" "$detail" "/account-groups" "/bindings"; do
+          for path in "/assets" "$detail" "/account-groups" "/bindings" "/events"; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3001$path")
             test "$code" = "200" || { echo "::error::$path returned $code"; docker compose logs frontend; exit 1; }
             echo "route OK: $path → 200"

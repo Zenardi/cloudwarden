@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     log_analytics_workspace_id: str | None = None
 
     # --- Event Grid (real-time enforcement) ---
+    # Master switch for event-mode ingestion (M6.4). When false, `POST /api/events/azure`
+    # accepts deliveries with 202 but stores/triggers nothing — a clean way to pause
+    # real-time enforcement without tearing down the Event Grid subscription.
+    event_mode_enabled: bool = True
     # Optional shared key for authenticating Event Grid deliveries. Empty/unset accepts
     # all deliveries (local/mock dev); when set, a delivery must present it via the
     # `x-events-key` header or `?key=` query param or it is rejected with 403.

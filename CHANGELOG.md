@@ -47,6 +47,18 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M6.4 — Event config & status UI.** Closes out real-time enforcement with a master
+  switch and a live feed. New **`EVENT_MODE_ENABLED`** config (default `true`; `.env.example`)
+  gates the whole webhook — when off, `POST /api/events/azure` accepts deliveries with **202**
+  but stores/triggers nothing (pause enforcement without tearing down the Event Grid
+  subscription). New **`GET /api/events/recent`** status feed returns recent deliveries
+  newest-first, paginated (`limit`/`offset`), each with the **executions it triggered**: the
+  reactive `PolicyExecution`s (M6.2) now stamp a new **`event_id`** column, so
+  `repository.recent_events` joins event → runs (one grouped lookup, no N+1). New Next.js
+  **`/events`** page (+ Nav link + `lib/api.ts` `RecentEvent`/`fetchRecentEvents`) renders the
+  feed with a status badge per triggered run; the CI e2e job asserts the `/events` route. An
+  empty feed is `[]`, not an error. (Reuses the existing `event_log` table rather than a
+  separate `ingested_events`.)
 - **M6.3 — Real-time AssetDB updates from events.** Each accepted Event Grid delivery now
   also **streams into the inventory** so the AssetDB (M4.1) reflects *who / how / when*
   near-instantly. New `events/assetdb.py` `apply_asset_event` **upserts** the `assets` row on
