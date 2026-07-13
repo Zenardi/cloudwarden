@@ -23,7 +23,7 @@ from .analysis.savings import monthly_cost_map
 from .azure._fixtures import retarget
 from .azure.activitylog import collect_activity_log
 from .azure.advisor import collect_advisor
-from .azure.context import SubscriptionContext
+from .azure.context import AccountContext
 from .azure.cost import collect_cost
 from .azure.inventory import collect_inventory
 from .azure.logs import collect_memory
@@ -37,16 +37,22 @@ from .storage.db import init_db, session_scope
 logger = logging.getLogger("azure_finops.orchestrator")
 
 
-def _context_from_record(record: Any, mock: bool) -> SubscriptionContext:
-    """Build a run context from a `subscriptions` row, minting a per-subscription
-    credential only on the live path when the row carries its own SP creds."""
+def _context_from_record(record: Any, mock: bool) -> AccountContext:
+    """Build a run context from an accounts (`subscriptions`) row via its provider.
+
+    Mints a per-account credential only on the live path when the row carries its
+    own SP creds, then delegates to the resolved provider's ``account_context`` so
+    the context is provider-neutral (defaulting to Azure for existing rows)."""
     credential = None
     if not mock and record.client_id and record.client_secret:
         from .auth import credential_for
 
         credential = credential_for(record.tenant_id, record.client_id, record.client_secret)
-    return SubscriptionContext(
-        subscription_id=record.subscription_id,
+    from .providers import registry
+
+    provider = registry.get(getattr(record, "provider", None) or "azure")
+    return provider.account_context(
+        account_id=record.subscription_id,
         credential=credential,
         display_name=record.display_name,
     )
@@ -70,7 +76,7 @@ def _enrich_cost(cost_rows: list[CostRow], resources: list[ResourceRecord]) -> N
 
 
 def run_pipeline(
-    mock: bool | None = None, subscription: SubscriptionContext | None = None
+    mock: bool | None = None, subscription: AccountContext | None = None
 ) -> dict[str, Any]:
     settings = get_settings()
     if mock is not None:
@@ -269,7 +275,7 @@ def _matches_from_result(result: dict[str, Any], subscription_id: str) -> list[P
     ]
 
 
-def run_policies(subscription: SubscriptionContext, mock: bool | None = None) -> dict[str, Any]:
+def run_policies(subscription: AccountContext, mock: bool | None = None) -> dict[str, Any]:
     """Execute every enabled policy against one subscription (pull mode).
 
     Each policy gets its own ``PolicyExecution`` (opened ``running``, then closed

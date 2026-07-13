@@ -1114,6 +1114,50 @@ jobs:
           print("audit OK: create/update/delete recorded, reads ignored, newest-first, append-only")
           PY
 
+      - name: Smoke-test the cloud provider abstraction (M12.1)
+        run: |
+          set -euo pipefail
+          # In the deployed image: the provider registry resolves azure (and rejects
+          # an unknown cloud); a run still works through the Azure provider's context;
+          # and a newly-onboarded account defaults its `provider` to azure while an
+          # explicit provider is honoured. Uses a UNIQUELY-NAMED account (shared DB).
+          docker compose exec -T backend python - <<'PY'
+          import json, urllib.error, urllib.request
+
+          from azure_finops.providers import base, registry
+
+          # Registry resolves azure and fails loudly on an unknown cloud.
+          azure = registry.get("azure")
+          assert azure.name == "azure" and isinstance(azure, base.CloudProvider)
+          try:
+              registry.get("gcp")
+              raise AssertionError("expected UnknownProviderError")
+          except registry.UnknownProviderError:
+              pass
+
+          # A run still works when its context is built via the Azure provider.
+          from azure_finops.orchestrator import run_pipeline
+          out = run_pipeline(mock=True, subscription=azure.account_context(account_id="m121-ci"))
+          assert out["subscription_id"] == "m121-ci" and out["counts"]["resources"] > 0, out
+
+          # Onboarding an account defaults provider=azure over the API …
+          def post_account(body):
+              req = urllib.request.Request(
+                  "http://localhost:8000/api/subscriptions",
+                  data=json.dumps(body).encode(),
+                  headers={"Content-Type": "application/json"}, method="POST")
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          acc = post_account({"subscription_id": "m121-acct", "display_name": "M12.1 acct"})
+          assert acc["provider"] == "azure", acc
+          # … and honours an explicit provider (column is cloud-agnostic).
+          aws = post_account({"subscription_id": "m121-aws", "display_name": "M12.1 aws",
+                              "provider": "aws"})
+          assert aws["provider"] == "aws", aws
+          print("provider OK: registry resolves azure, unknown=error, run works, provider column defaults azure")
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail

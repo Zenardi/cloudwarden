@@ -1260,6 +1260,7 @@ def asset_history(resource_id: str) -> list[dict[str, Any]]:
 class SubscriptionIn(BaseModel):
     subscription_id: str
     display_name: str
+    provider: str = "azure"  # owning cloud (M12.1); defaults to Azure
     tenant_id: str | None = None
     client_id: str | None = None
     client_secret: str | None = None  # None keeps existing, "" clears, else sets
@@ -1284,6 +1285,7 @@ def upsert_subscription(body: SubscriptionIn) -> dict[str, Any]:
             session,
             subscription_id=sub_id,
             display_name=body.display_name.strip(),
+            provider=(body.provider or "azure").strip(),
             tenant_id=body.tenant_id,
             client_id=body.client_id,
             client_secret=body.client_secret,

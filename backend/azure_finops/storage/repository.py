@@ -209,6 +209,7 @@ def _subscription_public(rec: schema.Subscription) -> dict[str, Any]:
     return {
         "subscription_id": rec.subscription_id,
         "display_name": rec.display_name,
+        "provider": rec.provider,
         "tenant_id": rec.tenant_id,
         "client_id": rec.client_id,
         "has_credentials": bool(rec.client_id and rec.client_secret),
@@ -247,20 +248,27 @@ def upsert_subscription(
     *,
     subscription_id: str,
     display_name: str,
+    provider: str = "azure",
     tenant_id: str | None = None,
     client_id: str | None = None,
     client_secret: str | None = None,
     enabled: bool = True,
 ) -> dict[str, Any]:
-    """Create or update a subscription.
+    """Create or update a cloud account (subscription).
 
-    Secret semantics on update: ``client_secret=None`` keeps the existing secret,
-    ``client_secret=""`` clears it, any other value sets it.
+    ``provider`` is set at creation and is intrinsic to the account (an existing
+    account keeps its provider on subsequent upserts). Secret semantics on update:
+    ``client_secret=None`` keeps the existing secret, ``client_secret=""`` clears
+    it, any other value sets it.
     """
     rec = session.get(schema.Subscription, subscription_id)
     make_default = session.query(schema.Subscription).count() == 0
     if rec is None:
-        rec = schema.Subscription(subscription_id=subscription_id, is_default=make_default)
+        rec = schema.Subscription(
+            subscription_id=subscription_id,
+            is_default=make_default,
+            provider=provider or "azure",
+        )
         session.add(rec)
     rec.display_name = display_name
     rec.tenant_id = tenant_id or None
@@ -305,6 +313,7 @@ def ensure_default_subscription(session: Session, settings: Any) -> None:
         schema.Subscription(
             subscription_id=sub_id,
             display_name=f"Default ({sub_id[:8]}…)" if len(sub_id) > 8 else sub_id,
+            provider="azure",
             tenant_id=settings.azure_tenant_id,
             enabled=True,
             is_default=True,
