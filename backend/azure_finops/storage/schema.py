@@ -378,6 +378,7 @@ class Resource(Base):
 
     resource_id: Mapped[str] = mapped_column(String(512), primary_key=True)
     subscription_id: Mapped[str | None] = mapped_column(String(64))
+    provider: Mapped[str] = mapped_column(String(32), default="azure", server_default="azure")
     resource_group: Mapped[str | None] = mapped_column(String(256))
     name: Mapped[str | None] = mapped_column(String(256))
     type: Mapped[str | None] = mapped_column(String(256), index=True)
@@ -401,6 +402,11 @@ class Asset(Base):
 
     resource_id: Mapped[str] = mapped_column(String(512), primary_key=True)
     subscription_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Owning cloud (M12.2 multi-cloud). ``server_default='azure'`` backfills the
+    # pre-existing (Azure) asset rows so multi-cloud queries can filter by provider.
+    provider: Mapped[str] = mapped_column(
+        String(32), default="azure", server_default="azure", index=True
+    )
     resource_group: Mapped[str | None] = mapped_column(String(256))
     name: Mapped[str | None] = mapped_column(String(256))
     type: Mapped[str | None] = mapped_column(String(256), index=True)

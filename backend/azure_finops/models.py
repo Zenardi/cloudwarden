@@ -20,6 +20,7 @@ class ResourceRecord(BaseModel):
     location: str
     resource_group: str
     subscription_id: str
+    provider: str = "azure"  # owning cloud (M12.2 multi-cloud); azure|aws|…
     sku: str | None = None
     tags: dict[str, str] = Field(default_factory=dict)
     power_state: str | None = None

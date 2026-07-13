@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     azure_remediation_client_id: str | None = None
     azure_remediation_client_secret: str | None = None
 
+    # --- AWS account (M12.2 multi-cloud) ---
+    # Onboarding validates credentials via STS get_caller_identity (injectable in tests).
+    # `aws_role_arn` / keys are optional: the live path falls back to the ambient role.
+    aws_account_id: str = ""
+    aws_default_region: str = "us-east-1"
+    aws_role_arn: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+
     # --- Memory metrics (optional) ---
     log_analytics_workspace_id: str | None = None
 

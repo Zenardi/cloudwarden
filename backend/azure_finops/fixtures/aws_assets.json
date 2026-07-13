@@ -1,0 +1,78 @@
+{
+  "account_id": "123456789012",
+  "resources": [
+    {
+      "resource_id": "arn:aws:ec2:us-east-1:123456789012:instance/i-0a1b2c3d4e5f6a7b8",
+      "name": "web-01",
+      "type": "aws.ec2",
+      "region": "us-east-1",
+      "state": "running",
+      "tags": {"Name": "web-01", "env": "prod", "team": "web"},
+      "config": {
+        "InstanceId": "i-0a1b2c3d4e5f6a7b8",
+        "InstanceType": "m5.large",
+        "State": {"Name": "running"},
+        "LaunchTime": "2026-06-01T12:00:00Z",
+        "VpcId": "vpc-0aa11bb22cc33dd44"
+      }
+    },
+    {
+      "resource_id": "arn:aws:ec2:us-east-1:123456789012:instance/i-0f9e8d7c6b5a4f3e2",
+      "name": "batch-idle-01",
+      "type": "aws.ec2",
+      "region": "us-east-1",
+      "state": "stopped",
+      "tags": {"Name": "batch-idle-01", "env": "dev"},
+      "config": {
+        "InstanceId": "i-0f9e8d7c6b5a4f3e2",
+        "InstanceType": "t3.medium",
+        "State": {"Name": "stopped"},
+        "LaunchTime": "2026-05-10T09:30:00Z",
+        "VpcId": "vpc-0aa11bb22cc33dd44"
+      }
+    },
+    {
+      "resource_id": "arn:aws:s3:::finops-artifacts-123456789012",
+      "name": "finops-artifacts-123456789012",
+      "type": "aws.s3",
+      "region": "us-east-1",
+      "state": "active",
+      "tags": {"env": "prod", "data-class": "internal"},
+      "config": {
+        "Name": "finops-artifacts-123456789012",
+        "CreationDate": "2026-01-15T00:00:00Z",
+        "PublicAccessBlockConfiguration": {"BlockPublicAcls": true}
+      }
+    },
+    {
+      "resource_id": "arn:aws:ec2:us-east-1:123456789012:volume/vol-0abcd1234ef567890",
+      "name": "vol-0abcd1234ef567890",
+      "type": "aws.ebs",
+      "region": "us-east-1",
+      "state": "available",
+      "tags": {"env": "dev"},
+      "config": {
+        "VolumeId": "vol-0abcd1234ef567890",
+        "Size": 100,
+        "VolumeType": "gp3",
+        "State": "available",
+        "Encrypted": false
+      }
+    },
+    {
+      "resource_id": "arn:aws:rds:us-east-1:123456789012:db:finops-orders",
+      "name": "finops-orders",
+      "type": "aws.rds",
+      "region": "us-east-1",
+      "state": "available",
+      "tags": {"env": "prod", "team": "orders"},
+      "config": {
+        "DBInstanceIdentifier": "finops-orders",
+        "DBInstanceClass": "db.r5.large",
+        "Engine": "postgres",
+        "MultiAZ": true,
+        "AllocatedStorage": 200
+      }
+    }
+  ]
+}

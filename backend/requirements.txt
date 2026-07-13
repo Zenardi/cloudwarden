@@ -26,6 +26,13 @@ six==1.17.0  # transitive: azure-mgmt-resourcegraph imports it but doesn't decla
 # resource types. Reuses the AZURE_* credentials already configured for collection.
 c7n==0.9.51
 c7n-azure==0.7.50
+# AWS is NATIVE to c7n core (no separate `c7n-aws` package): importing
+# `c7n.resources` + `load_resources(("aws.*",))` registers the `aws.*` resource
+# types, and `boto3` already ships transitively with c7n. We pin boto3 to the
+# exact version c7n resolves (M12.2 makes it a *direct* dep — onboarding calls
+# STS `get_caller_identity`), so `pip install` stays deterministic and the
+# container image gains no new package (Trivy surface unchanged).
+boto3==1.43.3  # == c7n 0.9.51's boto3 pin; already present transitively
 
 # --- AI ---
 anthropic==0.69.0  # >=0.45 required for the `thinking` param (adaptive thinking); 0.42 rejects it
