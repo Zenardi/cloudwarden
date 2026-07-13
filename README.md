@@ -42,7 +42,7 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M1 | Policy engine wrapper (`c7n` + `c7n-azure`): validate / schema / dry-run | ✅ done |
 | M2 | Policy CRUD API + editor UI, collections, GitOps sync, version history & diff | ✅ done |
 | M3.1–M3.3 | Execution results storage, pull-mode orchestrator, execution history API + UI | ✅ done |
-| M3.4 | Per-policy compliance & health metrics (API + Grafana) | 🚧 in review |
+| M3.4 | Per-policy compliance & health metrics (API + Grafana) | ✅ done |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
