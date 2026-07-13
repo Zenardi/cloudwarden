@@ -497,6 +497,12 @@ class RemediationAction(Base):
     policy_match_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("policy_matches.id"), index=True
     )
+    # Unified audit provenance (M7.4): where this action came from — "recommendation"
+    # (a FinOps recommendation), "policy" (a policy run), or "binding" (a binding run).
+    # ``policy_id`` denormalises the originating policy so the audit list can group /
+    # filter by it without walking the match → execution → policy chain.
+    source: Mapped[str] = mapped_column(String(32), default="recommendation", index=True)
+    policy_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("policies.id"), index=True)
     action_type: Mapped[str] = mapped_column(String(64))
     params: Mapped[dict] = mapped_column(JSONB, default=dict)
     dry_run: Mapped[bool] = mapped_column(Boolean, default=True)

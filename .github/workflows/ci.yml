@@ -251,6 +251,28 @@ jobs:
           assert guardrails.default_dry_run(cfg) is False
           print("guardrails e2e OK: RG allow-list, exclude tag, action allow-list, dry-run default")
           PY
+      - name: Smoke-test unified remediation audit end to end (M7.4)
+        run: |
+          set -euo pipefail
+          # The M7.2 step queued policy actions against a matched resource; assert the
+          # unified audit surfaces their provenance (source + policy_id) over HTTP and
+          # that the source filter works. Fully mock-safe (read-only over the audit feed).
+          python3 - <<'PY'
+          import json, urllib.request
+          def _get(path):
+              with urllib.request.urlopen(f"http://localhost:8000{path}") as r:
+                  return json.load(r)
+          allrows = _get("/api/remediation")
+          assert allrows, "expected audited policy actions from the M7.2 step"
+          assert all(r.get("source") for r in allrows), allrows
+          policy = _get("/api/remediation?source=policy")
+          assert policy and all(r["source"] == "policy" for r in policy), policy
+          assert policy[0]["policy_id"] is not None, policy[0]
+          assert policy[0]["resource_id"], policy[0]  # surfaced from params, no recommendation
+          assert _get("/api/remediation?source=nonesuch") == [], "unknown source filters to empty"
+          print(f"audit e2e OK: {len(allrows)} attempt(s); {len(policy)} policy-sourced "
+                f"(policy_id={policy[0]['policy_id']}); source filter works")
+          PY
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail
@@ -263,7 +285,7 @@ jobs:
             sleep 2
           done
           detail="/assets/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-app/providers/microsoft.compute/virtualmachines/vm-web-01"
-          for path in "/assets" "$detail" "/account-groups" "/bindings" "/events"; do
+          for path in "/assets" "$detail" "/account-groups" "/bindings" "/events" "/remediation"; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3001$path")
             test "$code" = "200" || { echo "::error::$path returned $code"; docker compose logs frontend; exit 1; }
             echo "route OK: $path → 200"

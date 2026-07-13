@@ -1611,13 +1611,29 @@ def policy_health(session: Session) -> list[dict[str, Any]]:
     )
 
 
-def list_remediation_actions(session: Session, limit: int = 100) -> list[dict[str, Any]]:
+def list_remediation_actions(
+    session: Session, limit: int = 100, source: str | None = None
+) -> list[dict[str, Any]]:
+    """Unified remediation audit (M7.4): recommendation- and policy-sourced actions.
+
+    Surfaces each row's ``source`` (recommendation/policy/binding) and originating
+    ``policy_id``; the resource id falls back to the action ``params`` so policy
+    actions (which have no recommendation join) still show their target. ``source``,
+    when given, filters the trail — the value is bound (injection-safe).
+    """
+    where = ""
+    params: dict[str, Any] = {"limit": limit}
+    if source:
+        where = "WHERE ra.source = :source "
+        params["source"] = source
     return _rows(
         session,
         "SELECT ra.id, ra.action_type, ra.dry_run, ra.status, ra.error, ra.requested_at, "
-        "ra.executed_at, ra.actor, ra.policy_match_id, r.resource_id, r.category "
+        "ra.executed_at, ra.actor, ra.source, ra.policy_id, ra.policy_match_id, "
+        "COALESCE(r.resource_id, ra.params->>'resource_id') AS resource_id, r.category "
         "FROM remediation_actions ra "
         "LEFT JOIN recommendations r ON ra.recommendation_id = r.id "
+        f"{where}"
         "ORDER BY ra.requested_at DESC LIMIT :limit",
-        limit=limit,
+        **params,
     )

@@ -39,6 +39,8 @@ def _result(action: schema.RemediationAction) -> dict[str, Any]:
         "action_id": action.id,
         "recommendation_id": action.recommendation_id,
         "policy_match_id": action.policy_match_id,
+        "source": action.source,
+        "policy_id": action.policy_id,
         "action_type": action.action_type,
         "dry_run": action.dry_run,
         "status": action.status,
@@ -157,8 +159,15 @@ def queue_policy_action(
     if match is None:
         raise NotFound(f"policy match {policy_match_id} not found")
     spec = executor.normalize_action(action)
+    # Provenance for the unified audit trail (M7.4): resolve the originating policy
+    # and whether the run was binding-triggered, so the row is self-describing.
+    execution = session.get(schema.PolicyExecution, match.execution_id)
+    policy_id = execution.policy_id if execution else None
+    source = "binding" if (execution and execution.binding_id) else "policy"
     row = schema.RemediationAction(
         policy_match_id=policy_match_id,
+        source=source,
+        policy_id=policy_id,
         action_type=spec["type"],
         params={
             "action": spec,
