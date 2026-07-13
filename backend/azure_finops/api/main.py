@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
 from ..models import (
+    AccountGroupCreate,
     AssetQuery,
     CollectionCreate,
     PolicyCreate,
@@ -406,6 +407,64 @@ def remove_policy_from_collection(collection_id: int, policy_id: int) -> dict[st
     if collection is None:
         raise HTTPException(status_code=404, detail="collection or membership not found")
     return collection
+
+
+# --------------------------------------------------------------------------- #
+# Account groups (M5.1) — many-to-many grouping of subscriptions
+# --------------------------------------------------------------------------- #
+@app.get("/api/account-groups")
+def list_account_groups() -> list[dict[str, Any]]:
+    with session_scope() as session:
+        return repo.list_account_groups(session)
+
+
+@app.post("/api/account-groups", status_code=201)
+def create_account_group(body: AccountGroupCreate) -> dict[str, Any]:
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    try:
+        with session_scope() as session:
+            return repo.create_account_group(session, name=name, description=body.description)
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="account group name already exists") from exc
+
+
+@app.get("/api/account-groups/{group_id}")
+def get_account_group(group_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        group = repo.get_account_group(session, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="account group not found")
+    return group
+
+
+@app.delete("/api/account-groups/{group_id}")
+def delete_account_group(group_id: int) -> dict[str, Any]:
+    """Delete an account group (and its memberships) — member subscriptions are preserved."""
+    with session_scope() as session:
+        ok = repo.delete_account_group(session, group_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="account group not found")
+    return {"id": group_id, "deleted": True}
+
+
+@app.post("/api/account-groups/{group_id}/subscriptions/{subscription_id}")
+def add_subscription_to_group(group_id: int, subscription_id: str) -> dict[str, Any]:
+    with session_scope() as session:
+        group = repo.add_subscription_to_group(session, group_id, subscription_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="account group or subscription not found")
+    return group
+
+
+@app.delete("/api/account-groups/{group_id}/subscriptions/{subscription_id}")
+def remove_subscription_from_group(group_id: int, subscription_id: str) -> dict[str, Any]:
+    with session_scope() as session:
+        group = repo.remove_subscription_from_group(session, group_id, subscription_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="account group or membership not found")
+    return group
 
 
 @app.get("/api/summary")

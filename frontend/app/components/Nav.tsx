@@ -14,6 +14,7 @@ export default function Nav() {
       <Link href="/assets">Assets</Link>
       <Link href="/remediation">Remediation</Link>
       <Link href="/subscriptions">Subscriptions</Link>
+      <Link href="/account-groups">Account Groups</Link>
     </nav>
   );
 }

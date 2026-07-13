@@ -113,19 +113,19 @@ jobs:
               extra = " (governance/policy-health absent on this ref)"
           print(f"e2e OK: {len(execs)} execution(s), {len(matches)} match(es){extra}")
           PY
-      - name: Assert asset explorer UI routes render (M4.5, mock mode)
+      - name: Assert UI routes render (asset explorer M4.5 + account groups M5.1, mock mode)
         run: |
           set -euo pipefail
           # Wait for the Next.js server, then assert the explorer + a detail route
-          # (catch-all id) both return 200. Full Azure ids contain slashes, so the
-          # detail route is /assets/<subscriptions/.../vm-web-01>.
+          # (catch-all id) and the account-groups page all return 200. Full Azure ids
+          # contain slashes, so the detail route is /assets/<subscriptions/.../vm-web-01>.
           for i in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/assets || true)
             if [ "$code" = "200" ]; then echo "frontend ready after ~$((i*2))s"; break; fi
             sleep 2
           done
           detail="/assets/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-app/providers/microsoft.compute/virtualmachines/vm-web-01"
-          for path in "/assets" "$detail"; do
+          for path in "/assets" "$detail" "/account-groups"; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3001$path")
             test "$code" = "200" || { echo "::error::$path returned $code"; docker compose logs frontend; exit 1; }
             echo "route OK: $path → 200"

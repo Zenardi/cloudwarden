@@ -641,6 +641,102 @@ def remove_policy_from_collection(
 
 
 # --------------------------------------------------------------------------- #
+# Account groups (M5.1) — many-to-many grouping of subscriptions
+# --------------------------------------------------------------------------- #
+def _account_group_public(session: Session, rec: schema.AccountGroup) -> dict[str, Any]:
+    """Serialize a group with its member subscriptions (id/name/enabled)."""
+    members = (
+        session.query(schema.Subscription)
+        .join(
+            schema.AccountGroupMember,
+            schema.AccountGroupMember.subscription_id == schema.Subscription.subscription_id,
+        )
+        .filter(schema.AccountGroupMember.group_id == rec.id)
+        .order_by(schema.Subscription.display_name.asc())
+        .all()
+    )
+    return {
+        "id": rec.id,
+        "name": rec.name,
+        "description": rec.description,
+        "subscription_count": len(members),
+        "subscriptions": [
+            {
+                "subscription_id": s.subscription_id,
+                "display_name": s.display_name,
+                "enabled": s.enabled,
+            }
+            for s in members
+        ],
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+    }
+
+
+def create_account_group(
+    session: Session, *, name: str, description: str | None = None
+) -> dict[str, Any]:
+    """Persist a new account group. Raises on a duplicate ``name``."""
+    rec = schema.AccountGroup(name=name, description=description)
+    session.add(rec)
+    session.flush()
+    return _account_group_public(session, rec)
+
+
+def get_account_group(session: Session, group_id: int) -> dict[str, Any] | None:
+    rec = session.get(schema.AccountGroup, group_id)
+    return _account_group_public(session, rec) if rec is not None else None
+
+
+def list_account_groups(session: Session) -> list[dict[str, Any]]:
+    recs = session.query(schema.AccountGroup).order_by(schema.AccountGroup.name.asc()).all()
+    return [_account_group_public(session, r) for r in recs]
+
+
+def delete_account_group(session: Session, group_id: int) -> bool:
+    """Delete a group and its memberships — never the member subscriptions."""
+    rec = session.get(schema.AccountGroup, group_id)
+    if rec is None:
+        return False
+    session.execute(
+        delete(schema.AccountGroupMember).where(schema.AccountGroupMember.group_id == group_id)
+    )
+    session.delete(rec)
+    session.flush()
+    return True
+
+
+def add_subscription_to_group(
+    session: Session, group_id: int, subscription_id: str
+) -> dict[str, Any] | None:
+    """Add a subscription to a group (idempotent). ``None`` if either doesn't exist."""
+    group = session.get(schema.AccountGroup, group_id)
+    if group is None:
+        return None
+    if session.get(schema.Subscription, subscription_id) is None:
+        return None
+    if session.get(schema.AccountGroupMember, (group_id, subscription_id)) is None:
+        session.add(schema.AccountGroupMember(group_id=group_id, subscription_id=subscription_id))
+        session.flush()
+    return _account_group_public(session, group)
+
+
+def remove_subscription_from_group(
+    session: Session, group_id: int, subscription_id: str
+) -> dict[str, Any] | None:
+    """Remove a membership. ``None`` if the group or membership is absent."""
+    group = session.get(schema.AccountGroup, group_id)
+    if group is None:
+        return None
+    link = session.get(schema.AccountGroupMember, (group_id, subscription_id))
+    if link is None:
+        return None
+    session.delete(link)
+    session.flush()
+    return _account_group_public(session, group)
+
+
+# --------------------------------------------------------------------------- #
 # Inventory + cost
 # --------------------------------------------------------------------------- #
 def upsert_resources(session: Session, resources: list[m.ResourceRecord]) -> int:
