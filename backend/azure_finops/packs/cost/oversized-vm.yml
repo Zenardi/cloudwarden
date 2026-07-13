@@ -1,0 +1,11 @@
+policies:
+  - name: cost-oversized-vm
+    resource: azure.vm
+    description: >-
+      VMs on large (>= 8 vCPU) SKUs are the primary right-sizing targets. Matches
+      the common general-purpose / compute-optimized families at 8+ vCPUs.
+    filters:
+      - type: value
+        key: properties.hardwareProfile.vmSize
+        op: regex
+        value: '(?i)^Standard_[A-Z]+(8|16|32|48|64|96)[a-z]*(_v\d+)?$'

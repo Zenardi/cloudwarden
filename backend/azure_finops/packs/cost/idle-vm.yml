@@ -1,0 +1,12 @@
+policies:
+  - name: cost-idle-vm-deallocated
+    resource: azure.vm
+    description: >-
+      Deallocated or stopped VMs still incur disk and reserved public-IP cost.
+    filters:
+      - type: value
+        key: properties.instanceView.statuses[].code
+        op: intersect
+        value:
+          - PowerState/deallocated
+          - PowerState/stopped

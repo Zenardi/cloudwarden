@@ -205,6 +205,24 @@ def get_schema(resource_type: str | None = None, runner: CustodianRunner | None 
     return (runner if runner is not None else _get_default_runner()).schema(resource_type)
 
 
+def match_resources(spec: dict, resources: list[dict]) -> list[dict]:
+    """Apply a policy spec's filters to a list of resource dicts, offline (no Azure).
+
+    Runs c7n's filter machinery locally — the same evaluation a dry-run performs
+    against fetched data — so a policy can be checked against recorded/inventory
+    resources without a live run. Returns the subset that matches the first policy's
+    filters (``[]`` when the spec declares no policies).
+    """
+    _ensure_azure_registered()
+    from c7n.config import Config
+    from c7n.loader import PolicyLoader
+
+    policies = list(PolicyLoader(Config.empty()).load_data(spec, "memory://pack"))
+    if not policies:
+        return []
+    return policies[0].resource_manager.filter_resources(resources)
+
+
 def resolve_actions(spec: dict) -> list[dict]:
     """Surface a policy's remediation actions, each normalized to a ``{"type": ...}`` dict.
 

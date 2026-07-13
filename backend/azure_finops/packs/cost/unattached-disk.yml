@@ -1,0 +1,10 @@
+policies:
+  - name: cost-unattached-disk
+    resource: azure.disk
+    description: >-
+      Managed disks in the Unattached state bill for their full provisioned
+      capacity while delivering nothing.
+    filters:
+      - type: value
+        key: properties.diskState
+        value: Unattached

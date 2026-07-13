@@ -1,0 +1,10 @@
+policies:
+  - name: cost-untagged-cost-centre
+    resource: azure.vm
+    description: >-
+      VMs missing a CostCenter tag break chargeback/showback and hide spend
+      ownership.
+    filters:
+      - type: value
+        key: tags.CostCenter
+        value: absent

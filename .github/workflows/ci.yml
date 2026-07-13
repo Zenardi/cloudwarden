@@ -742,6 +742,57 @@ jobs:
           print("policy pack OK:", json.dumps({"collection_id": cid, "policies": entry["policy_count"]}))
           PY
 
+      - name: Smoke-test cost governance pack end to end (M10.2)
+        run: |
+          set -euo pipefail
+          # Through the deployed backend image + HTTP API, against the REAL c7n engine.
+          # The cost pack is a DIRECTORY pack (manifest + policy files): assert it is
+          # listed with its five policies, installs into a 'Cost Governance' collection,
+          # and its idle-VM / unattached-disk policies match the mock idle/orphan
+          # fixtures via the offline filter engine. Idempotent → safe on the shared CI DB.
+          docker compose exec -T backend python - <<'PY'
+          import json, urllib.request
+          from azure_finops.custodian import engine
+          from azure_finops.packs import registry
+          from azure_finops.azure._fixtures import load_fixture
+
+          def call(path, method="GET", body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(
+                  f"http://localhost:8000{path}", data=data, method=method,
+                  headers={"Content-Type": "application/json"})
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          entry = next(p for p in call("/api/packs") if p["name"] == "cost-governance")
+          assert entry["policy_count"] == 5, entry
+
+          report = call("/api/packs/cost-governance/install", method="POST")
+          assert report["ok"] is True, report
+          assert report["added"] + report["unchanged"] == 5, report
+
+          collection = call(f"/api/collections/{report['collection_id']}")
+          assert collection["name"] == "Cost Governance", collection
+          assert collection["policy_count"] == 5, collection
+
+          # idle-VM policy matches the deallocated/stopped fixture VMs, not a running one
+          pack = registry.get_pack("cost-governance")
+          idle_spec = {"policies": [p for p in pack["policies"]
+                                    if p["name"] == "cost-idle-vm-deallocated"]}
+          running = {"name": "vm-live",
+                     "properties": {"instanceView": {"statuses": [{"code": "PowerState/running"}]}}}
+          vms = load_fixture("custodian_policy_result")["resources"] + [running]
+          matched = {r["name"] for r in engine.match_resources(idle_spec, vms)}
+          assert "vm-idle-03" in matched and "vm-live" not in matched, matched
+
+          disk_spec = {"policies": [p for p in pack["policies"]
+                                    if p["name"] == "cost-unattached-disk"]}
+          disks = [{"name": "orphan", "properties": {"diskState": "Unattached"}},
+                   {"name": "bound", "properties": {"diskState": "Attached"}}]
+          assert {r["name"] for r in engine.match_resources(disk_spec, disks)} == {"orphan"}
+          print("cost pack OK:", json.dumps({"collection": collection["name"], "policies": 5}))
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail

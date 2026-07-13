@@ -1,0 +1,10 @@
+policies:
+  - name: cost-idle-public-ip
+    resource: azure.publicip
+    description: >-
+      Static public IPs not associated with any IP configuration bill hourly
+      while idle.
+    filters:
+      - type: value
+        key: properties.ipConfiguration
+        value: absent

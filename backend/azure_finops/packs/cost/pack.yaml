@@ -1,0 +1,30 @@
+name: cost-governance
+version: 1.0.0
+title: Cost Governance
+collection: Cost Governance
+description: >-
+  The app's FinOps heuristics expressed as Cloud Custodian policies — surface
+  deallocated/stopped VMs, unattached managed disks, unassociated public IPs,
+  oversized VMs, and resources missing a CostCenter tag as governance
+  violations. Installs into the 'Cost Governance' collection.
+policies:
+  - name: cost-idle-vm-deallocated
+    description: >-
+      Deallocated or stopped VMs still incur disk and reserved public-IP cost —
+      candidates for deletion or a shutdown schedule.
+  - name: cost-unattached-disk
+    description: >-
+      Managed disks in the Unattached state bill for their full provisioned
+      capacity while delivering nothing — candidates for snapshot + delete.
+  - name: cost-idle-public-ip
+    description: >-
+      Static public IPs not associated with any IP configuration bill hourly
+      while idle — candidates for release.
+  - name: cost-oversized-vm
+    description: >-
+      VMs on large (>= 8 vCPU) SKUs are the primary right-sizing targets when
+      utilization is low.
+  - name: cost-untagged-cost-centre
+    description: >-
+      VMs missing a CostCenter tag break chargeback/showback and hide spend
+      ownership.

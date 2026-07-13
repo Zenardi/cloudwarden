@@ -68,7 +68,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M9.2 | Policy execution health dashboard — success/failure rate, avg duration & last-run per policy/binding (API + Grafana) | ✅ done |
 | M9.3 | Resource compliance explorer (Next.js) — drill policy → matched resources → asset detail | ✅ done |
 | M9.4 | Governance reporting & export — streaming, paginated CSV/JSON + optional scheduled report | ✅ done |
-| M10.1 | Policy packs — installable, versioned bundles of curated policies that materialize into a collection | 🚧 in review |
+| M10.1 | Policy packs — installable, versioned bundles of curated policies that materialize into a collection | ✅ done |
+| M10.2 | Cost governance pack — FinOps heuristics as c7n policies (idle VMs, orphan disks/IPs, oversized VMs, untagged) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -288,18 +289,32 @@ scheduler writes a timestamped CSV to `APP_DATA_DIR` every
 flag).
 
 **Policy packs (M10.1).** Curated Cloud Custodian policies ship as installable,
-versioned **packs** — YAML under `azure_finops/packs/defs/` (à la Stacklet's
-out-of-the-box packs). `GET /api/packs` lists what's available (name, version,
-policy count); `POST /api/packs/{name}/install` **validates every policy through the
-engine, then materializes** the (upsert-by-name, `source='pack'`) policies plus a
-collection named after the pack, recording the installed version in `installed_packs`.
-Install is **atomic on validation** — a pack with any invalid policy is reported
-(`422`) and writes nothing — and **idempotent**: re-installing the same version reuses
-the collection and creates no duplicates. `POST /api/packs/{name}/enabled` toggles a
-pack's **binding eligibility** by cascading its `enabled` flag to the member policies
-(a disabled pack stops resolving into binding runs). Two packs ship today —
-`cost-hygiene` (unattached disks, unassociated public IPs) and `tag-compliance`
-(Environment / CostCenter tag baselines).
+versioned **packs** — YAML under `azure_finops/packs/` (à la Stacklet's out-of-the-box
+packs), either a single `<name>.yaml` file or a `<slug>/` directory with a `pack.yaml`
+manifest. `GET /api/packs` lists what's available (name, version, policy count);
+`POST /api/packs/{name}/install` **validates every policy through the engine, then
+materializes** the (upsert-by-name, `source='pack'`) policies plus a collection
+(named by the pack's optional `collection`, else its `name`), recording the installed
+version in `installed_packs`. Install is **atomic on validation** — a pack with any
+invalid policy is reported (`422`) and writes nothing — and **idempotent**:
+re-installing the same version reuses the collection and creates no duplicates.
+`POST /api/packs/{name}/enabled` toggles a pack's **binding eligibility** by cascading
+its `enabled` flag to the member policies (a disabled pack stops resolving into binding
+runs). Single-file packs today: `cost-hygiene` (unattached disks, unassociated public
+IPs) and `tag-compliance` (Environment / CostCenter tag baselines).
+
+**Cost governance pack (M10.2).** The FinOps heuristics the app already computes,
+now expressed as c7n policies — a **directory pack** at `azure_finops/packs/cost/`
+(`pack.yaml` manifest + one `*.yml` per policy) that installs into a **Cost Governance**
+collection. Five policies: deallocated/stopped VMs (`cost-idle-vm-deallocated`),
+unattached disks (`cost-unattached-disk`), unassociated public IPs
+(`cost-idle-public-ip`), oversized (≥ 8 vCPU) VMs (`cost-oversized-vm`), and VMs
+missing a CostCenter tag (`cost-untagged-cost-centre`). Every policy is schema-valid
+via the engine, and `custodian.engine.match_resources(spec, resources)` runs c7n's
+filter machinery **offline** so a policy can be dry-run against recorded/inventory
+data — e.g. the idle-VM policy matches the deallocated/stopped fixture VMs but not a
+running one, and the unattached-disk policy matches an `Unattached` disk but not an
+attached one.
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

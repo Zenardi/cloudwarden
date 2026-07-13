@@ -1,14 +1,23 @@
-"""Policy-pack registry — discover bundled packs and install them (M10.1).
+"""Policy-pack registry — discover bundled packs and install them (M10.1, M10.2).
 
 A *policy pack* is a curated, versioned bundle of Cloud Custodian policies shipped
-as YAML under ``packs/defs/``. Each file declares ``name`` / ``version`` /
-``description`` and a ``policies`` list (the same shape as a single ``policies:``
-entry). The registry:
+as YAML under this package. Two layouts are supported:
+
+* **single-file** (M10.1) — one ``<name>.yaml`` under ``packs/`` declaring ``name`` /
+  ``version`` / ``description`` and an inline ``policies`` list (each entry the shape
+  of one ``policies:`` item);
+* **directory** (M10.2) — a ``packs/<slug>/`` folder with a ``pack.yaml`` manifest
+  (metadata + a ``policies`` enumeration of ``{name, description}``) plus one or more
+  sibling ``*.yml`` files holding the actual c7n specs. The registry assembles the
+  manifest metadata with the specs loaded from the files.
+
+The registry:
 
 * :func:`list_packs` / :func:`get_pack` — discover the bundled YAML (offline, no DB);
 * :func:`install_pack` — validate every policy through the engine, then materialize
-  the (upserted) policies plus a collection named after the pack, recording the
-  installed version in ``installed_packs``.
+  the (upserted) policies plus a collection (named by the pack's optional
+  ``collection``, else its ``name``), recording the installed version in
+  ``installed_packs``.
 
 Install is **atomic on validation**: every policy is validated up front, so a pack
 with any invalid policy reports the error and writes nothing. Re-installing the
@@ -31,28 +40,61 @@ from ..storage.db import session_scope
 
 logger = logging.getLogger("azure_finops.packs.registry")
 
-# Bundled pack definitions live alongside this module in ``defs/``.
-PACKS_DIR = Path(__file__).resolve().parent / "defs"
+# Bundled packs live alongside this module (single-file YAML or a subdir + manifest).
+PACKS_DIR = Path(__file__).resolve().parent
 
 _PACK_EXTS = {".yml", ".yaml"}
+_MANIFEST = "pack.yaml"
 
 
-def _pack_files(packs_dir: Path) -> list[Path]:
-    if not packs_dir.is_dir():
-        return []
-    return sorted(p for p in packs_dir.iterdir() if p.is_file() and p.suffix.lower() in _PACK_EXTS)
+def _parse(path: Path) -> Any:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def _load_dir_pack(subdir: Path) -> dict[str, Any] | None:
+    """Assemble a directory pack: ``pack.yaml`` manifest + sibling policy files.
+
+    Returns the manifest metadata with ``policies`` set to the c7n specs loaded from
+    every sibling ``*.yml`` (except the manifest) and ``manifest`` set to the
+    enumeration declared in ``pack.yaml``. ``None`` if the manifest lacks a name.
+    """
+    manifest = _parse(subdir / _MANIFEST)
+    if not isinstance(manifest, dict) or not manifest.get("name"):
+        return None
+    specs: list[dict[str, Any]] = []
+    for path in sorted(subdir.iterdir()):
+        if path.name == _MANIFEST or path.suffix.lower() not in _PACK_EXTS:
+            continue
+        data = _parse(path)
+        if isinstance(data, dict):
+            specs.extend(data.get("policies") or [])
+    pack = dict(manifest)
+    pack["manifest"] = manifest.get("policies") or []
+    pack["policies"] = specs
+    return pack
 
 
 def _load_packs(packs_dir: Path | None) -> dict[str, dict[str, Any]]:
-    """Parse every pack YAML in ``packs_dir`` into a ``{name: pack}`` mapping.
+    """Parse every pack in ``packs_dir`` into a ``{name: pack}`` mapping.
 
-    Files that don't parse to a mapping with a ``name`` are ignored (a stray,
-    non-pack YAML in the directory is not an error).
+    Discovers single-file packs (``*.yaml`` directly in the directory) and directory
+    packs (subfolders containing a ``pack.yaml`` manifest). Entries that don't parse
+    to a mapping with a ``name`` are ignored (a stray, non-pack YAML is not an error).
     """
     directory = packs_dir if packs_dir is not None else PACKS_DIR
+    if not directory.is_dir():
+        return {}
     packs: dict[str, dict[str, Any]] = {}
-    for path in _pack_files(directory):
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    for path in sorted(directory.iterdir()):
+        if path.is_dir():
+            if (path / _MANIFEST).is_file():
+                pack = _load_dir_pack(path)
+                if pack is not None:
+                    packs[pack["name"]] = pack
+            continue
+        if path.suffix.lower() not in _PACK_EXTS:
+            continue
+        data = _parse(path)
         if not isinstance(data, dict) or not data.get("name"):
             continue
         packs[data["name"]] = data
@@ -127,7 +169,7 @@ def install_pack(
 
     with session_scope() as session:
         collection = repo.get_or_create_collection(
-            session, name=name, description=pack.get("description")
+            session, name=pack.get("collection") or name, description=pack.get("description")
         )
         collection_id = collection["id"]
         for policy in policies:

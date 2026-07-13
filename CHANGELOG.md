@@ -6,6 +6,19 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Cost governance pack — FinOps heuristics as Cloud Custodian policies (M10.2).**
+  A curated **directory pack** at `backend/azure_finops/packs/cost/` (`pack.yaml`
+  manifest + one `*.yml` per policy) installs into a **Cost Governance** collection.
+  Five policies: `cost-idle-vm-deallocated` (deallocated/stopped VMs),
+  `cost-unattached-disk` (Unattached managed disks), `cost-idle-public-ip`
+  (unassociated static public IPs), `cost-oversized-vm` (VMs on ≥ 8 vCPU SKUs), and
+  `cost-untagged-cost-centre` (VMs missing a CostCenter tag). The pack registry now
+  supports **directory packs** (manifest + policy files) alongside M10.1's single-file
+  packs, and honors an optional `collection` name. New engine helper
+  `custodian.engine.match_resources(spec, resources)` runs c7n's filter machinery
+  **offline** (no Azure) so a policy can be dry-run against recorded/inventory data;
+  every cost policy is schema-valid via the engine, and the idle-VM / unattached-disk
+  policies match the mock idle/orphan fixtures.
 - **Policy packs — installable, versioned bundles of curated policies (M10.1).**
   Curated Cloud Custodian policies now ship as **packs** (YAML under
   `backend/azure_finops/packs/defs/`): `cost-hygiene` (unattached disks,
