@@ -51,6 +51,19 @@ class Settings(BaseSettings):
     ai_max_candidates: int = 40
     ai_max_tokens: int = 8000
 
+    # --- Notification transports (M8.2) ---
+    # Slack incoming-webhook URL used when a channel does not carry its own target.
+    # Empty = no default; a Slack channel must then supply its own webhook.
+    slack_webhook_url: str = ""
+    # SMTP relay for the email transport. Host empty = email disabled unless a client
+    # is injected. `smtp_from` is the default sender when a channel does not override it.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_from: str = "finops@localhost"
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+
     # --- Database ---
     database_url: str = "postgresql+psycopg://finops:finops@localhost:5432/finops"
 

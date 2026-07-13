@@ -328,6 +328,59 @@ jobs:
           print(f"notify e2e OK: dispatched to {sent['target']}; subject={sent['subject']!r}; "
                 f"sandbox blocked escape; missing var rendered empty")
           PY
+
+      - name: Smoke-test Slack & email transports (M8.2)
+        run: |
+          set -euo pipefail
+          # Drive the real SlackTransport / EmailTransport inside the deployed backend image
+          # with INJECTED clients (no network, no SMTP). Assert Slack POSTs the rendered
+          # payload to the webhook, email builds a MIME message with the right to/subject/body,
+          # a failing client is captured as {ok: false, error}, and missing config errors.
+          docker compose exec -T backend python - <<'PY'
+          from azure_finops.notify.transports import SlackTransport, EmailTransport
+
+          class _FakeResp:
+              status_code = 200
+          class _FakeHTTP:
+              def __init__(self): self.calls = []
+              def post(self, url, json): self.calls.append((url, json)); return _FakeResp()
+          class _BoomHTTP:
+              def post(self, url, json): raise RuntimeError("connection refused")
+          class _FakeSMTP:
+              def __init__(self): self.sent = []
+              def send_message(self, msg): self.sent.append(msg)
+
+          # Slack: POSTs the rendered payload to the webhook target.
+          http = _FakeHTTP()
+          res = SlackTransport(client=http).send(
+              target="https://hooks.slack/e2e", subject="Idle VMs", body="3 idle", config={"channel": "#ops"})
+          assert res["ok"] is True, res
+          url, payload = http.calls[0]
+          assert url == "https://hooks.slack/e2e", url
+          assert payload == {"text": "*Idle VMs*\n3 idle", "channel": "#ops"}, payload
+
+          # Email: builds a MIME message with the right to/subject/body/from.
+          smtp = _FakeSMTP()
+          res = EmailTransport(client=smtp).send(
+              target="ops@example.com", subject="Disk full", body="Server X full.", config={"from": "finops@corp"})
+          assert res["ok"] is True and res["target"] == "ops@example.com", res
+          msg = smtp.sent[0]
+          assert msg["To"] == "ops@example.com" and msg["Subject"] == "Disk full", dict(msg)
+          assert msg["From"] == "finops@corp" and msg.get_content().strip() == "Server X full.", msg.get_content()
+
+          # Failure is captured, never raised.
+          fail = SlackTransport(client=_BoomHTTP()).send(target="https://x", subject="s", body="b", config={})
+          assert fail["ok"] is False and "connection refused" in fail["error"], fail
+
+          # Missing config (no webhook / no recipient) is a validation error.
+          miss_slack = SlackTransport(client=_FakeHTTP()).send(target="", subject="s", body="b", config={})
+          miss_email = EmailTransport(client=_FakeSMTP()).send(target="", subject="s", body="b", config={})
+          assert miss_slack["ok"] is False and "webhook" in miss_slack["error"].lower(), miss_slack
+          assert miss_email["ok"] is False and "recipient" in miss_email["error"].lower(), miss_email
+
+          print("transports e2e OK: slack POSTed payload; email built MIME; failure captured; missing-config errored")
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail

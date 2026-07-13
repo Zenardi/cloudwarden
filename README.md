@@ -60,7 +60,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M7.2 | Approval workflow — queue policy actions pending; approve/reject before enforce | ✅ done |
 | M7.3 | Guardrails for policy actions — RG allow-list, exclude tag, action allow-list, dry-run default | ✅ done |
 | M7.4 | Unified remediation audit & UI — policy actions in `remediation_actions`, source column + filter | ✅ done |
-| M8.1 | Notification service & templates — sandboxed Jinja2 render + pluggable transport | 🚧 in review |
+| M8.1 | Notification service & templates — sandboxed Jinja2 render + pluggable transport | ✅ done |
+| M8.2 | Slack & email transports — webhook / SMTP delivery via injected clients, failures captured | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -457,6 +458,19 @@ channel, renders subject/body, and hands the rendered payload to the **injected*
 whose HTTP client is itself injectable, so nothing touches the network in tests.
 `build_violation_context(policy_name, resource_ids, …)` assembles the standard context
 (policy name, matched resource ids, a `count`).
+
+**Slack & email transports (M8.2).** Two concrete transports implement that same
+`send(*, target, subject, body, config)` seam, so both are drop-in for `notify()`.
+`notify/transports/SlackTransport` POSTs the rendered message as a Slack payload
+(`{"text": "*subject*\nbody", …}`, with optional `channel`/`username` overrides from
+channel config) to the webhook resolved from the channel target → `config["webhook_url"]`
+→ `SLACK_WEBHOOK_URL`. `EmailTransport` builds a MIME message and sends it through an SMTP
+client with the right to/subject/body/from (recipient from the channel target → `config["to"]`;
+sender from `config["from"]` → `SMTP_FROM`). Both take an **injectable** client (an HTTP
+client for Slack, an SMTP client for email), so no test touches the network, and both
+**capture** delivery failures — a network error, a non-2xx webhook response, an SMTP outage,
+or missing config (no webhook / no recipient) — as `{"ok": false, "error": …}` rather than
+raising: a broken notification must never break the policy run that triggered it.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 
