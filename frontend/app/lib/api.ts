@@ -345,3 +345,94 @@ export const getAssetRelationships = (resourceId: string): Promise<AssetRelation
 /** An asset's change-history timeline, newest-first (M4.4). */
 export const getAssetHistory = (resourceId: string): Promise<AssetEvent[]> =>
   apiGet<AssetEvent[]>(`/api/assets${resourceId}/history`);
+
+// --------------------------------------------------------------------------- //
+// Notifications: channels, templates, per-binding wiring (M8.4)
+// --------------------------------------------------------------------------- //
+
+/** The transport kinds a channel may declare (mirrors the backend registry). */
+export const TRANSPORTS = ["webhook", "slack", "email", "teams", "jira", "servicenow"] as const;
+export type TransportKind = (typeof TRANSPORTS)[number];
+
+export interface NotificationChannel {
+  id: number;
+  name: string;
+  transport: string;
+  target: string;
+  config?: Record<string, any> | null;
+  enabled: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface NotificationTemplate {
+  id: number;
+  name: string;
+  subject?: string | null;
+  body: string;
+  format: string;
+  description?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BindingNotification {
+  id: number;
+  binding_id: number;
+  channel_id: number;
+  channel_name: string;
+  channel_transport: string;
+  template_id: number;
+  template_name: string;
+  created_at?: string | null;
+}
+
+export const listNotificationChannels = (): Promise<NotificationChannel[]> =>
+  apiGet<NotificationChannel[]>("/api/notification-channels");
+
+export const createNotificationChannel = (
+  body: Pick<NotificationChannel, "name" | "transport" | "target"> &
+    Partial<Pick<NotificationChannel, "config" | "enabled">>,
+): Promise<NotificationChannel> =>
+  apiPost<NotificationChannel>("/api/notification-channels", body);
+
+export const updateNotificationChannel = (
+  id: number,
+  changes: Partial<NotificationChannel>,
+): Promise<NotificationChannel> =>
+  apiPut<NotificationChannel>(`/api/notification-channels/${id}`, changes);
+
+export const deleteNotificationChannel = (id: number): Promise<unknown> =>
+  apiDelete(`/api/notification-channels/${id}`);
+
+export const listNotificationTemplates = (): Promise<NotificationTemplate[]> =>
+  apiGet<NotificationTemplate[]>("/api/notification-templates");
+
+export const createNotificationTemplate = (
+  body: Pick<NotificationTemplate, "name" | "body"> &
+    Partial<Pick<NotificationTemplate, "subject" | "format" | "description">>,
+): Promise<NotificationTemplate> =>
+  apiPost<NotificationTemplate>("/api/notification-templates", body);
+
+export const updateNotificationTemplate = (
+  id: number,
+  changes: Partial<NotificationTemplate>,
+): Promise<NotificationTemplate> =>
+  apiPut<NotificationTemplate>(`/api/notification-templates/${id}`, changes);
+
+export const deleteNotificationTemplate = (id: number): Promise<unknown> =>
+  apiDelete(`/api/notification-templates/${id}`);
+
+export const listBindingNotifications = (bindingId: number): Promise<BindingNotification[]> =>
+  apiGet<BindingNotification[]>(`/api/bindings/${bindingId}/notifications`);
+
+export const attachBindingNotification = (
+  bindingId: number,
+  body: { channel_id: number; template_id: number },
+): Promise<BindingNotification> =>
+  apiPost<BindingNotification>(`/api/bindings/${bindingId}/notifications`, body);
+
+export const detachBindingNotification = (
+  bindingId: number,
+  notificationId: number,
+): Promise<unknown> => apiDelete(`/api/bindings/${bindingId}/notifications/${notificationId}`);

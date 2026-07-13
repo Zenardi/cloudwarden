@@ -435,6 +435,72 @@ jobs:
           print("enterprise transports e2e OK: teams card; jira issue OPS-7; servicenow INC42; auth error captured")
           PY
 
+      - name: Smoke-test per-binding notify config & dispatch (M8.4)
+        run: |
+          set -euo pipefail
+          # Through the deployed backend image: create a channel + template, attach them to
+          # a binding, then dispatch a violation through an INJECTED transport (no network).
+          # Assert a binding WITH a channel dispatches the rendered message and a binding
+          # WITHOUT one dispatches nothing. Also exercise the channel/template CRUD + the
+          # transport-validation (bad kind → rejected). Fully mock-safe; cleans up after.
+          docker compose exec -T backend python - <<'PY'
+          from azure_finops.notify import dispatch
+          from azure_finops.storage import repository as repo
+          from azure_finops.storage.db import session_scope
+
+          class _Spy:
+              def __init__(self): self.sent = []
+              def send(self, *, target, subject, body, config):
+                  self.sent.append({"target": target, "subject": subject, "body": body})
+                  return {"ok": True}
+
+          # registry maps a channel kind → the right transport class (and validates input).
+          assert "slack" in dispatch.KNOWN_TRANSPORTS and "servicenow" in dispatch.KNOWN_TRANSPORTS
+          from azure_finops.notify.transports import SlackTransport
+          assert isinstance(dispatch.build_transport("slack"), SlackTransport)
+
+          with session_scope() as s:
+              cid = repo.create_collection(s, name="e2e-notify-coll")["id"]
+              gid = repo.create_account_group(s, name="e2e-notify-grp")["id"]
+              bid = repo.create_binding(s, collection_id=cid, account_group_id=gid)["id"]
+              ch = repo.create_notification_channel(
+                  s, name="e2e-notify-ch", transport="webhook", target="https://hooks.example/e2e")["id"]
+              tid = repo.create_notification_template(
+                  s, name="e2e-notify-tpl",
+                  subject="[{{ policy_name }}] {{ count }} violation(s)",
+                  body="{{ resource_id }} flagged ({{ count }} total).")["id"]
+              repo.create_binding_notification(s, binding_id=bid, channel_id=ch, template_id=tid)
+
+          spy = _Spy()
+          with session_scope() as s:
+              res = dispatch.dispatch_for_binding(
+                  s, binding_id=bid, policy_name="idle-vms", resource_ids=["/vm/1"],
+                  transport_factory=lambda name: spy)
+          assert len(res) == 1 and res[0]["dispatched"] is True, res
+          assert len(spy.sent) == 1 and "idle-vms" in spy.sent[0]["subject"], spy.sent
+          assert "/vm/1" in spy.sent[0]["body"], spy.sent
+
+          # A binding without a channel dispatches nothing.
+          with session_scope() as s:
+              gid2 = repo.create_account_group(s, name="e2e-notify-grp2")["id"]
+              bid2 = repo.create_binding(s, collection_id=cid, account_group_id=gid2)["id"]
+          spy2 = _Spy()
+          with session_scope() as s:
+              res2 = dispatch.dispatch_for_binding(
+                  s, binding_id=bid2, policy_name="p", resource_ids=["/x"],
+                  transport_factory=lambda name: spy2)
+          assert res2 == [] and spy2.sent == [], (res2, spy2.sent)
+
+          # Clean up the seeded rows.
+          with session_scope() as s:
+              repo.delete_notification_channel(s, ch)
+              repo.delete_notification_template(s, tid)
+              repo.delete_binding(s, bid)
+              repo.delete_binding(s, bid2)
+          print(f"notify-config e2e OK: binding {bid} dispatched via injected transport; "
+                f"binding {bid2} (no channel) dispatched nothing")
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail
@@ -447,7 +513,7 @@ jobs:
             sleep 2
           done
           detail="/assets/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-app/providers/microsoft.compute/virtualmachines/vm-web-01"
-          for path in "/assets" "$detail" "/account-groups" "/bindings" "/events" "/remediation"; do
+          for path in "/assets" "$detail" "/account-groups" "/bindings" "/events" "/remediation" "/notifications"; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3001$path")
             test "$code" = "200" || { echo "::error::$path returned $code"; docker compose logs frontend; exit 1; }
             echo "route OK: $path → 200"
