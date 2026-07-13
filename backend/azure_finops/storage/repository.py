@@ -67,6 +67,7 @@ def _policy_execution_public(rec: schema.PolicyExecution) -> dict[str, Any]:
         "policy_id": rec.policy_id,
         "subscription_id": rec.subscription_id,
         "binding_id": rec.binding_id,
+        "mode": rec.mode,
         "status": rec.status,
         "started_at": rec.started_at.isoformat() if rec.started_at else None,
         "finished_at": rec.finished_at.isoformat() if rec.finished_at else None,
@@ -97,11 +98,13 @@ def create_policy_execution(
     subscription_id: str | None,
     status: str = "running",
     binding_id: int | None = None,
+    mode: str = "pull",
 ) -> None:
     """Open a policy execution (defaults to ``running``), mirroring ``create_run``.
 
     ``binding_id`` tags an execution triggered by a binding run (M5.3); ``None`` for
-    plain pull-mode runs.
+    plain pull-mode runs. ``mode`` is ``pull`` (scheduled/manual) or ``event`` (a
+    reactive run triggered by an Event Grid delivery, M6.2).
     """
     session.add(
         schema.PolicyExecution(
@@ -110,6 +113,7 @@ def create_policy_execution(
             subscription_id=subscription_id,
             status=status,
             binding_id=binding_id,
+            mode=mode,
         )
     )
     session.flush()

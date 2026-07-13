@@ -113,6 +113,33 @@ jobs:
               extra = " (governance/policy-health absent on this ref)"
           print(f"e2e OK: {len(execs)} execution(s), {len(matches)} match(es){extra}")
           PY
+      - name: Smoke-test event-mode enforcement end to end (M6.2)
+        run: |
+          set -euo pipefail
+          # Seed an EVENT-MODE VM policy (declares a mode block), then deliver an
+          # Event Grid ResourceWriteSuccess for a VM and assert it reactively fired.
+          curl -sf -X POST http://localhost:8000/api/policies \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"e2e-event-vms","resource_type":"azure.vm","spec":{"policies":[{"name":"e2e-event-vms","resource":"azure.vm","mode":{"type":"azure-event-grid","events":["Microsoft.Compute/virtualMachines/write"]},"actions":["stop"]}]}}' \
+            -o /dev/null
+          sub="00000000-0000-0000-0000-000000000000"
+          uri="/subscriptions/$sub/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01"
+          curl -sf -X POST http://localhost:8000/api/events/azure \
+            -H 'Content-Type: application/json' \
+            -d "[{\"id\":\"e2e-evt-1\",\"eventType\":\"Microsoft.Resources.ResourceWriteSuccess\",\"subject\":\"$uri\",\"eventTime\":\"2026-07-13T10:00:00.0000000Z\",\"data\":{\"operationName\":\"Microsoft.Compute/virtualMachines/write\",\"resourceUri\":\"$uri\",\"subscriptionId\":\"$sub\",\"status\":\"Succeeded\",\"claims\":{\"name\":\"e2e@contoso.com\"}}}]" \
+            -o /dev/null
+          python3 - <<'PY'
+          import json, urllib.request
+          def get(path):
+              return json.load(urllib.request.urlopen(f"http://localhost:8000{path}"))
+          # The delivery is logged...
+          events = get("/api/events")
+          assert any(e["event_id"] == "e2e-evt-1" for e in events), events
+          # ...and it reactively created a mode='event' execution that succeeded.
+          ev = [e for e in get("/api/policy-executions") if e.get("mode") == "event"]
+          assert ev and ev[0]["status"] == "succeeded", ev
+          print(f"event-mode e2e OK: {len(ev)} reactive execution(s), status={ev[0]['status']}")
+          PY
       - name: Assert UI routes render (asset explorer M4.5 + account groups M5.1 + bindings M5.4, mock mode)
         run: |
           set -euo pipefail
