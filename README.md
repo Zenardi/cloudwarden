@@ -66,7 +66,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M8.4 | Per-binding notify config & UI — attach channel+template to a binding; fire on violation; `/notifications` page | ✅ done |
 | M9.1 | Compliance posture dashboard — compliant/non-compliant counts by policy/subscription/collection (API + Grafana) | ✅ done |
 | M9.2 | Policy execution health dashboard — success/failure rate, avg duration & last-run per policy/binding (API + Grafana) | ✅ done |
-| M9.3 | Resource compliance explorer (Next.js) — drill policy → matched resources → asset detail | 🚧 in review |
+| M9.3 | Resource compliance explorer (Next.js) — drill policy → matched resources → asset detail | ✅ done |
+| M9.4 | Governance reporting & export — streaming, paginated CSV/JSON + optional scheduled report | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -273,6 +274,17 @@ its size matching the posture `violations`) — and each matched resource links
 through to its **M4.5 AssetDB detail** (`/assets/<resource_id>`). Empty (compliant)
 and error states are handled inline. `404` for an unknown policy, `[]` for a policy
 with no matches — never an error.
+
+**Reporting & export (M9.4).** Stakeholders get periodic evidence via
+`GET /api/governance/export?format=csv|json` — one row per policy execution (policy,
+subscription, status, matches, timing), streamed from a **paginated cursor**
+(`repo.iter_governance_export`, `LIMIT`/`OFFSET` in batches) so an arbitrarily large
+history never loads into memory. CSV carries a header row; JSON is an array of the
+same records; any other `format` → `400`. The `reporting` module's serializer also
+backs an **optional scheduled report**: with `GOVERNANCE_REPORT_ENABLED=true` the
+scheduler writes a timestamped CSV to `APP_DATA_DIR` every
+`GOVERNANCE_REPORT_INTERVAL_SECONDS` (off by default — the on-demand export needs no
+flag).
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

@@ -644,6 +644,57 @@ jobs:
           print("compliance drill-down OK:", json.dumps(sorted(ids)))
           PY
 
+      - name: Smoke-test governance reporting & export (M9.4)
+        run: |
+          set -euo pipefail
+          # Through the deployed backend image + HTTP API. Seed a UNIQUELY-NAMED policy
+          # (export-p) with executions, then assert the CSV export has a header + our
+          # rows, the JSON export is an array of the same records, an invalid format is
+          # a 400, and the paginated cursor returns every row (batch_size < row count).
+          docker compose exec -T backend python - <<'PY'
+          import csv, io, json, urllib.error, urllib.request
+          from azure_finops.storage import repository as repo
+          from azure_finops.storage.db import session_scope
+
+          with session_scope() as s:
+              pid = repo.create_policy(
+                  s, name="export-p", resource_type="azure.vm",
+                  spec={"policies": [{"name": "export-p", "resource": "azure.vm"}]})["id"]
+              for i in range(3):
+                  repo.create_policy_execution(s, execution_id=f"export-e{i}", policy_id=pid,
+                                               subscription_id="export-sub")
+                  repo.finish_policy_execution(s, f"export-e{i}", status="succeeded", resources_matched=i)
+
+          base = "http://localhost:8000/api/governance/export"
+          with urllib.request.urlopen(f"{base}?format=csv") as r:
+              assert r.headers["content-type"].startswith("text/csv"), r.headers["content-type"]
+              csv_text = r.read().decode()
+          csv_rows = list(csv.DictReader(io.StringIO(csv_text)))
+          assert csv_text.splitlines()[0].startswith("execution_id"), csv_text.splitlines()[0]
+          ours_csv = {row["execution_id"] for row in csv_rows if row["execution_id"].startswith("export-e")}
+          assert ours_csv == {"export-e0", "export-e1", "export-e2"}, ours_csv
+
+          with urllib.request.urlopen(f"{base}?format=json") as r:
+              json_rows = json.loads(r.read().decode())
+          assert isinstance(json_rows, list), type(json_rows)
+          ours_json = {row["execution_id"] for row in json_rows if row["execution_id"].startswith("export-e")}
+          assert ours_json == ours_csv, (ours_json, ours_csv)
+
+          code = 0
+          try:
+              urllib.request.urlopen(f"{base}?format=xml")
+          except urllib.error.HTTPError as e:
+              code = e.code
+          assert code == 400, f"expected 400 for invalid format, got {code}"
+
+          # Paginated cursor returns every row even when batch_size < row count.
+          with session_scope() as s:
+              paged = [row["execution_id"] for row in repo.iter_governance_export(s, batch_size=2)
+                       if row["execution_id"].startswith("export-e")]
+          assert set(paged) == ours_csv, paged
+          print("governance export OK:", json.dumps(sorted(ours_csv)))
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail

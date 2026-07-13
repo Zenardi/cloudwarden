@@ -13,9 +13,11 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
+from .. import reporting
 from ..config import get_settings
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
@@ -752,6 +754,28 @@ def policy_matched_resources(policy_id: int) -> list[dict[str, Any]]:
         if repo.get_policy(session, policy_id) is None:
             raise HTTPException(status_code=404, detail="policy not found")
         return repo.policy_matched_resources(session, policy_id)
+
+
+@app.get("/api/governance/export")
+def governance_export(fmt: str = Query("csv", alias="format")) -> StreamingResponse:
+    """Stream the governance evidence (per-execution: policy, subscription, status,
+    matches, timing) as CSV or JSON (M9.4).
+
+    ``?format=csv`` returns a header row + one line per execution; ``?format=json``
+    returns a JSON array of the same records. Any other ``format`` → ``400``. The
+    response streams from a paginated cursor, so an arbitrarily large history is
+    never loaded into memory at once. The session lives inside the streaming
+    generator so it outlives the (lazy) response body.
+    """
+    if fmt not in reporting.EXPORT_FORMATS:
+        raise HTTPException(status_code=400, detail=f"unsupported format: {fmt!r}")
+    media_type = "text/csv" if fmt == "csv" else "application/json"
+    headers = {"Content-Disposition": f'attachment; filename="governance-export.{fmt}"'}
+    return StreamingResponse(
+        reporting.stream_export_owning_session(fmt),
+        media_type=media_type,
+        headers=headers,
+    )
 
 
 @app.post("/api/assets/query")

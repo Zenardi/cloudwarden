@@ -7,6 +7,7 @@ statement), so re-running a collection never creates duplicate rows.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -1684,6 +1685,56 @@ def execution_health(session: Session) -> dict[str, Any]:
         "ORDER BY last_execution_at DESC NULLS LAST, binding_id ASC",
     )
     return {"by_policy": by_policy, "by_binding": by_binding}
+
+
+# Column order for the governance export (M9.4) — the CSV header and JSON keys.
+GOVERNANCE_EXPORT_COLUMNS = (
+    "execution_id",
+    "policy_id",
+    "policy_name",
+    "subscription_id",
+    "binding_id",
+    "status",
+    "resources_matched",
+    "started_at",
+    "finished_at",
+    "duration_seconds",
+)
+
+_EXPORT_SQL = """
+SELECT
+    e.execution_id                                        AS execution_id,
+    e.policy_id                                           AS policy_id,
+    p.name                                                AS policy_name,
+    e.subscription_id                                     AS subscription_id,
+    e.binding_id                                          AS binding_id,
+    e.status                                              AS status,
+    e.resources_matched                                   AS resources_matched,
+    e.started_at                                          AS started_at,
+    e.finished_at                                         AS finished_at,
+    EXTRACT(EPOCH FROM (e.finished_at - e.started_at))    AS duration_seconds
+FROM policy_executions e
+JOIN policies p ON p.id = e.policy_id
+ORDER BY e.started_at ASC, e.execution_id ASC
+LIMIT :limit OFFSET :offset
+"""
+
+
+def iter_governance_export(session: Session, batch_size: int = 500) -> Iterator[dict[str, Any]]:
+    """Yield per-execution governance-export rows (M9.4), one at a time.
+
+    Reads the joined ``policy_executions``/``policies`` evidence in ``batch_size``
+    pages (``LIMIT``/``OFFSET``) so at most one page is ever held in memory — the
+    export streams over arbitrarily large histories without a full in-memory load.
+    Ordered by ``started_at``, ``execution_id`` for a deterministic, resumable cursor.
+    """
+    offset = 0
+    while True:
+        rows = _rows(session, _EXPORT_SQL, limit=batch_size, offset=offset)
+        yield from rows
+        if len(rows) < batch_size:
+            break
+        offset += batch_size
 
 
 def policy_matched_resources(

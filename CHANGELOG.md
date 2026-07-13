@@ -55,6 +55,18 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M9.4 — Governance reporting & export.** Periodic evidence for stakeholders. New
+  streaming endpoint `GET /api/governance/export?format=csv|json` (`api/main.py`) emits
+  one row per policy execution (policy, subscription, status, matches, timing) — CSV with
+  a header row, JSON as an array of the same records; any other `format` → `400`. It
+  streams from a new **paginated cursor** `repo.iter_governance_export()`
+  (`storage/repository.py`, `LIMIT`/`OFFSET` in `batch_size` pages) so an arbitrarily large
+  history is never held in memory; the session lives inside the `StreamingResponse`
+  generator. New `reporting.py` centralizes CSV/JSON serialization (`stream_export` /
+  `generate_report` / `write_report`), shared by the endpoint and an **optional scheduled
+  report**: `scheduler._schedule_governance_report()` registers a periodic job (gated by
+  `GOVERNANCE_REPORT_ENABLED`, cadence `GOVERNANCE_REPORT_INTERVAL_SECONDS`) that writes a
+  timestamped CSV under `APP_DATA_DIR`, failure-wrapped so it never kills the scheduler.
 - **M9.3 — Resource compliance explorer (Next.js).** A `/compliance` drill-down for
   investigating non-compliance: policy → matched resources → asset detail. New backend
   endpoint `GET /api/governance/policies/{policy_id}/matches` (`api/main.py`) + repository
