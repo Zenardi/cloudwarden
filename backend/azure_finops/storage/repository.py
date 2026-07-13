@@ -1381,6 +1381,7 @@ def upsert_resources(session: Session, resources: list[m.ResourceRecord]) -> int
         {
             "resource_id": r.resource_id,
             "subscription_id": r.subscription_id,
+            "provider": r.provider,
             "resource_group": r.resource_group,
             "name": r.name,
             "type": r.type,
@@ -1397,6 +1398,7 @@ def upsert_resources(session: Session, resources: list[m.ResourceRecord]) -> int
         index_elements=["resource_id"],
         set_={
             "subscription_id": stmt.excluded.subscription_id,
+            "provider": stmt.excluded.provider,
             "resource_group": stmt.excluded.resource_group,
             "name": stmt.excluded.name,
             "type": stmt.excluded.type,
@@ -1430,6 +1432,7 @@ def upsert_assets(session: Session, resources: list[m.ResourceRecord]) -> list[s
         {
             "resource_id": r.resource_id,
             "subscription_id": r.subscription_id,
+            "provider": r.provider,
             "resource_group": r.resource_group,
             "name": r.name,
             "type": r.type,
@@ -1447,6 +1450,7 @@ def upsert_assets(session: Session, resources: list[m.ResourceRecord]) -> list[s
         index_elements=["resource_id"],
         set_={
             "subscription_id": stmt.excluded.subscription_id,
+            "provider": stmt.excluded.provider,
             "resource_group": stmt.excluded.resource_group,
             "name": stmt.excluded.name,
             "type": stmt.excluded.type,
@@ -1524,6 +1528,7 @@ def upsert_asset_from_event(session: Session, event: Any) -> bool:
 _ALLOWED_ASSET_COLUMNS = {
     "resource_id": schema.Asset.resource_id,
     "subscription_id": schema.Asset.subscription_id,
+    "provider": schema.Asset.provider,
     "resource_group": schema.Asset.resource_group,
     "name": schema.Asset.name,
     "type": schema.Asset.type,
@@ -1538,6 +1543,7 @@ def _asset_public(rec: schema.Asset) -> dict[str, Any]:
     return {
         "resource_id": rec.resource_id,
         "subscription_id": rec.subscription_id,
+        "provider": rec.provider,
         "resource_group": rec.resource_group,
         "name": rec.name,
         "type": rec.type,

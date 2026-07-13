@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **AWS onboarding & execution — the second cloud (M12.2).** New
+  `azure_finops.providers.aws.AwsProvider` (registered as `providers.registry.get("aws")`)
+  onboards AWS accounts, runs Cloud Custodian **aws** policy dry-runs, and ingests AWS
+  resources into AssetDB. Onboarding validates credentials via STS
+  `get_caller_identity` through an **injectable** client seam (`POST /api/aws/accounts`;
+  a bad/expired credential or an account mismatch → `400`), then persists the account with
+  `provider='aws'`. `POST /api/aws/accounts/{id}/ingest` loads the `aws_assets` fixture into
+  AssetDB tagged **`provider='aws'`** (idempotent), and `POST /api/aws/policies/dryrun`
+  returns the fixture resources matching a policy's `resource` type. The **`assets`** and
+  **`resources`** tables gain a `provider` column (`server_default='azure'`, so existing rows
+  read as Azure) — filterable via the asset query API. **No new image dependency:** AWS is
+  native to the already-installed `c7n` core (no `c7n-aws` package; `boto3` ships transitively
+  and is now pinned explicitly), so the Trivy surface is unchanged. Every test uses injected
+  clients / offline fixtures — **no live AWS call**.
 - **Cloud provider abstraction — the multi-cloud foundation (M12.1).** New
   `azure_finops.providers` package introduces a `CloudProvider` interface
   (`providers.base`) and a name-keyed registry (`providers.registry`) so the engine,

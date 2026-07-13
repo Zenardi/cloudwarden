@@ -48,6 +48,8 @@ from ..models import (
 )
 from ..notify.dispatch import KNOWN_TRANSPORTS
 from ..packs import registry as packs
+from ..providers import aws as aws_provider
+from ..providers import registry as providers_registry
 from ..remediation import approval as remediation
 from ..resilience import REGISTRY
 from ..storage import repository as repo
@@ -167,6 +169,16 @@ def get_oidc_client() -> oidc.OIDCClient | None:
 
     Returns ``None`` so the flow falls back to the HTTP client built from settings.
     Tests override this with a fake client so no identity provider is contacted.
+    """
+    return None
+
+
+def get_aws_sts_client() -> aws_provider.StsClient | None:
+    """Injection seam for the AWS STS client used to validate onboarded accounts (M12.2).
+
+    Returns ``None`` so the provider builds a live boto3 STS client from the
+    request's credentials. Tests override this with a fake STS client so onboarding
+    never reaches AWS.
     """
     return None
 
@@ -1337,6 +1349,100 @@ def test_subscription(subscription_id: str) -> dict[str, Any]:
 
         credential = credential_for(rec.tenant_id, rec.client_id, rec.client_secret)
     return check_connection(rec.subscription_id, credential=credential)
+
+
+# --------------------------------------------------------------------------- #
+# AWS onboarding & execution (M12.2 — multi-cloud). Credentials are validated
+# via STS get_caller_identity (injectable seam → offline in tests); AWS assets
+# ingest into AssetDB tagged provider='aws'; policy dry-runs match the fixture.
+# --------------------------------------------------------------------------- #
+class AwsAccountIn(BaseModel):
+    account_id: str
+    display_name: str | None = None
+    region: str | None = None
+    role_arn: str | None = None
+    access_key_id: str | None = None
+    secret_access_key: str | None = None
+
+
+class AwsDryRunIn(BaseModel):
+    account_id: str
+    spec: dict[str, Any]
+    region: str | None = None
+
+
+@app.post(
+    "/api/aws/accounts",
+    status_code=201,
+    dependencies=[Depends(rbac.require_permission("subscription:write"))],
+)
+def onboard_aws_account(
+    body: AwsAccountIn,
+    sts: Annotated[aws_provider.StsClient | None, Depends(get_aws_sts_client)] = None,
+) -> dict[str, Any]:
+    """Onboard an AWS account: validate its credentials, then persist it (provider='aws')."""
+    account_id = body.account_id.strip()
+    if not account_id:
+        raise HTTPException(status_code=400, detail="account_id is required")
+    provider = providers_registry.get("aws")
+    credential = {
+        "region": body.region,
+        "role_arn": body.role_arn,
+        "access_key_id": body.access_key_id,
+        "secret_access_key": body.secret_access_key,
+    }
+    try:
+        identity = provider.validate_account(
+            account_id=account_id, credential=credential, client=sts
+        )
+    except aws_provider.InvalidCredentialsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    with session_scope() as session:
+        account = repo.upsert_subscription(
+            session,
+            subscription_id=account_id,
+            display_name=(body.display_name or f"AWS {account_id}").strip(),
+            provider="aws",
+        )
+    return {"account": account, "identity": identity}
+
+
+@app.post(
+    "/api/aws/accounts/{account_id}/ingest",
+    dependencies=[Depends(rbac.require_permission("subscription:write"))],
+)
+def ingest_aws_assets(account_id: str) -> dict[str, Any]:
+    """Ingest an AWS account's resources into AssetDB (provider='aws'); returns counts."""
+    provider = providers_registry.get("aws")
+    records = provider.collect_assets(account_id=account_id)
+    with session_scope() as session:
+        repo.upsert_resources(session, records)
+        new_ids = repo.upsert_assets(session, records)
+        by_id = {r.resource_id: r for r in records}
+        for rid in new_ids:
+            rec = by_id[rid]
+            repo.append_asset_event(
+                session,
+                resource_id=rid,
+                subscription_id=rec.subscription_id,
+                event_type="created",
+                data=rec.config,
+            )
+    return {
+        "provider": "aws",
+        "account_id": account_id,
+        "assets": len(records),
+        "new": len(new_ids),
+    }
+
+
+@app.post("/api/aws/policies/dryrun")
+def aws_policy_dryrun(body: AwsDryRunIn) -> dict[str, Any]:
+    """Dry-run a c7n aws policy against an account; returns matched fixture resources."""
+    provider = providers_registry.get("aws")
+    return provider.run_policy(
+        body.spec, account_id=body.account_id.strip(), region=body.region, dry_run=True
+    )
 
 
 @app.post(

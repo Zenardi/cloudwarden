@@ -1158,6 +1158,54 @@ jobs:
           print("provider OK: registry resolves azure, unknown=error, run works, provider column defaults azure")
           PY
 
+      - name: Smoke-test AWS onboarding & execution (M12.2)
+        run: |
+          set -euo pipefail
+          # In the deployed image, against the real DB: onboard an AWS account with an
+          # INJECTED STS client (no live AWS), verify it is stored provider='aws', a bad
+          # credential is rejected 400, a c7n aws policy dry-run matches fixture ec2
+          # resources, and ingestion writes AssetDB rows tagged provider='aws'.
+          docker compose exec -T backend python - <<'PY'
+          import json, urllib.error, urllib.request
+
+          from fastapi.testclient import TestClient
+
+          from azure_finops.api.main import app, get_aws_sts_client
+
+          class _Sts:
+              def __init__(self, account): self.account = account
+              def get_caller_identity(self):
+                  return {"Account": self.account, "Arn": f"arn:aws:iam::{self.account}:role/finops",
+                          "UserId": "AROACI:finops"}
+
+          class _Boom:
+              def get_caller_identity(self): raise RuntimeError("invalid token")
+
+          ACC = "210987654321"
+          # Onboard (injected good STS) → 201, provider='aws'.
+          app.dependency_overrides[get_aws_sts_client] = lambda: _Sts(ACC)
+          with TestClient(app) as c:
+              r = c.post("/api/aws/accounts", json={"account_id": ACC, "display_name": "CI AWS"})
+              assert r.status_code == 201, r.text
+              assert r.json()["account"]["provider"] == "aws", r.text
+              # A bad credential is rejected.
+              app.dependency_overrides[get_aws_sts_client] = lambda: _Boom()
+              bad = c.post("/api/aws/accounts", json={"account_id": ACC, "display_name": "x"})
+              assert bad.status_code == 400, bad.text
+              # Policy dry-run matches fixture ec2 resources.
+              dry = c.post("/api/aws/policies/dryrun", json={"account_id": ACC,
+                    "spec": {"policies": [{"name": "ec2", "resource": "aws.ec2"}]}}).json()
+              assert dry["matched"] > 0 and all(x["type"] == "aws.ec2" for x in dry["resources"]), dry
+              # Ingest → AssetDB rows tagged provider='aws'.
+              ing = c.post(f"/api/aws/accounts/{ACC}/ingest").json()
+              assert ing["provider"] == "aws" and ing["assets"] > 0, ing
+              rows = c.post("/api/assets/query",
+                            json={"filters": [{"column": "provider", "op": "eq", "value": "aws"}]}).json()
+              assert rows and all(row["provider"] == "aws" for row in rows), rows
+          app.dependency_overrides.clear()
+          print("aws OK: onboard(provider=aws) bad-cred=400 dryrun=matches ingest=assetdb(provider=aws)")
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail
