@@ -17,7 +17,7 @@ def test_full_pipeline_and_reads(db) -> None:
     from azure_finops.storage.db import session_scope
 
     counts = run_pipeline(mock=True)["counts"]
-    assert counts["resources"] == 6 and counts["cost_rows"] == 360
+    assert counts["resources"] == 7 and counts["cost_rows"] == 360
     assert counts["recommendations"] == 5 and counts["ai_summary"] == 1
 
     with session_scope() as s:

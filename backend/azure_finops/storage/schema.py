@@ -20,6 +20,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -259,6 +260,29 @@ class AssetEvent(Base):
     event_type: Mapped[str] = mapped_column(String(32))
     data: Mapped[dict] = mapped_column(JSONB, default=dict)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AssetRelationship(Base):
+    """A typed, directed edge between two assets (M4.3 — the graph dimension).
+
+    Derived from resource ``config`` during ingestion: a managed disk's
+    ``managedBy`` VM (``disk → vm``), a NIC's ``virtualMachine`` (``nic → vm``),
+    a public IP's bound NIC (``ip → nic``). Like ``asset_events``, ``source_id`` /
+    ``target_id`` are plain indexed columns (not FKs) so an edge can outlive
+    either endpoint. The ``(source_id, target_id, kind)`` triple is unique, so
+    re-deriving over unchanged inventory is idempotent.
+    """
+
+    __tablename__ = "asset_relationships"
+    __table_args__ = (
+        UniqueConstraint("source_id", "target_id", "kind", name="uq_asset_relationship"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    source_id: Mapped[str] = mapped_column(String(512), index=True)
+    target_id: Mapped[str] = mapped_column(String(512), index=True)
+    kind: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class CostSnapshot(Base):

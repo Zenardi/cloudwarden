@@ -15,7 +15,8 @@ os.environ.setdefault("FINOPS_MOCK", "1")
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://finops:finops@localhost:5432/finops")
 
 _TABLES = (
-    "runs, resources, assets, asset_events, cost_snapshots, utilization_samples, "
+    "runs, resources, assets, asset_events, asset_relationships, cost_snapshots, "
+    "utilization_samples, "
     "utilization_rollups, advisor_recommendations, recommendations, remediation_actions, "
     "ai_summaries, subscriptions, policies, policy_versions, policy_collections, "
     "collection_policies, policy_executions, policy_matches"

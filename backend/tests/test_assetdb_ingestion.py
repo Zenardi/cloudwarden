@@ -190,6 +190,14 @@ def test_ingestion_captures_full_config(db) -> None:
     with session_scope() as s:
         assets = repo._rows(s, "SELECT resource_id, subscription_id, config FROM assets")
         events = repo._rows(s, "SELECT event_type FROM asset_events")
-    assert len(assets) == 6  # fixture resource count
+        rels = repo._rows(s, "SELECT source_id, target_id, kind FROM asset_relationships")
+    assert len(assets) == 7  # fixture resource count
     assert all(a["config"] for a in assets)  # every asset carries full config
-    assert len(events) == 6 and all(e["event_type"] == "created" for e in events)
+    assert len(events) == 7 and all(e["event_type"] == "created" for e in events)
+    # M4.3: the pipeline derives the graph — the fixture NIC is attached to vm-web-01.
+    assert any(
+        r["source_id"].endswith("nic-web-01")
+        and r["target_id"].endswith("vm-web-01")
+        and r["kind"] == "attached-to"
+        for r in rels
+    )

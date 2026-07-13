@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, literal_column, text
+from sqlalchemy import delete, literal_column, or_, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -829,6 +829,124 @@ def query_assets(session: Session, query: m.AssetQuery) -> list[dict[str, Any]]:
         .all()
     )
     return [_asset_public(r) for r in recs]
+
+
+# --------------------------------------------------------------------------- #
+# Asset relationships (M4.3) — the graph dimension of AssetDB
+# --------------------------------------------------------------------------- #
+def _nic_from_ipconfig(ref: str) -> str:
+    """Reduce a NIC ipConfiguration id to its parent NIC resource id.
+
+    ``…/networkInterfaces/nic-1/ipConfigurations/ipconfig1`` → ``…/networkInterfaces/nic-1``.
+    A reference without that marker is returned unchanged (it simply won't resolve).
+    """
+    marker = "/ipconfigurations/"
+    idx = ref.lower().find(marker)
+    return ref[:idx] if idx != -1 else ref
+
+
+# Source asset type → list of (config path to a referenced resource id, edge kind,
+# optional normalizer). Only these reference shapes become edges.
+_RELATIONSHIP_RULES: dict[str, list[tuple[tuple[str, ...], str, Any]]] = {
+    "microsoft.compute/disks": [(("managedBy",), "attached-to", None)],
+    "microsoft.network/networkinterfaces": [(("virtualMachine", "id"), "attached-to", None)],
+    "microsoft.network/publicipaddresses": [
+        (("ipConfiguration", "id"), "bound-to", _nic_from_ipconfig)
+    ],
+}
+
+
+def _dig(config: Any, path: tuple[str, ...]) -> Any:
+    """Walk a nested-dict ``path``; return ``None`` if any hop is missing/not a dict."""
+    node = config
+    for key in path:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    return node
+
+
+def _edges_for_asset(asset_type: str | None, config: Any) -> list[tuple[str, str]]:
+    """Return ``(referenced_target_id, kind)`` candidates declared in an asset's config."""
+    edges: list[tuple[str, str]] = []
+    for path, kind, normalize in _RELATIONSHIP_RULES.get((asset_type or "").lower(), []):
+        ref = _dig(config, path)
+        if isinstance(ref, str) and ref.strip():
+            edges.append((normalize(ref) if normalize else ref, kind))
+    return edges
+
+
+def build_relationships(session: Session) -> int:
+    """Derive typed edges between stored assets from their config and upsert them.
+
+    Reads every asset's config for known reference fields (a managed disk's
+    ``managedBy`` VM, a NIC's ``virtualMachine``, a public IP's bound NIC),
+    resolves each reference against the assets already stored — case-insensitively,
+    since Azure resource ids are case-insensitive — and writes one
+    ``asset_relationships`` edge per resolved reference. A reference to an asset
+    that isn't present (a dangling or external reference) is skipped, never fatal.
+    Idempotent: the ``(source_id, target_id, kind)`` unique key means re-deriving
+    over unchanged inventory inserts nothing. Returns the number of edges inserted.
+    """
+    assets = session.query(schema.Asset.resource_id, schema.Asset.type, schema.Asset.config).all()
+    # canonical (as-stored) id keyed by its lower-cased form, for reference resolution
+    canonical = {a.resource_id.lower(): a.resource_id for a in assets}
+    edges: dict[tuple[str, str, str], dict[str, str]] = {}
+    for a in assets:
+        for raw_target, kind in _edges_for_asset(a.type, a.config):
+            target = canonical.get(raw_target.lower())
+            if target is None:
+                continue  # dangling/external reference — skip
+            edges[(a.resource_id, target, kind)] = {
+                "source_id": a.resource_id,
+                "target_id": target,
+                "kind": kind,
+            }
+    rows = list(edges.values())
+    if not rows:
+        return 0
+    stmt = pg_insert(schema.AssetRelationship).values(rows)
+    stmt = stmt.on_conflict_do_nothing(index_elements=["source_id", "target_id", "kind"]).returning(
+        schema.AssetRelationship.id
+    )
+    # With DO NOTHING, only rows actually inserted are returned (conflicts skipped),
+    # so the RETURNING count is the number of *new* edges — reliable, unlike rowcount.
+    inserted = session.execute(stmt).fetchall()
+    session.flush()
+    return len(inserted)
+
+
+def get_relationships(session: Session, resource_id: str) -> list[dict[str, Any]]:
+    """Return an asset's edges — both outbound (it is source) and inbound (it is
+    target) — so a caller sees every neighbour. Each row carries the edge plus its
+    ``direction`` and the ``neighbor`` id relative to ``resource_id``. Stable by id.
+    """
+    recs = (
+        session.query(schema.AssetRelationship)
+        .filter(
+            or_(
+                schema.AssetRelationship.source_id == resource_id,
+                schema.AssetRelationship.target_id == resource_id,
+            )
+        )
+        .order_by(schema.AssetRelationship.id.asc())
+        .all()
+    )
+    out: list[dict[str, Any]] = []
+    for r in recs:
+        outbound = r.source_id == resource_id
+        out.append(
+            {
+                "id": r.id,
+                "source_id": r.source_id,
+                "target_id": r.target_id,
+                "kind": r.kind,
+                "direction": "outbound" if outbound else "inbound",
+                "neighbor": r.target_id if outbound else r.source_id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+        )
+    return out
 
 
 def upsert_cost_snapshots(session: Session, rows: list[m.CostRow]) -> int:

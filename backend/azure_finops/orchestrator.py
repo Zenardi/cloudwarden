@@ -153,6 +153,9 @@ def run_pipeline(
                 )
             counts["assets"] = len(by_id)
             counts["asset_events"] = len(new_asset_ids)
+            # AssetDB graph (M4.3): derive typed edges (disk→vm, nic→vm, ip→nic)
+            # from asset config. Idempotent; dangling references are skipped.
+            counts["asset_relationships"] = repo.build_relationships(session)
             counts["cost_rows"] = repo.upsert_cost_snapshots(session, cost_rows)
             counts["metric_samples"] = repo.insert_metric_samples(session, metric_samples)
             counts["rollups"] = repo.upsert_rollups(session, rollups)

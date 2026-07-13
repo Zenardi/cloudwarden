@@ -11,7 +11,7 @@ from azure_finops.config import get_settings
 
 def test_inventory_mock_shape() -> None:
     resources = collect_inventory()
-    assert len(resources) == 6
+    assert len(resources) == 7
     ids = {r.resource_id for r in resources}
     assert any(i.endswith("vm-web-01") for i in ids)
     disk = next(r for r in resources if r.type == "microsoft.compute/disks")

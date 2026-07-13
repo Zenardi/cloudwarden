@@ -506,6 +506,19 @@ def query_assets(body: AssetQuery) -> list[dict[str, Any]]:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/assets/{resource_id:path}/relationships")
+def asset_relationships(resource_id: str) -> list[dict[str, Any]]:
+    """Return an asset's relationship edges — inbound and outbound (M4.3).
+
+    Full Azure resource ids contain slashes, so ``resource_id`` is a path
+    parameter; the leading slash is normalized back on so it matches the stored
+    (leading-slash) asset id. Unknown ids simply yield an empty list.
+    """
+    normalized = "/" + resource_id.lstrip("/")
+    with session_scope() as session:
+        return repo.get_relationships(session, normalized)
+
+
 # --------------------------------------------------------------------------- #
 # Subscriptions (multi-subscription management)
 # --------------------------------------------------------------------------- #

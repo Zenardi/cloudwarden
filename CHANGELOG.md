@@ -35,6 +35,27 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M4.3 — Asset relationships graph.** The **graph dimension** of AssetDB (à la
+  Stacklet's asset relationships). Ingestion now derives typed, directed edges
+  between assets from each asset's `config`: a managed disk's `managedBy` VM
+  (`disk → vm`), a NIC's `virtualMachine` (`nic → vm`), and a public IP's bound NIC
+  (`ip → nic`, resolved up from the referenced ipConfiguration sub-resource). New
+  `asset_relationships` table (auto-created by `init_db()`) with a unique
+  `(source_id, target_id, kind)` triple; `source_id`/`target_id` are plain indexed
+  columns (not FKs) so an edge can outlive either endpoint, like `asset_events`.
+  `repo.build_relationships` resolves each reference against the stored assets
+  **case-insensitively** (Azure resource ids are), **skips dangling/external
+  references** (never fatal), and is **idempotent** (`ON CONFLICT DO NOTHING`;
+  re-deriving over unchanged inventory writes nothing) — wired into the pipeline's
+  store phase (`counts["asset_relationships"]`). New
+  `GET /api/assets/{id}/relationships` returns an asset's neighbours in **both
+  directions**, each row tagged `direction` (`inbound`/`outbound`) and the
+  `neighbor` id. The mock `inventory.json` gains a NIC attached to `vm-web-01` so
+  the graph is exercised end-to-end. TDD: `test_asset_relationships.py` (9 tests,
+  DB-backed) covers `disk→vm` / `nic→vm` / `ip→nic` edges, case-insensitive
+  resolution, no-references → no edges, dangling references skipped, idempotency,
+  both-direction neighbours, and the endpoint — `api/main.py`, `models.py`,
+  `schema.py` at 100% coverage.
 - **M4.2 — Asset query API (filterable, injection-safe).** A structured query
   surface over AssetDB (à la Stacklet's SQL-enabled asset queries). New
   `POST /api/assets/query` takes an `AssetQuery` (a list of `AssetFilter`

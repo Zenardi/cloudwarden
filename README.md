@@ -44,7 +44,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M3.1–M3.3 | Execution results storage, pull-mode orchestrator, execution history API + UI | ✅ done |
 | M3.4 | Per-policy compliance & health metrics (API + Grafana) | ✅ done |
 | M4.1 | AssetDB — asset inventory with full config (schema + ingestion) | ✅ done |
-| M4.2 | AssetDB — filterable, injection-safe asset query API | 🚧 in review |
+| M4.2 | AssetDB — filterable, injection-safe asset query API | ✅ done |
+| M4.3 | AssetDB — asset relationships graph (disk→vm, nic→vm, ip→nic) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -238,6 +239,19 @@ or operators are rejected with `400` (never executed), and every value — inclu
 tag values — is bound as a parameter, so a SQL-injection string is a harmless
 literal. `limit` is capped at 500 with a stable order.
 
+**Asset relationships graph (M4.3).** Ingestion also derives the **graph dimension**
+of AssetDB — typed, directed edges between assets built from each asset's `config`:
+a managed disk's `managedBy` VM (`disk → vm`), a NIC's `virtualMachine` (`nic → vm`),
+and a public IP's bound NIC (`ip → nic`). `repo.build_relationships` resolves each
+reference against the assets already stored — **case-insensitively**, since Azure
+resource ids are — and upserts one `asset_relationships` edge per *resolvable*
+reference; a reference to an asset that isn't present (a dangling or external
+reference) is **skipped, never fatal**, and the `(source_id, target_id, kind)` triple
+is unique so re-deriving over unchanged inventory writes nothing. Neighbours are
+served by `GET /api/assets/{id}/relationships`, which returns an asset's edges in
+**both directions** (each row tagged `direction` `inbound`/`outbound` and the
+`neighbor` id).
+
 Two API endpoints expose the engine's offline surface (M1.3):
 
 - `POST /api/policies/validate` — dry-run schema-validate a policy `spec` (a
@@ -365,7 +379,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 270 tests, **~99% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 279 tests, **~99% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).
