@@ -55,6 +55,22 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M8.2 — Slack & email transports.** Two concrete transports implement the M8.1
+  `send(*, target, subject, body, config)` seam, so both are drop-in for `notify()`.
+  New `notify/transports/slack.py` `SlackTransport` POSTs the rendered message as a
+  Slack payload (`{"text": "*subject*\nbody", …}`, with optional `channel`/`username`
+  overrides pulled from channel config) to the webhook resolved from the channel target
+  → `config["webhook_url"]` → `SLACK_WEBHOOK_URL`. New `notify/transports/email.py`
+  `EmailTransport` builds a MIME `EmailMessage` and sends it through an SMTP client with
+  the correct to/subject/body/from (recipient from the channel target → `config["to"]`;
+  sender from `config["from"]` → `SMTP_FROM`). Both take an **injectable** client (an
+  HTTP client for Slack, an SMTP client for email) so no test touches the network, and
+  both **capture** delivery failures — network error, non-2xx webhook response, SMTP
+  outage, or missing config (no webhook / no recipient) — as `{"ok": false, "error": …}`
+  rather than raising, so a broken notification never breaks the policy run that
+  triggered it. New config defaults (`config.py` + `.env.example`): `SLACK_WEBHOOK_URL`,
+  `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` / `SMTP_USERNAME` / `SMTP_PASSWORD` /
+  `SMTP_USE_TLS`. 13 TDD tests (`test_notify_transports.py`), transports at 100% coverage.
 - **M8.1 — Notification service & templates.** Opens the notifications track — a
   service that renders a **communication template** from policy-violation context and
   dispatches it through a **pluggable transport** (Stacklet / c7n-mailer heritage). Two
