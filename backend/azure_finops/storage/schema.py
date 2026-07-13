@@ -168,6 +168,9 @@ class PolicyExecution(Base):
     # How this run was triggered: ``pull`` (scheduled/manual) or ``event`` (reactive,
     # M6.2 — an Event Grid delivery matched an event-mode policy's resource type).
     mode: Mapped[str] = mapped_column(String(16), default="pull")
+    # The Event Grid delivery (``event_log.event_id``) that triggered this reactive run
+    # (M6.4), if any — a plain indexed column so the status feed can link event → runs.
+    event_id: Mapped[str | None] = mapped_column(String(128), index=True)
     status: Mapped[str] = mapped_column(String(16), default="running")
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

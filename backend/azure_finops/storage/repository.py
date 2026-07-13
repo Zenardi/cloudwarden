@@ -68,6 +68,7 @@ def _policy_execution_public(rec: schema.PolicyExecution) -> dict[str, Any]:
         "subscription_id": rec.subscription_id,
         "binding_id": rec.binding_id,
         "mode": rec.mode,
+        "event_id": rec.event_id,
         "status": rec.status,
         "started_at": rec.started_at.isoformat() if rec.started_at else None,
         "finished_at": rec.finished_at.isoformat() if rec.finished_at else None,
@@ -99,12 +100,14 @@ def create_policy_execution(
     status: str = "running",
     binding_id: int | None = None,
     mode: str = "pull",
+    event_id: str | None = None,
 ) -> None:
     """Open a policy execution (defaults to ``running``), mirroring ``create_run``.
 
     ``binding_id`` tags an execution triggered by a binding run (M5.3); ``None`` for
     plain pull-mode runs. ``mode`` is ``pull`` (scheduled/manual) or ``event`` (a
-    reactive run triggered by an Event Grid delivery, M6.2).
+    reactive run triggered by an Event Grid delivery, M6.2). ``event_id`` records the
+    triggering delivery (M6.4) so the status feed can link an event to its runs.
     """
     session.add(
         schema.PolicyExecution(
@@ -114,6 +117,7 @@ def create_policy_execution(
             status=status,
             binding_id=binding_id,
             mode=mode,
+            event_id=event_id,
         )
     )
     session.flush()
@@ -904,6 +908,45 @@ def list_events(session: Session, limit: int = 50) -> list[dict[str, Any]]:
         "FROM event_log ORDER BY received_at DESC, id DESC LIMIT :limit",
         limit=limit,
     )
+
+
+def recent_events(session: Session, *, limit: int = 20, offset: int = 0) -> list[dict[str, Any]]:
+    """Recent deliveries (newest-first, paginated) each with the executions it triggered.
+
+    The status feed (M6.4): a page of ``event_log`` rows, then one grouped lookup of the
+    ``policy_executions`` reactively triggered by those deliveries (``event_id`` join,
+    M6.2/M6.4) — so each event carries a ``triggered_executions`` list without an N+1.
+    """
+    events = _rows(
+        session,
+        "SELECT event_id, event_type, subject, resource_id, subscription_id, "
+        "event_time, received_at, status "
+        "FROM event_log ORDER BY received_at DESC, id DESC LIMIT :limit OFFSET :offset",
+        limit=limit,
+        offset=offset,
+    )
+    event_ids = [e["event_id"] for e in events]
+    by_event: dict[str, list[dict[str, Any]]] = {eid: [] for eid in event_ids}
+    if event_ids:
+        recs = (
+            session.query(schema.PolicyExecution)
+            .filter(schema.PolicyExecution.event_id.in_(event_ids))
+            .order_by(schema.PolicyExecution.started_at.asc())
+            .all()
+        )
+        for rec in recs:
+            by_event[rec.event_id].append(
+                {
+                    "execution_id": rec.execution_id,
+                    "policy_id": rec.policy_id,
+                    "status": rec.status,
+                    "mode": rec.mode,
+                    "started_at": rec.started_at.isoformat() if rec.started_at else None,
+                }
+            )
+    for event in events:
+        event["triggered_executions"] = by_event.get(event["event_id"], [])
+    return events
 
 
 # --------------------------------------------------------------------------- #
