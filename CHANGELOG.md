@@ -6,6 +6,17 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **CIS Azure compliance pack + posture grouped by control id (M10.4).** A starter
+  subset of the CIS Microsoft Azure Foundations Benchmark mapped to Cloud Custodian
+  policies — a **directory pack** at `backend/azure_finops/packs/cis-azure/` that
+  installs into a **CIS Azure** collection. Five controls: 3.1 (storage secure
+  transfer), 3.8 (storage default-deny network rule), 6.1 (restrict RDP from the
+  internet), 6.2 (restrict SSH from the internet), and 7.3 (disk CMK encryption).
+  Each policy carries its CIS control id in `metadata.control_id`, and
+  `repo.governance_posture` / `GET /api/governance/posture` now returns a
+  **`by_control`** rollup that groups compliant/non-compliant counts by control id
+  (extracted from each policy's stored spec via JSONB); policies without a control id
+  are excluded.
 - **Security & tagging-hygiene pack (M10.3).** A curated **directory pack** at
   `backend/azure_finops/packs/security/` (`pack.yaml` manifest + one `*.yml` per
   policy) that installs into a **Security Baseline** collection. Four policies:

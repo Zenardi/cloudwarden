@@ -768,13 +768,15 @@ def policy_health() -> list[dict[str, Any]]:
 
 @app.get("/api/governance/posture")
 def governance_posture() -> dict[str, Any]:
-    """Compliance posture (M9.1): compliant vs non-compliant counts grouped by
-    policy, subscription and collection, from the latest execution per
-    ``(policy, subscription)``.
+    """Compliance posture (M9.1, M10.4): compliant vs non-compliant counts grouped by
+    policy, subscription, collection, and CIS ``control_id``, from the latest execution
+    per ``(policy, subscription)``.
 
-    The response is ``{totals, by_policy, by_subscription, by_collection}``. With
-    nothing executed yet the totals are zeroed and the group lists empty — the
-    empty state is data, never an error.
+    The response is ``{totals, by_policy, by_subscription, by_collection, by_control}``.
+    ``by_control`` rolls posture up by each policy's ``metadata.control_id`` (framework
+    framing, e.g. the CIS Azure pack); policies without one are excluded. With nothing
+    executed yet the totals are zeroed and the group lists empty — the empty state is
+    data, never an error.
     """
     with session_scope() as session:
         return repo.governance_posture(session)

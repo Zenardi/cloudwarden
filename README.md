@@ -70,7 +70,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M9.4 | Governance reporting & export — streaming, paginated CSV/JSON + optional scheduled report | ✅ done |
 | M10.1 | Policy packs — installable, versioned bundles of curated policies that materialize into a collection | ✅ done |
 | M10.2 | Cost governance pack — FinOps heuristics as c7n policies (idle VMs, orphan disks/IPs, oversized VMs, untagged) | ✅ done |
-| M10.3 | Security & tagging pack — public-IP exposure, permissive NSG, required tags, unencrypted disks (Security Baseline) | 🚧 in review |
+| M10.3 | Security & tagging pack — public-IP exposure, permissive NSG, required tags, unencrypted disks (Security Baseline) | ✅ done |
+| M10.4 | CIS Azure compliance pack — CIS controls mapped to c7n policies; posture grouped by control id (CIS Azure) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -327,6 +328,23 @@ tag (`security-required-tags`), and disks not encrypted with a customer-managed 
 marker `tag`) that runs **dry-run only** under a binding (bindings default
 `dry_run=true`). Every policy is schema-valid via the engine, and the required-tags
 policy matches a resource missing a mandated tag (offline `match_resources`).
+
+**CIS Azure compliance pack (M10.4).** A starter subset of the CIS Microsoft Azure
+Foundations Benchmark mapped to c7n policies — a **directory pack** at
+`azure_finops/packs/cis-azure/` that installs into a **CIS Azure** collection. Each
+policy carries its CIS control id in `metadata.control_id`, and compliance posture
+(`GET /api/governance/posture`) gains a **`by_control`** rollup that groups
+compliant/non-compliant counts by control id (extracted from each policy's stored
+spec), so posture is framed against the framework. Policies without a control id are
+excluded from `by_control`. The mapping:
+
+| CIS control | Policy | Resource | Check |
+|---|---|---|---|
+| 3.1 | `cis-3-1-storage-secure-transfer` | `azure.storage` | Secure transfer (HTTPS-only) required |
+| 3.8 | `cis-3-8-storage-default-deny` | `azure.storage` | Default network access rule = Deny |
+| 6.1 | `cis-6-1-nsg-restrict-rdp` | `azure.networksecuritygroup` | RDP (3389) not open to `0.0.0.0/0` |
+| 6.2 | `cis-6-2-nsg-restrict-ssh` | `azure.networksecuritygroup` | SSH (22) not open to `0.0.0.0/0` |
+| 7.3 | `cis-7-3-disk-cmk-encryption` | `azure.disk` | Disks encrypted with a customer-managed key |
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

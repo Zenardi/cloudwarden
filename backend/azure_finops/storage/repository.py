@@ -1724,10 +1724,13 @@ def governance_posture(session: Session) -> dict[str, Any]:
     """Compliance posture (M9.1): compliant vs non-compliant rollups.
 
     Reads ``v_governance_posture`` — the latest execution per ``(policy,
-    subscription)`` — and aggregates it three ways (by policy, by subscription,
-    by collection) plus a ``totals`` block. ``violations`` sums matched resources.
-    With nothing executed yet the totals are zeroed and the group lists empty —
-    the empty state is data, never an error.
+    subscription)`` — and aggregates it four ways (by policy, by subscription, by
+    collection, and by CIS ``control_id``) plus a ``totals`` block. ``violations``
+    sums matched resources. The ``by_control`` rollup extracts each policy's
+    ``metadata.control_id`` from its stored spec (M10.4) so posture can be framed
+    against a compliance framework; policies without one are excluded. With nothing
+    executed yet the totals are zeroed and the group lists empty — the empty state
+    is data, never an error.
     """
     totals = _rows(
         session,
@@ -1756,11 +1759,24 @@ def governance_posture(session: Session) -> dict[str, Any]:
         "GROUP BY c.id, c.name "
         "ORDER BY c.name ASC",
     )
+    # by CIS control id (M10.4): extract metadata.control_id from the stored spec
+    # (spec -> policies[0] -> metadata -> control_id); uncontrolled policies drop out.
+    control_expr = "p.spec -> 'policies' -> 0 -> 'metadata' ->> 'control_id'"
+    by_control = _rows(
+        session,
+        f"SELECT ({control_expr}) AS control_id, {_POSTURE_MEASURES} "
+        "FROM v_governance_posture gp "
+        "JOIN policies p ON p.id = gp.policy_id "
+        f"WHERE ({control_expr}) IS NOT NULL "
+        "GROUP BY control_id "
+        "ORDER BY control_id ASC",
+    )
     return {
         "totals": totals,
         "by_policy": by_policy,
         "by_subscription": by_subscription,
         "by_collection": by_collection,
+        "by_control": by_control,
     }
 
 

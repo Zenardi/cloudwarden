@@ -840,6 +840,58 @@ jobs:
           print("security pack OK:", json.dumps({"collection": collection["name"], "policies": 4}))
           PY
 
+      - name: Smoke-test CIS Azure pack & posture-by-control end to end (M10.4)
+        run: |
+          set -euo pipefail
+          # Through the deployed backend image + HTTP API, against the REAL c7n engine.
+          # Assert the CIS pack (a directory pack) lists its five control-tagged policies,
+          # every policy validates and carries a control_id, it installs into a 'CIS Azure'
+          # collection, and compliance posture groups by CIS control id. Uses uniquely
+          # control-tagged policies so it is order-independent on the shared CI DB.
+          docker compose exec -T backend python - <<'PY'
+          import json, urllib.request
+          from azure_finops.custodian import engine
+          from azure_finops.packs import registry
+          from azure_finops.storage import repository as repo
+          from azure_finops.storage.db import session_scope
+
+          def call(path, method="GET", body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(
+                  f"http://localhost:8000{path}", data=data, method=method,
+                  headers={"Content-Type": "application/json"})
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          entry = next(p for p in call("/api/packs") if p["name"] == "cis-azure")
+          assert entry["policy_count"] == 5, entry
+
+          # every policy validates and carries a control id
+          pack = registry.get_pack("cis-azure")
+          for policy in pack["policies"]:
+              res = engine.validate_policy({"policies": [policy]})
+              assert res["valid"], (policy["name"], res["errors"])
+              assert (policy.get("metadata") or {}).get("control_id"), policy["name"]
+
+          report = call("/api/packs/cis-azure/install", method="POST")
+          assert report["ok"] is True, report
+          collection = call(f"/api/collections/{report['collection_id']}")
+          assert collection["name"] == "CIS Azure", collection
+          assert collection["policy_count"] == 5, collection
+
+          # seed a violating execution for CIS 7.3, then assert posture groups by control id
+          with session_scope() as s:
+              pid = repo.get_policy_by_name(s, "cis-7-3-disk-cmk-encryption")["id"]
+              repo.create_policy_execution(s, execution_id="cis-smoke-73", policy_id=pid,
+                                           subscription_id="cis-smoke-sub")
+              repo.finish_policy_execution(s, "cis-smoke-73", status="succeeded", resources_matched=4)
+
+          posture = call("/api/governance/posture")
+          by_control = {row["control_id"]: row for row in posture["by_control"]}
+          assert by_control["7.3"]["violations"] >= 4, by_control.get("7.3")
+          print("CIS pack OK:", json.dumps({"collection": collection["name"], "controls": sorted(by_control)}))
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail

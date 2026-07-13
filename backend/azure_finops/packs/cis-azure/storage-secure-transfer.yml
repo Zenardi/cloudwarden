@@ -1,0 +1,12 @@
+policies:
+  - name: cis-3-1-storage-secure-transfer
+    resource: azure.storage
+    description: >-
+      CIS 3.1 — storage accounts must require secure transfer (HTTPS-only). Flags
+      accounts where 'supportsHttpsTrafficOnly' is disabled.
+    metadata:
+      control_id: '3.1'
+    filters:
+      - type: value
+        key: properties.supportsHttpsTrafficOnly
+        value: false

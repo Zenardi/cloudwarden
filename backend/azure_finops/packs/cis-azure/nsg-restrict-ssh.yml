@@ -1,0 +1,13 @@
+policies:
+  - name: cis-6-2-nsg-restrict-ssh
+    resource: azure.networksecuritygroup
+    description: >-
+      CIS 6.2 — SSH (22) must not be reachable from the internet. Flags NSGs with
+      an inbound rule allowing 22 from any source (0.0.0.0/0).
+    metadata:
+      control_id: '6.2'
+    filters:
+      - type: ingress
+        access: Allow
+        source: '*'
+        ports: '22'

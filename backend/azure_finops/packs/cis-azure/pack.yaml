@@ -1,0 +1,25 @@
+name: cis-azure
+version: 1.0.0
+title: CIS Azure Foundations
+collection: CIS Azure
+description: >-
+  A starter subset of the CIS Microsoft Azure Foundations Benchmark mapped to
+  Cloud Custodian policies. Each policy carries its CIS control id in
+  metadata.control_id so compliance posture can be grouped and framed against
+  the framework. Installs into the 'CIS Azure' collection.
+policies:
+  - name: cis-3-1-storage-secure-transfer
+    control_id: '3.1'
+    description: Ensure that 'Secure transfer required' is enabled on storage accounts.
+  - name: cis-3-8-storage-default-deny
+    control_id: '3.8'
+    description: Ensure the default network access rule for storage accounts is set to Deny.
+  - name: cis-6-1-nsg-restrict-rdp
+    control_id: '6.1'
+    description: Ensure that RDP (3389) access is restricted from the internet.
+  - name: cis-6-2-nsg-restrict-ssh
+    control_id: '6.2'
+    description: Ensure that SSH (22) access is restricted from the internet.
+  - name: cis-7-3-disk-cmk-encryption
+    control_id: '7.3'
+    description: Ensure managed disks are encrypted with a customer-managed key (CMK).

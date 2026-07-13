@@ -1,0 +1,13 @@
+policies:
+  - name: cis-7-3-disk-cmk-encryption
+    resource: azure.disk
+    description: >-
+      CIS 7.3 — managed disks must be encrypted with a customer-managed key (CMK).
+      Flags disks whose encryption type is not EncryptionAtRestWithCustomerKey.
+    metadata:
+      control_id: '7.3'
+    filters:
+      - type: value
+        key: properties.encryption.type
+        op: ne
+        value: EncryptionAtRestWithCustomerKey

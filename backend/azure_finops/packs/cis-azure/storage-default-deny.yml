@@ -1,0 +1,13 @@
+policies:
+  - name: cis-3-8-storage-default-deny
+    resource: azure.storage
+    description: >-
+      CIS 3.8 — the default network access rule for storage accounts must be Deny.
+      Flags accounts whose networkAcls default action is not Deny (or unset).
+    metadata:
+      control_id: '3.8'
+    filters:
+      - type: value
+        key: properties.networkAcls.defaultAction
+        op: ne
+        value: Deny

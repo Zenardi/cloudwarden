@@ -1,0 +1,13 @@
+policies:
+  - name: cis-6-1-nsg-restrict-rdp
+    resource: azure.networksecuritygroup
+    description: >-
+      CIS 6.1 — RDP (3389) must not be reachable from the internet. Flags NSGs
+      with an inbound rule allowing 3389 from any source (0.0.0.0/0).
+    metadata:
+      control_id: '6.1'
+    filters:
+      - type: ingress
+        access: Allow
+        source: '*'
+        ports: '3389'
