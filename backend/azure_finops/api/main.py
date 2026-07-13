@@ -738,6 +738,22 @@ def execution_health() -> dict[str, Any]:
         return repo.execution_health(session)
 
 
+@app.get("/api/governance/policies/{policy_id}/matches")
+def policy_matched_resources(policy_id: int) -> list[dict[str, Any]]:
+    """Resources currently flagged by a policy (M9.3) — the compliance-explorer
+    drill-down: policy → matched resources → asset detail.
+
+    Returns each subscription's latest execution's matches (``resource_id``,
+    ``resource_type``, ``subscription_id``, ``matched_at``), newest first. ``404``
+    when the policy does not exist; an empty list when it has no matches — never an
+    error.
+    """
+    with session_scope() as session:
+        if repo.get_policy(session, policy_id) is None:
+            raise HTTPException(status_code=404, detail="policy not found")
+        return repo.policy_matched_resources(session, policy_id)
+
+
 @app.post("/api/assets/query")
 def query_assets(body: AssetQuery) -> list[dict[str, Any]]:
     """Filter AssetDB via an allow-listed, injection-safe query (M4.2).

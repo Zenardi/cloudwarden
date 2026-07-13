@@ -8,6 +8,7 @@ export default function Nav() {
       <Link href="/costs">Costs</Link>
       <Link href="/recommendations">Recommendations</Link>
       <Link href="/policies">Policies</Link>
+      <Link href="/compliance">Compliance</Link>
       <Link href="/collections">Collections</Link>
       <Link href="/runs">Runs</Link>
       <Link href="/executions">Executions</Link>

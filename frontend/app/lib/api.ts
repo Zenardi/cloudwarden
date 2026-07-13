@@ -436,3 +436,40 @@ export const detachBindingNotification = (
   bindingId: number,
   notificationId: number,
 ): Promise<unknown> => apiDelete(`/api/bindings/${bindingId}/notifications/${notificationId}`);
+
+// --------------------------------------------------------------------------- //
+// Compliance explorer (M9.3): posture policy list → matched resources → asset
+// --------------------------------------------------------------------------- //
+
+/** One policy row from the governance posture rollup (M9.1). */
+export interface PosturePolicy {
+  policy_id: number;
+  policy_name: string;
+  compliant: number;
+  non_compliant: number;
+  violations: number;
+  evaluated: number;
+}
+
+export interface Posture {
+  totals: { compliant: number; non_compliant: number; violations: number; evaluated: number };
+  by_policy: PosturePolicy[];
+  by_subscription: unknown[];
+  by_collection: unknown[];
+}
+
+/** A resource currently flagged by a policy (M9.3 drill-down). */
+export interface MatchedResource {
+  resource_id: string;
+  resource_type?: string | null;
+  subscription_id?: string | null;
+  matched_at?: string | null;
+}
+
+/** Governance compliance posture — the policy list + non-compliant counts (M9.1). */
+export const getGovernancePosture = (): Promise<Posture> =>
+  apiGet<Posture>("/api/governance/posture");
+
+/** Resources currently flagged by a policy — the compliance drill-down (M9.3). */
+export const getPolicyMatchedResources = (policyId: number): Promise<MatchedResource[]> =>
+  apiGet<MatchedResource[]>(`/api/governance/policies/${policyId}/matches`);

@@ -1686,6 +1686,47 @@ def execution_health(session: Session) -> dict[str, Any]:
     return {"by_policy": by_policy, "by_binding": by_binding}
 
 
+def policy_matched_resources(
+    session: Session, policy_id: int, limit: int = 500
+) -> list[dict[str, Any]]:
+    """Resources currently flagged by a policy (M9.3), for the compliance explorer.
+
+    Returns the matches from each subscription's **latest** execution of the policy —
+    the current non-compliant set (its size equals the policy's posture ``violations``
+    count), newest match first. Each row carries the ``resource_id`` (linkable to its
+    M4.5 AssetDB detail), ``resource_type``, ``subscription_id`` and ``matched_at``.
+    Empty when the policy has no matches. ``policy_id`` is bound (injection-safe).
+    """
+    return _rows(
+        session,
+        """
+        WITH latest AS (
+            SELECT
+                e.execution_id,
+                e.subscription_id,
+                ROW_NUMBER() OVER (
+                    PARTITION BY e.subscription_id
+                    ORDER BY e.started_at DESC, e.execution_id DESC
+                ) AS rn
+            FROM policy_executions e
+            WHERE e.policy_id = :policy_id
+        )
+        SELECT
+            mt.resource_id      AS resource_id,
+            mt.resource_type    AS resource_type,
+            l.subscription_id   AS subscription_id,
+            mt.matched_at       AS matched_at
+        FROM latest l
+        JOIN policy_matches mt ON mt.execution_id = l.execution_id
+        WHERE l.rn = 1
+        ORDER BY mt.matched_at DESC, mt.resource_id ASC
+        LIMIT :limit
+        """,
+        policy_id=policy_id,
+        limit=limit,
+    )
+
+
 def list_remediation_actions(
     session: Session, limit: int = 100, source: str | None = None
 ) -> list[dict[str, Any]]:

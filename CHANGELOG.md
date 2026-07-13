@@ -55,6 +55,20 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M9.3 — Resource compliance explorer (Next.js).** A `/compliance` drill-down for
+  investigating non-compliance: policy → matched resources → asset detail. New backend
+  endpoint `GET /api/governance/policies/{policy_id}/matches` (`api/main.py`) + repository
+  helper `policy_matched_resources()` (`storage/repository.py`) return the resources
+  flagged by each subscription's **latest** execution of the policy — the current
+  non-compliant set (its size equals the policy's posture `violations`), newest match
+  first, each carrying `resource_id` / `resource_type` / `subscription_id` / `matched_at`;
+  `404` for an unknown policy, `[]` when it has no matches (`policy_id` is bound —
+  injection-safe). New Next.js page `frontend/app/compliance/page.tsx`: a policy list
+  (non-compliant counts from the M9.1 posture rollup) drilling into the matched
+  resources, each linking through to its M4.5 AssetDB detail (`/assets/<resource_id>`),
+  with empty (compliant) and error states handled inline. `lib/api.ts` gains
+  `getGovernancePosture` / `getPolicyMatchedResources` + `Posture` / `PosturePolicy` /
+  `MatchedResource` types; a **Compliance** link joins the nav.
 - **M9.2 — Policy execution health dashboard.** The governance engine's *own*
   health. New `v_execution_health` (per policy) and `v_execution_health_by_binding`
   (per binding) SQL views (`storage/db.py`) aggregate executions into

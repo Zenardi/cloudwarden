@@ -65,7 +65,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M8.3 | Teams, Jira & ServiceNow transports — ITSM integrations (webhook / create issue / create incident) | ✅ done |
 | M8.4 | Per-binding notify config & UI — attach channel+template to a binding; fire on violation; `/notifications` page | ✅ done |
 | M9.1 | Compliance posture dashboard — compliant/non-compliant counts by policy/subscription/collection (API + Grafana) | ✅ done |
-| M9.2 | Policy execution health dashboard — success/failure rate, avg duration & last-run per policy/binding (API + Grafana) | 🚧 in review |
+| M9.2 | Policy execution health dashboard — success/failure rate, avg duration & last-run per policy/binding (API + Grafana) | ✅ done |
+| M9.3 | Resource compliance explorer (Next.js) — drill policy → matched resources → asset detail | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -262,6 +263,16 @@ wall-clock `avg_duration_seconds` (over finished runs), and the `last_status` /
 per-policy but excluded from the per-binding grain); both lists are empty until a
 policy has executed — never an error. A provisioned **Policy Execution Health**
 Grafana dashboard trends success rate, duration and failures per policy / binding.
+
+**Compliance explorer (M9.3).** A Next.js drill-down at **`/compliance`** for
+investigating non-compliance (à la Stacklet's compliance explorer). It lists
+policies with their non-compliant resource counts (from the M9.1 posture rollup);
+clicking a policy calls `GET /api/governance/policies/{id}/matches` — the resources
+flagged by each subscription's latest execution (the current non-compliant set,
+its size matching the posture `violations`) — and each matched resource links
+through to its **M4.5 AssetDB detail** (`/assets/<resource_id>`). Empty (compliant)
+and error states are handled inline. `404` for an unknown policy, `[]` for a policy
+with no matches — never an error.
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

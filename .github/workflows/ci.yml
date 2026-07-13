@@ -606,6 +606,44 @@ jobs:
           print("execution-health rollup OK:", json.dumps(row))
           PY
 
+      - name: Smoke-test resource compliance explorer drill-down (M9.3)
+        run: |
+          set -euo pipefail
+          # Same shared DB — assert on a UNIQUELY-NAMED policy (compliance-p). Seed a
+          # policy that flags two resources, then hit the drill-down endpoint the
+          # /compliance page uses; assert it lists those resources and that an unknown
+          # policy is a 404 (not a 500). Fully mock-safe.
+          docker compose exec -T backend python - <<'PY'
+          import json, urllib.error, urllib.request
+          from azure_finops import models as m
+          from azure_finops.storage import repository as repo
+          from azure_finops.storage.db import session_scope
+
+          with session_scope() as s:
+              pid = repo.create_policy(
+                  s, name="compliance-p", resource_type="azure.vm",
+                  spec={"policies": [{"name": "compliance-p", "resource": "azure.vm"}]})["id"]
+              repo.create_policy_execution(s, execution_id="compliance-e1", policy_id=pid,
+                                           subscription_id="compliance-sub")
+              repo.insert_policy_matches(s, "compliance-e1", [
+                  m.PolicyMatch(resource_id="/vm/c1", resource_type="azure.vm"),
+                  m.PolicyMatch(resource_id="/vm/c2", resource_type="azure.vm")])
+              repo.finish_policy_execution(s, "compliance-e1", status="succeeded", resources_matched=2)
+
+          with urllib.request.urlopen(f"http://localhost:8000/api/governance/policies/{pid}/matches") as r:
+              rows = json.load(r)
+          ids = {row["resource_id"] for row in rows}
+          assert ids == {"/vm/c1", "/vm/c2"}, rows
+
+          code = 0
+          try:
+              urllib.request.urlopen("http://localhost:8000/api/governance/policies/999999/matches")
+          except urllib.error.HTTPError as e:
+              code = e.code
+          assert code == 404, f"expected 404 for unknown policy, got {code}"
+          print("compliance drill-down OK:", json.dumps(sorted(ids)))
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail
@@ -618,7 +656,7 @@ jobs:
             sleep 2
           done
           detail="/assets/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-app/providers/microsoft.compute/virtualmachines/vm-web-01"
-          for path in "/assets" "$detail" "/account-groups" "/bindings" "/events" "/remediation" "/notifications"; do
+          for path in "/assets" "$detail" "/account-groups" "/bindings" "/events" "/remediation" "/notifications" "/compliance"; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3001$path")
             test "$code" = "200" || { echo "::error::$path returned $code"; docker compose logs frontend; exit 1; }
             echo "route OK: $path → 200"
