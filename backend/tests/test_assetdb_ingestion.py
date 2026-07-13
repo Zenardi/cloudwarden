@@ -189,11 +189,17 @@ def test_ingestion_captures_full_config(db) -> None:
 
     with session_scope() as s:
         assets = repo._rows(s, "SELECT resource_id, subscription_id, config FROM assets")
-        events = repo._rows(s, "SELECT event_type FROM asset_events")
+        events = repo._rows(s, "SELECT event_type, data FROM asset_events")
         rels = repo._rows(s, "SELECT source_id, target_id, kind FROM asset_relationships")
     assert len(assets) == 7  # fixture resource count
     assert all(a["config"] for a in assets)  # every asset carries full config
-    assert len(events) == 7 and all(e["event_type"] == "created" for e in events)
+    created = [e for e in events if e["event_type"] == "created"]
+    activity = [e for e in events if e["event_type"] == "activity"]
+    assert len(created) == 7  # one 'created' per asset on first sight
+    # M4.4: Activity Log ingested (who/how/when); the malformed fixture record is
+    # skipped, so 5 of the 6 recorded events land — each with an actor and operation.
+    assert len(activity) == 5
+    assert all(a["data"].get("actor") and a["data"].get("operation") for a in activity)
     # M4.3: the pipeline derives the graph — the fixture NIC is attached to vm-web-01.
     assert any(
         r["source_id"].endswith("nic-web-01")

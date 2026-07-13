@@ -46,6 +46,7 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M4.1 | AssetDB — asset inventory with full config (schema + ingestion) | ✅ done |
 | M4.2 | AssetDB — filterable, injection-safe asset query API | ✅ done |
 | M4.3 | AssetDB — asset relationships graph (disk→vm, nic→vm, ip→nic) | ✅ done |
+| M4.4 | AssetDB — asset change history & event metadata (Activity Log) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -252,6 +253,16 @@ served by `GET /api/assets/{id}/relationships`, which returns an asset's edges i
 **both directions** (each row tagged `direction` `inbound`/`outbound` and the
 `neighbor` id).
 
+**Asset change history (M4.4).** AssetDB also carries an **audit timeline** — the
+*who / how / when* of every change — by ingesting the Azure **Activity Log** into
+`asset_events`. The mockable `azure/activitylog.py` collector (`client=None` →
+recorded fixture; inject a client for live) parses each entry's **actor** (`caller`),
+**operation** (`operationName`) and **timestamp** (`eventTimestamp`); a malformed
+record (missing any of those) is **skipped, never fatal**. `repo.record_activity_events`
+persists each as an `activity` event whose row time is the *real* event timestamp, so
+`GET /api/assets/{id}/history` returns the combined lifecycle + activity timeline
+**newest-first**; an unknown asset yields an empty list (`200`), not an error.
+
 Two API endpoints expose the engine's offline surface (M1.3):
 
 - `POST /api/policies/validate` — dry-run schema-validate a policy `spec` (a
@@ -379,7 +390,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 279 tests, **~99% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 291 tests, **~99% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).

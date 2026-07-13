@@ -519,6 +519,20 @@ def asset_relationships(resource_id: str) -> list[dict[str, Any]]:
         return repo.get_relationships(session, normalized)
 
 
+@app.get("/api/assets/{resource_id:path}/history")
+def asset_history(resource_id: str) -> list[dict[str, Any]]:
+    """Return an asset's change timeline — its audit events, newest-first (M4.4).
+
+    The timeline combines lifecycle (``created``) events with the ingested Azure
+    Activity Log (``activity`` — actor / operation / timestamp). ``resource_id`` is a
+    path parameter (Azure ids contain slashes); the leading slash is normalized back
+    on to match the stored id. An unknown asset yields an empty list, not an error.
+    """
+    normalized = "/" + resource_id.lstrip("/")
+    with session_scope() as session:
+        return repo.get_asset_history(session, normalized)
+
+
 # --------------------------------------------------------------------------- #
 # Subscriptions (multi-subscription management)
 # --------------------------------------------------------------------------- #

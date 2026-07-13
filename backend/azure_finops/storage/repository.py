@@ -949,6 +949,73 @@ def get_relationships(session: Session, resource_id: str) -> list[dict[str, Any]
     return out
 
 
+def _parse_ts(value: Any) -> datetime | None:
+    """Parse an ISO-8601 activity timestamp to a tz-aware datetime; None if unparseable."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def record_activity_events(session: Session, events: list[dict[str, Any]]) -> int:
+    """Persist parsed Activity Log events (M4.4) into the ``asset_events`` audit trail.
+
+    Each event's real timestamp becomes the row ``at`` — so the history timeline is
+    ordered by when the change actually happened, not when we ingested it — while the
+    actor, operation and other metadata live in ``data``. Returns the count inserted.
+    """
+    rows: list[schema.AssetEvent] = []
+    for e in events:
+        event = schema.AssetEvent(
+            resource_id=e["resource_id"],
+            subscription_id=e.get("subscription_id"),
+            event_type="activity",
+            data={
+                k: e.get(k) for k in ("actor", "operation", "status", "correlation_id", "timestamp")
+            },
+        )
+        at = _parse_ts(e.get("timestamp"))
+        if at is not None:
+            event.at = at
+        rows.append(event)
+    if not rows:
+        return 0
+    session.add_all(rows)
+    session.flush()
+    return len(rows)
+
+
+def get_asset_history(session: Session, resource_id: str) -> list[dict[str, Any]]:
+    """Return an asset's change timeline newest-first (M4.4).
+
+    Every ``asset_event`` recorded for the resource — lifecycle (``created``) plus the
+    ingested Activity Log (``activity``) — ordered by event time then id (a stable
+    tie-break). An unknown asset simply yields an empty list.
+    """
+    recs = (
+        session.query(schema.AssetEvent)
+        .filter(schema.AssetEvent.resource_id == resource_id)
+        .order_by(schema.AssetEvent.at.desc(), schema.AssetEvent.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "resource_id": r.resource_id,
+            "subscription_id": r.subscription_id,
+            "event_type": r.event_type,
+            "data": r.data,
+            "at": r.at.isoformat() if r.at else None,
+        }
+        for r in recs
+    ]
+
+
 def upsert_cost_snapshots(session: Session, rows: list[m.CostRow]) -> int:
     if not rows:
         return 0

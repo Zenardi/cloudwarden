@@ -21,6 +21,7 @@ from .analysis.rollup import build_rollups
 from .analysis.rules import evaluate_vms, prioritize
 from .analysis.savings import monthly_cost_map
 from .azure._fixtures import retarget
+from .azure.activitylog import collect_activity_log
 from .azure.advisor import collect_advisor
 from .azure.context import SubscriptionContext
 from .azure.cost import collect_cost
@@ -100,6 +101,8 @@ def run_pipeline(
         if not settings.finops_mock and settings.log_analytics_workspace_id:
             metric_samples += collect_memory(resources)
         advisor_recs = collect_advisor(subscription=subscription)
+        # AssetDB change history (M4.4): who/how/when each asset changed.
+        activity_events = collect_activity_log(subscription=subscription)
 
         # --- analyze ---
         now = datetime.now(UTC)
@@ -156,6 +159,9 @@ def run_pipeline(
             # AssetDB graph (M4.3): derive typed edges (disk→vm, nic→vm, ip→nic)
             # from asset config. Idempotent; dangling references are skipped.
             counts["asset_relationships"] = repo.build_relationships(session)
+            # AssetDB change history (M4.4): persist Activity Log events (who/how/when)
+            # into asset_events; malformed records were already skipped on collect.
+            counts["activity_events"] = repo.record_activity_events(session, activity_events)
             counts["cost_rows"] = repo.upsert_cost_snapshots(session, cost_rows)
             counts["metric_samples"] = repo.insert_metric_samples(session, metric_samples)
             counts["rollups"] = repo.upsert_rollups(session, rollups)

@@ -47,6 +47,19 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M4.4 — Asset change history & event metadata.** AssetDB gains an **audit
+  timeline** — the *who / how / when* of every asset change — by ingesting the Azure
+  **Activity Log** into `asset_events`. New mockable collector
+  `azure/activitylog.py` (`client=None` → recorded `fixtures/activitylog.json`; inject
+  a client for live) parses each entry's **actor** (`caller`), **operation**
+  (`operationName`) and **timestamp** (`eventTimestamp`), lower-casing resource ids to
+  join with assets; a malformed record (missing any of those) is **skipped, never
+  fatal**. `repo.record_activity_events` persists each as an `activity` event whose row
+  time is the *real* event timestamp, and the pipeline collects it each run. New
+  endpoint `GET /api/assets/{id}/history` returns the combined lifecycle + activity
+  timeline **newest-first**; an unknown asset yields an empty list (`200`), not an
+  error. No new dependency (`azure-mgmt-monitor` is already pinned transitively by
+  c7n-azure).
 - **M4.3 — Asset relationships graph.** The **graph dimension** of AssetDB (à la
   Stacklet's asset relationships). Ingestion now derives typed, directed edges
   between assets from each asset's `config`: a managed disk's `managedBy` VM

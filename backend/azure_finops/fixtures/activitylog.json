@@ -1,0 +1,49 @@
+[
+  {
+    "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01",
+    "operationName": {"value": "Microsoft.Compute/virtualMachines/write", "localizedValue": "Create or Update Virtual Machine"},
+    "caller": "alice@contoso.com",
+    "eventTimestamp": "2026-06-20T14:03:11Z",
+    "status": {"value": "Succeeded"},
+    "correlationId": "b1f2c3d4-0001-0001-0001-000000000001"
+  },
+  {
+    "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01",
+    "operationName": {"value": "Microsoft.Compute/virtualMachines/restart/action", "localizedValue": "Restart Virtual Machine"},
+    "caller": "bob@contoso.com",
+    "eventTimestamp": "2026-07-01T09:41:52Z",
+    "status": {"value": "Succeeded"},
+    "correlationId": "b1f2c3d4-0002-0002-0002-000000000002"
+  },
+  {
+    "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01",
+    "operationName": {"value": "Microsoft.Compute/virtualMachines/deallocate/action", "localizedValue": "Deallocate Virtual Machine"},
+    "caller": "alice@contoso.com",
+    "eventTimestamp": "2026-07-05T22:10:07Z",
+    "status": {"value": "Succeeded"},
+    "correlationId": "b1f2c3d4-0003-0003-0003-000000000003"
+  },
+  {
+    "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Compute/disks/disk-orphan-01",
+    "operationName": {"value": "Microsoft.Compute/disks/write", "localizedValue": "Create or Update Disk"},
+    "caller": "carol@contoso.com",
+    "eventTimestamp": "2026-06-15T11:27:33Z",
+    "status": {"value": "Succeeded"},
+    "correlationId": "b1f2c3d4-0004-0004-0004-000000000004"
+  },
+  {
+    "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Network/networkInterfaces/nic-web-01",
+    "operationName": {"value": "Microsoft.Network/networkInterfaces/write", "localizedValue": "Create or Update Network Interface"},
+    "caller": "dave@contoso.com",
+    "eventTimestamp": "2026-06-20T14:03:15Z",
+    "status": {"value": "Succeeded"},
+    "correlationId": "b1f2c3d4-0005-0005-0005-000000000005"
+  },
+  {
+    "resourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01",
+    "operationName": {"localizedValue": "Malformed record — no operation value; must be skipped, not fatal"},
+    "caller": "mallory@contoso.com",
+    "eventTimestamp": "2026-07-06T00:00:00Z",
+    "status": {"value": "Failed"}
+  }
+]
