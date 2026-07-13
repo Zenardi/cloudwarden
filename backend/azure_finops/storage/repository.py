@@ -66,6 +66,7 @@ def _policy_execution_public(rec: schema.PolicyExecution) -> dict[str, Any]:
         "execution_id": rec.execution_id,
         "policy_id": rec.policy_id,
         "subscription_id": rec.subscription_id,
+        "binding_id": rec.binding_id,
         "status": rec.status,
         "started_at": rec.started_at.isoformat() if rec.started_at else None,
         "finished_at": rec.finished_at.isoformat() if rec.finished_at else None,
@@ -95,14 +96,20 @@ def create_policy_execution(
     policy_id: int,
     subscription_id: str | None,
     status: str = "running",
+    binding_id: int | None = None,
 ) -> None:
-    """Open a policy execution (defaults to ``running``), mirroring ``create_run``."""
+    """Open a policy execution (defaults to ``running``), mirroring ``create_run``.
+
+    ``binding_id`` tags an execution triggered by a binding run (M5.3); ``None`` for
+    plain pull-mode runs.
+    """
     session.add(
         schema.PolicyExecution(
             execution_id=execution_id,
             policy_id=policy_id,
             subscription_id=subscription_id,
             status=status,
+            binding_id=binding_id,
         )
     )
     session.flush()
@@ -825,6 +832,37 @@ def delete_binding(session: Session, binding_id: int) -> bool:
     session.delete(rec)
     session.flush()
     return True
+
+
+def policies_in_collection(
+    session: Session, collection_id: int, enabled_only: bool = True
+) -> list[dict[str, Any]]:
+    """Full policy records (with ``spec``) belonging to a collection — for M5.3 runs."""
+    query = (
+        session.query(schema.Policy)
+        .join(schema.CollectionPolicy, schema.CollectionPolicy.policy_id == schema.Policy.id)
+        .filter(schema.CollectionPolicy.collection_id == collection_id)
+    )
+    if enabled_only:
+        query = query.filter(schema.Policy.enabled.is_(True))
+    return [_policy_public(p) for p in query.order_by(schema.Policy.name.asc()).all()]
+
+
+def subscriptions_in_group(
+    session: Session, group_id: int, enabled_only: bool = True
+) -> list[schema.Subscription]:
+    """Subscription ORM rows belonging to an account group — for M5.3 runs."""
+    query = (
+        session.query(schema.Subscription)
+        .join(
+            schema.AccountGroupMember,
+            schema.AccountGroupMember.subscription_id == schema.Subscription.subscription_id,
+        )
+        .filter(schema.AccountGroupMember.group_id == group_id)
+    )
+    if enabled_only:
+        query = query.filter(schema.Subscription.enabled.is_(True))
+    return query.order_by(schema.Subscription.display_name.asc()).all()
 
 
 # --------------------------------------------------------------------------- #

@@ -49,7 +49,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M4.4 | AssetDB — asset change history & event metadata (Activity Log) | ✅ done |
 | M4.5 | AssetDB — asset explorer & detail UI (query, config, graph, history) | ✅ done |
 | M5.1 | Account groups — organize subscriptions into named, many-to-many groups | ✅ done |
-| M5.2 | Bindings — link a policy collection to an account group with exec config | 🚧 in review |
+| M5.2 | Bindings — link a policy collection to an account group with exec config | ✅ done |
+| M5.3 | Binding execution engine — run a binding across its accounts, by cron | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -293,6 +294,17 @@ requires an **existing** collection and account group (else `404`), `mode` is va
 to `pull`/`event` (else `400`), and bindings default to **`dry_run=true`** / `enabled=true`.
 The `bindings` table's FKs are `ON DELETE CASCADE`, so deleting a collection or group
 drops its bindings automatically.
+
+**Binding execution engine (M5.3).** `run_binding(binding_id)` (`custodian/bindings.py`)
+is what runs governance at scale: it executes **every policy in the binding's
+collection** across **every enabled subscription in its account group**, recording one
+`PolicyExecution` — **tagged with `binding_id`** — per policy × subscription (reusing the
+M3.2 pull-mode executor and `SubscriptionContext`). A **disabled** binding is a no-op
+(`status="skipped"`); the binding's **`dry_run`** is passed through to every run (no
+actions executed when set); a per-(policy × subscription) failure is isolated on its own
+row. Trigger it via **`POST /api/bindings/{id}/run`**, and the scheduler registers **one
+cron job per enabled binding** (from its `schedule`) so bindings fire automatically —
+invalid crons are skipped, not fatal.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 

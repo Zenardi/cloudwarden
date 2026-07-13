@@ -47,6 +47,18 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M5.3 — Binding execution engine.** `run_binding(binding_id)`
+  (`custodian/bindings.py`) runs governance at scale: it executes **every policy in a
+  binding's collection** across **every enabled subscription in its account group**,
+  recording one `PolicyExecution` — **tagged with the originating `binding_id`** (new
+  `PolicyExecution.binding_id` FK, `ON DELETE SET NULL` to preserve the audit trail) —
+  per policy × subscription, reusing the M3.2 pull-mode executor and `SubscriptionContext`
+  via the injectable `CustodianRunner` seam. A **disabled** binding is a no-op
+  (`status="skipped"`); the binding's **`dry_run`** is passed through to every run (no
+  actions executed when set); a per-(policy × subscription) failure is isolated on its own
+  row. New endpoint **`POST /api/bindings/{id}/run`**, and the scheduler registers **one
+  cron job per enabled binding** (from its `schedule`; invalid crons are skipped, not
+  fatal). Execution rows now surface `binding_id` in the M3.3 history API.
 - **M5.2 — Bindings model.** A **binding** links a **policy collection** (M2.3) to an
   **account group** (M5.1) with execution config — Stacklet's core operational unit that
   operationalizes governance at scale (*which policies run against which accounts, how,
