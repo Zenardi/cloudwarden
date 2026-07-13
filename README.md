@@ -1,5 +1,7 @@
 # Azure FinOps Optimizer
 
+[![CI](https://github.com/Zenardi/azure-finops/actions/workflows/ci.yml/badge.svg)](https://github.com/Zenardi/azure-finops/actions/workflows/ci.yml)
+
 Analyze an Azure subscription's **cost and consumption**, visualize spend by
 **resource / resource type / region**, and recommend (and, when approved,
 **execute**) right-sizing and shutdown actions from CPU / RAM / I/O and other
