@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from .. import reporting
-from ..authz import oidc, rbac, teams
+from ..authz import audit, oidc, rbac, teams
 from ..config import get_settings
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
@@ -291,6 +291,14 @@ def create_policy(
                 source=body.source,
                 team_id=team_id,
             )
+            audit.record(
+                session,
+                actor=principal,
+                action="policy.create",
+                target_type="policy",
+                target_id=str(created["id"]),
+                after=created,
+            )
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="policy name already exists") from exc
     return _policy_view(created)
@@ -327,6 +335,15 @@ def update_policy(
                 spec=body.spec,
                 description=body.description,
             )
+            audit.record(
+                session,
+                actor=principal,
+                action="policy.update",
+                target_type="policy",
+                target_id=str(policy_id),
+                before=existing,
+                after=updated,
+            )
     except IntegrityError as exc:
         raise HTTPException(status_code=409, detail="policy name already exists") from exc
     return _policy_view(updated)
@@ -345,6 +362,14 @@ def delete_policy(policy_id: int, request: Request) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail="policy not found")
         teams.ensure_policy_access(session, principal, existing, rbac_enabled=rbac_enabled)
         repo.delete_policy(session, policy_id)
+        audit.record(
+            session,
+            actor=principal,
+            action="policy.delete",
+            target_type="policy",
+            target_id=str(policy_id),
+            before=existing,
+        )
     return {"id": policy_id, "deleted": True}
 
 
@@ -352,11 +377,20 @@ def delete_policy(policy_id: int, request: Request) -> dict[str, Any]:
     "/api/policies/{policy_id}/enabled",
     dependencies=[Depends(rbac.require_permission("policy:write"))],
 )
-def set_policy_enabled(policy_id: int, enabled: bool = True) -> dict[str, Any]:
+def set_policy_enabled(policy_id: int, request: Request, enabled: bool = True) -> dict[str, Any]:
+    principal = rbac.principal_from_request(request)
     with session_scope() as session:
         updated = repo.set_policy_enabled(session, policy_id, enabled)
-    if updated is None:
-        raise HTTPException(status_code=404, detail="policy not found")
+        if updated is None:
+            raise HTTPException(status_code=404, detail="policy not found")
+        audit.record(
+            session,
+            actor=principal,
+            action="policy.enable" if enabled else "policy.disable",
+            target_type="policy",
+            target_id=str(policy_id),
+            after=updated,
+        )
     return _policy_view(updated)
 
 
@@ -694,6 +728,35 @@ def auth_logout(response: Response) -> dict[str, Any]:
     """Clear the first-party session cookie (idempotent)."""
     response.delete_cookie(oidc.SESSION_COOKIE)
     return {"logged_out": True}
+
+
+# --------------------------------------------------------------------------- #
+# Audit log (M11.4) — append-only trail of mutating governance actions
+# --------------------------------------------------------------------------- #
+@app.get("/api/audit")
+def list_audit(
+    actor: str | None = None,
+    action: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """List audit entries newest-first, filterable by actor / action / target.
+
+    Read-only: the audit trail is **append-only**, written as a side effect of mutating
+    actions — there is deliberately no create/update/delete route here.
+    """
+    with session_scope() as session:
+        return repo.list_audit_logs(
+            session,
+            actor=actor,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            limit=limit,
+            offset=offset,
+        )
 
 
 # --------------------------------------------------------------------------- #

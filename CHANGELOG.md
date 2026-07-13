@@ -6,6 +6,18 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Audit log — append-only trail of mutating governance actions (M11.4).** New
+  `audit_log` table and an `azure_finops.authz.audit` helper. Creating, updating,
+  deleting or enabling/disabling a policy writes one row capturing the actor (resolved
+  RBAC/SSO principal), the action (`policy.create` / `policy.update` / `policy.delete` /
+  `policy.enable` / `policy.disable`), the target (`target_type`/`target_id`), and the
+  before/after state as JSONB (a create has an empty `before`; a delete an empty
+  `after`) — written inside the mutation's own transaction, so it commits atomically.
+  **Reads are never audited.** `GET /api/audit` lists entries newest-first (with `id` as
+  the tiebreaker), filterable by `actor` / `action` / `target_type` / `target_id` and
+  paginated by `limit`/`offset`; a new **Audit** UI page renders the trail. The log is
+  append-only by construction — there is no update or delete path in the repository or
+  the API (mutating verbs on `/api/audit` return `405`).
 - **SSO / OIDC authentication (M11.3).** New `azure_finops.authz.oidc` module adds an
   identity layer that feeds the RBAC principal. The API accepts either an OIDC bearer
   token (`Authorization: Bearer <jwt>`, verified with PyJWT — RS256 signature +

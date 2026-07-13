@@ -270,6 +270,32 @@ class TeamMember(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AuditLog(Base):
+    """Append-only record of a mutating governance action (M11.4).
+
+    Stacklet-style audit trail: every create/update/delete of a governance object
+    writes one row capturing **who** (``actor`` — the resolved RBAC/SSO principal, or
+    ``NULL`` when anonymous), **what** (``action`` like ``policy.update``), **which**
+    (``target_type`` / ``target_id``), and the **before/after** state as JSONB (a create
+    has an empty ``before``; a delete an empty ``after``). Rows are only ever inserted —
+    there is no update or delete path, in the repository or the API — so the log is
+    tamper-evident by construction. Read requests are never recorded.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    actor: Mapped[str | None] = mapped_column(String(256), index=True)
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    target_type: Mapped[str] = mapped_column(String(64), index=True)
+    target_id: Mapped[str | None] = mapped_column(String(256), index=True)
+    before: Mapped[dict] = mapped_column(JSONB, default=dict)
+    after: Mapped[dict] = mapped_column(JSONB, default=dict)
+    at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 class PolicyExecution(Base):
     """One scheduled/triggered run of a policy and its outcome (M3.1).
 

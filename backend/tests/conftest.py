@@ -23,7 +23,7 @@ _TABLES = (
     "policies, policy_versions, policy_collections, "
     "collection_policies, installed_packs, policy_executions, policy_matches, "
     "notification_templates, notification_channels, binding_notifications, "
-    "roles, permissions, role_bindings, teams, team_members"
+    "roles, permissions, role_bindings, teams, team_members, audit_log"
 )
 
 

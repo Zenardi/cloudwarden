@@ -1066,6 +1066,54 @@ jobs:
           print("oidc-on OK: bearer->rbac=201 expired=401 callback=session")
           PY
 
+      - name: Smoke-test the audit log (M11.4)
+        run: |
+          set -euo pipefail
+          # In the deployed image against the real DB: a policy create/update/delete
+          # each writes an append-only audit row (actor + before/after); reads add
+          # nothing; the log is newest-first and filterable; and mutating verbs on
+          # /api/audit are 405 (append-only).
+          docker compose exec -T backend python - <<'PY'
+          import json, urllib.error, urllib.request
+
+          def call(method, path, body=None, actor=None):
+              headers = {"Content-Type": "application/json"}
+              if actor:
+                  headers["X-Principal"] = actor
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(f"http://localhost:8000{path}", data=data,
+                                           headers=headers, method=method)
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      return r.status, json.load(r)
+              except urllib.error.HTTPError as e:
+                  return e.code, None
+
+          spec = {"policies": [{"name": "ci-audit-p", "resource": "azure.vm"}]}
+          st, created = call("POST", "/api/policies",
+                             {"name": "ci-audit-p", "resource_type": "azure.vm", "spec": spec},
+                             actor="ci-auditor")
+          assert st == 201, st
+          pid = created["id"]
+          assert call("PUT", f"/api/policies/{pid}", {"description": "d2"}, actor="ci-auditor")[0] == 200
+          # A read — must NOT be audited.
+          call("GET", f"/api/policies/{pid}")
+          assert call("DELETE", f"/api/policies/{pid}", actor="ci-auditor")[0] == 200
+
+          st, rows = call("GET", f"/api/audit?target_id={pid}")
+          assert st == 200, st
+          actions = [r["action"] for r in rows]
+          assert actions == ["policy.delete", "policy.update", "policy.create"], actions  # newest-first
+          assert all(r["actor"] == "ci-auditor" for r in rows), rows
+          assert rows[0]["before"]["name"] == "ci-audit-p"       # delete captured prior state
+          assert rows[2]["before"] == {}                          # create has no prior state
+
+          # Append-only: no mutating routes on /api/audit.
+          assert call("POST", "/api/audit", {})[0] == 405
+          assert call("DELETE", "/api/audit")[0] == 405
+          print("audit OK: create/update/delete recorded, reads ignored, newest-first, append-only")
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail
@@ -1078,7 +1126,7 @@ jobs:
             sleep 2
           done
           detail="/assets/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-app/providers/microsoft.compute/virtualmachines/vm-web-01"
-          for path in "/assets" "$detail" "/account-groups" "/bindings" "/events" "/remediation" "/notifications" "/compliance"; do
+          for path in "/assets" "$detail" "/account-groups" "/bindings" "/events" "/remediation" "/notifications" "/compliance" "/audit"; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3001$path")
             test "$code" = "200" || { echo "::error::$path returned $code"; docker compose logs frontend; exit 1; }
             echo "route OK: $path → 200"

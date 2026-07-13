@@ -74,7 +74,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M10.4 | CIS Azure compliance pack — CIS controls mapped to c7n policies; posture grouped by control id (CIS Azure) | ✅ done |
 | M11.1 | RBAC model — roles/permissions/role-bindings + a `require_permission` guard on mutating endpoints | ✅ done |
 | M11.2 | Teams & membership — team-scoped multi-tenancy: policies carry an owning team; members see/manage only their team's, admins see all | ✅ done |
-| M11.3 | SSO / OIDC authentication — verified bearer token (or first-party session) becomes the RBAC principal; login/callback flow; a login-gated UI | 🚧 in review |
+| M11.3 | SSO / OIDC authentication — verified bearer token (or first-party session) becomes the RBAC principal; login/callback flow; a login-gated UI | ✅ done |
+| M11.4 | Audit log — append-only trail of every mutating action (actor, action, target, before/after); `GET /api/audit` + a UI viewer | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -394,6 +395,19 @@ tests). The Next.js UI gates behind `/login` when `NEXT_PUBLIC_AUTH_ENABLED=true
 by default, so mock dev is unauthenticated). Enable OIDC **and** RBAC together to
 authenticate callers and enforce their permissions; identity is a plain `X-Principal`
 header only while OIDC is off.
+
+**Audit log (M11.4).** Every mutating governance action is recorded in an **append-only**
+`audit_log` — Stacklet's audit trail. Creating, updating, deleting or enabling/disabling
+a policy writes one row capturing **who** (`actor`, the resolved RBAC/SSO principal, or
+`NULL` when anonymous), **what** (`action`, e.g. `policy.update`), **which**
+(`target_type`/`target_id`), and the **before/after** state (JSONB — a create has an empty
+`before`, a delete an empty `after`). **Reads are never recorded.** The trail is written as
+a side effect of the mutation, inside the same transaction, so it commits atomically with
+the change. `GET /api/audit` lists entries **newest-first** (with `id` as the tiebreaker so
+same-transaction rows still order correctly), filterable by `actor` / `action` /
+`target_type` / `target_id` and paginated by `limit`/`offset`; the **Audit** page renders
+it. The log is tamper-evident by construction: there is deliberately no update or delete
+path, in the repository or the API (mutating verbs on `/api/audit` are `405`).
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

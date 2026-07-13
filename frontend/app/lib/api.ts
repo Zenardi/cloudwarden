@@ -472,6 +472,40 @@ export interface MatchedResource {
 export const getGovernancePosture = (): Promise<Posture> =>
   apiGet<Posture>("/api/governance/posture");
 
+// --------------------------------------------------------------------------- //
+// Audit log (M11.4): append-only trail of mutating governance actions
+// --------------------------------------------------------------------------- //
+
+export interface AuditEntry {
+  id: number;
+  actor: string | null;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  before: Record<string, any>;
+  after: Record<string, any>;
+  at?: string | null;
+}
+
+export interface AuditFilters {
+  actor?: string;
+  action?: string;
+  target_type?: string;
+  target_id?: string;
+  limit?: number;
+}
+
+/** List audit entries newest-first, optionally filtered by actor / action / target. */
+export function listAudit(filters: AuditFilters = {}): Promise<AuditEntry[]> {
+  const qs = new URLSearchParams();
+  if (filters.actor) qs.set("actor", filters.actor);
+  if (filters.action) qs.set("action", filters.action);
+  if (filters.target_type) qs.set("target_type", filters.target_type);
+  if (filters.target_id) qs.set("target_id", filters.target_id);
+  qs.set("limit", String(filters.limit ?? 100));
+  return apiGet<AuditEntry[]>(`/api/audit?${qs.toString()}`);
+}
+
 /** Resources currently flagged by a policy — the compliance drill-down (M9.3). */
 export const getPolicyMatchedResources = (policyId: number): Promise<MatchedResource[]> =>
   apiGet<MatchedResource[]>(`/api/governance/policies/${policyId}/matches`);

@@ -994,6 +994,79 @@ def is_team_member(session: Session, team_id: int, principal: str) -> bool:
 
 
 # --------------------------------------------------------------------------- #
+# Audit log (M11.4) — append-only record of mutating governance actions
+# --------------------------------------------------------------------------- #
+def _audit_public(rec: schema.AuditLog) -> dict[str, Any]:
+    return {
+        "id": rec.id,
+        "actor": rec.actor,
+        "action": rec.action,
+        "target_type": rec.target_type,
+        "target_id": rec.target_id,
+        "before": rec.before,
+        "after": rec.after,
+        "at": rec.at.isoformat() if rec.at else None,
+    }
+
+
+def insert_audit_log(
+    session: Session,
+    *,
+    actor: str | None,
+    action: str,
+    target_type: str,
+    target_id: str | None,
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> dict[str, Any]:
+    """Append one audit row (insert-only — the log is never updated or deleted)."""
+    rec = schema.AuditLog(
+        actor=actor,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        before=before,
+        after=after,
+    )
+    session.add(rec)
+    session.flush()
+    return _audit_public(rec)
+
+
+def list_audit_logs(
+    session: Session,
+    *,
+    actor: str | None = None,
+    action: str | None = None,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """List audit rows newest-first, optionally filtered by actor/action/target.
+
+    Ordered by ``at`` descending with ``id`` as the tiebreaker, so entries written in
+    the same transaction (identical timestamps) still surface newest-first.
+    """
+    query = session.query(schema.AuditLog)
+    if actor is not None:
+        query = query.filter(schema.AuditLog.actor == actor)
+    if action is not None:
+        query = query.filter(schema.AuditLog.action == action)
+    if target_type is not None:
+        query = query.filter(schema.AuditLog.target_type == target_type)
+    if target_id is not None:
+        query = query.filter(schema.AuditLog.target_id == target_id)
+    recs = (
+        query.order_by(schema.AuditLog.at.desc(), schema.AuditLog.id.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    return [_audit_public(r) for r in recs]
+
+
+# --------------------------------------------------------------------------- #
 # Account groups (M5.1) — many-to-many grouping of subscriptions
 # --------------------------------------------------------------------------- #
 def _account_group_public(session: Session, rec: schema.AccountGroup) -> dict[str, Any]:

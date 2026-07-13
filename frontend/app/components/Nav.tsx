@@ -19,6 +19,7 @@ export default function Nav() {
       <Link href="/account-groups">Account Groups</Link>
       <Link href="/bindings">Bindings</Link>
       <Link href="/notifications">Notifications</Link>
+      <Link href="/audit">Audit</Link>
     </nav>
   );
 }
