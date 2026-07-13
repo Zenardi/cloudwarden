@@ -9,6 +9,7 @@ interval; each is wrapped so a failure never kills the scheduler.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -16,6 +17,49 @@ from .config import get_settings
 from .orchestrator import run_all_policies, run_all_subscriptions
 
 logger = logging.getLogger("azure_finops.scheduler")
+
+
+def _safe_run_binding(binding_id: int) -> None:
+    from .custodian.bindings import run_binding
+
+    try:
+        run_binding(binding_id)
+    except Exception:  # noqa: BLE001 - keep the scheduler alive
+        logger.exception("scheduled binding %s run failed", binding_id)
+
+
+def _schedule_bindings(scheduler: Any) -> int:
+    """Register a cron job per enabled binding that has a schedule (M5.3).
+
+    Bindings without a schedule, disabled bindings, and bindings with an unparseable
+    cron are skipped (the last is logged). Returns the number of jobs registered.
+    """
+    from apscheduler.triggers.cron import CronTrigger
+
+    from .storage import repository as repo
+    from .storage.db import init_db, session_scope
+
+    init_db()
+    with session_scope() as session:
+        bindings = [b for b in repo.list_bindings(session) if b["enabled"] and b["schedule"]]
+    scheduled = 0
+    for binding in bindings:
+        try:
+            trigger = CronTrigger.from_crontab(binding["schedule"], timezone="UTC")
+        except (ValueError, TypeError):
+            logger.warning(
+                "binding %s has an invalid cron %r; skipping", binding["id"], binding["schedule"]
+            )
+            continue
+        scheduler.add_job(
+            _safe_run_binding,
+            trigger,
+            args=[binding["id"]],
+            id=f"finops-binding-{binding['id']}",
+        )
+        scheduled += 1
+    logger.info("scheduled %d binding cron job(s)", scheduled)
+    return scheduled
 
 
 def _safe_run() -> None:
@@ -44,6 +88,7 @@ def run_scheduler() -> None:
     scheduler.add_job(
         _safe_run_policies, "interval", seconds=policy_interval, id="finops-policy-run"
     )
+    _schedule_bindings(scheduler)  # one cron job per enabled binding (M5.3)
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

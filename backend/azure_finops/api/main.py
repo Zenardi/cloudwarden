@@ -529,6 +529,23 @@ def delete_binding(binding_id: int) -> dict[str, Any]:
     return {"id": binding_id, "deleted": True}
 
 
+@app.post("/api/bindings/{binding_id}/run")
+def run_binding_endpoint(
+    binding_id: int,
+    runner: Annotated[CustodianRunner | None, Depends(get_custodian_runner)] = None,
+) -> dict[str, Any]:
+    """Execute a binding (M5.3): its collection's policies × its group's subscriptions.
+
+    A disabled binding returns a ``skipped`` result; an unknown binding is ``404``.
+    """
+    from ..custodian.bindings import run_binding
+
+    result = run_binding(binding_id, runner=runner)
+    if result is None:
+        raise HTTPException(status_code=404, detail="binding not found")
+    return result
+
+
 @app.get("/api/summary")
 def latest_summary() -> dict[str, Any] | None:
     with session_scope() as session:
