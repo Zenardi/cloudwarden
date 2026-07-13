@@ -50,7 +50,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M4.5 | AssetDB — asset explorer & detail UI (query, config, graph, history) | ✅ done |
 | M5.1 | Account groups — organize subscriptions into named, many-to-many groups | ✅ done |
 | M5.2 | Bindings — link a policy collection to an account group with exec config | ✅ done |
-| M5.3 | Binding execution engine — run a binding across its accounts, by cron | 🚧 in review |
+| M5.3 | Binding execution engine — run a binding across its accounts, by cron | ✅ done |
+| M5.4 | Bindings & account-groups UI — create/edit/run bindings, last-run status | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -305,6 +306,15 @@ actions executed when set); a per-(policy × subscription) failure is isolated o
 row. Trigger it via **`POST /api/bindings/{id}/run`**, and the scheduler registers **one
 cron job per enabled binding** (from its `schedule`) so bindings fire automatically —
 invalid crons are skipped, not fatal.
+
+**Bindings UI (M5.4).** The Next.js **`/bindings`** console is the binding-management
+UX: it lists every binding with its **collection**, **account group**, **schedule**,
+**mode**, dry-run/enabled toggles and **last-run status** (derived from the
+`binding_id`-tagged executions). A create form selects an **existing** collection +
+account group (the button stays disabled until both are chosen); each row is **editable
+inline** (schedule / mode / dry-run / enabled → `PUT`); and a **Run** button calls
+`POST /api/bindings/{id}/run` and refreshes the row's status. Empty and error states are
+handled. Consumes the M5.2/M5.3 + collections/account-groups APIs — no backend change.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 

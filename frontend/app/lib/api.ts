@@ -119,6 +119,7 @@ export interface PolicyExecution {
   execution_id: string;
   policy_id: number;
   subscription_id?: string | null;
+  binding_id?: number | null;
   status: string;
   started_at?: string | null;
   finished_at?: string | null;
@@ -166,6 +167,37 @@ export interface AccountGroup {
   subscriptions: AccountGroupMember[];
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+// --- Bindings (M5.2/M5.3/M5.4) — collection × account group + execution ----- //
+
+export interface Binding {
+  id: number;
+  collection_id: number;
+  account_group_id: number;
+  schedule?: string | null;
+  mode: string;
+  dry_run: boolean;
+  enabled: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BindingRunExecution {
+  execution_id: string;
+  policy_id: number;
+  subscription_id?: string | null;
+  status: string;
+  resources_matched?: number;
+  error?: string | null;
+}
+
+export interface BindingRunResult {
+  binding_id: number;
+  status: string; // "completed" | "skipped"
+  dry_run?: boolean;
+  reason?: string;
+  executions: BindingRunExecution[];
 }
 
 export interface AISummary {

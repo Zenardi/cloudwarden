@@ -47,6 +47,16 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M5.4 — Bindings & account-groups UI.** A Next.js **`/bindings`** console (the
+  Stacklet binding-management UX): lists every binding with its **collection**, **account
+  group**, **schedule**, **mode**, dry-run/enabled state and **last-run status** (derived
+  from the `binding_id`-tagged executions in the M3.3 history). A create form selects an
+  **existing** collection + account group (submit disabled until both chosen); each row is
+  **editable inline** (schedule / mode / dry-run / enabled → `PUT`); a **Run** button calls
+  `POST /api/bindings/{id}/run` and refreshes status. Empty/error states handled. Adds
+  `frontend/app/bindings/page.tsx`, a **Bindings** nav link, and `Binding` /
+  `BindingRunResult` types (+ `binding_id` on `PolicyExecution`) in `lib/api.ts`. The CI
+  `e2e` job now also asserts `/bindings` returns `200` in mock mode. No backend change.
 - **M5.3 — Binding execution engine.** `run_binding(binding_id)`
   (`custodian/bindings.py`) runs governance at scale: it executes **every policy in a
   binding's collection** across **every enabled subscription in its account group**,
