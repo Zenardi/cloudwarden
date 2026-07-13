@@ -20,6 +20,7 @@ from ..config import get_settings
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
 from ..custodian.eventmode import handle_event
+from ..events.assetdb import apply_asset_event
 from ..events.ingestion import (
     handle_subscription_validation,
     normalize_event,
@@ -589,8 +590,10 @@ async def ingest_azure_events(
                 continue
             repo.insert_event_log(session, normalized)
             normalized_events.append(normalized)
-    # M6.2: fire event-mode policies for each accepted delivery (no-op when none match).
     for normalized in normalized_events:
+        # M6.3: keep the AssetDB inventory current from the event stream.
+        apply_asset_event(normalized)
+        # M6.2: fire event-mode policies for each accepted delivery (no-op when none match).
         handle_event(normalized, runner=runner)
     return {"received": len(events), "processed": len(normalized_events)}
 

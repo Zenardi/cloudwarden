@@ -1019,6 +1019,43 @@ def append_asset_event(
     session.flush()
 
 
+_DELETE_EVENT_TYPE = "Microsoft.Resources.ResourceDeleteSuccess"
+
+
+def upsert_asset_from_event(session: Session, event: Any) -> bool:
+    """Reflect a single resource-change event into the ``assets`` inventory (M6.3).
+
+    Keeps the AssetDB current in near-real-time: the row is upserted on
+    ``resource_id`` with the identity the event carries (subscription, ARM ``type``)
+    and a refreshed ``last_seen``; a delete event marks ``state='deleted'``. Only the
+    columns the event actually knows are updated on conflict — a prior full ingestion's
+    ``config``/``tags``/``name``/``location`` are **preserved**, never clobbered. On a
+    first-seen insert the JSONB columns are seeded ``{}`` (the ORM ``default=dict`` does
+    not apply to a Core insert). Returns ``True`` iff a new row was inserted
+    (``xmax = 0``), so the caller can log ``created`` vs ``updated``.
+    """
+    is_delete = event.event_type == _DELETE_EVENT_TYPE
+    stmt = pg_insert(schema.Asset).values(
+        resource_id=event.resource_id,
+        subscription_id=event.subscription_id,
+        type=event.resource_type,
+        state="deleted" if is_delete else "active",
+        tags={},
+        config={},
+        last_seen=datetime.now(UTC),
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["resource_id"],
+        set_={
+            "subscription_id": stmt.excluded.subscription_id,
+            "type": stmt.excluded.type,
+            "state": stmt.excluded.state,
+            "last_seen": stmt.excluded.last_seen,
+        },
+    ).returning(literal_column("(xmax = 0)").label("inserted"))
+    return bool(session.execute(stmt).scalar_one())
+
+
 # Allow-listed asset columns for the query builder (M4.2). Only these may be
 # filtered on; anything else is rejected before a query is ever built/executed.
 _ALLOWED_ASSET_COLUMNS = {

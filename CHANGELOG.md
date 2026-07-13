@@ -47,6 +47,19 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M6.3 — Real-time AssetDB updates from events.** Each accepted Event Grid delivery now
+  also **streams into the inventory** so the AssetDB (M4.1) reflects *who / how / when*
+  near-instantly. New `events/assetdb.py` `apply_asset_event` **upserts** the `assets` row on
+  `resource_id` (refreshing `last_seen` + identity; a `ResourceDeleteSuccess` marks
+  `state='deleted'`) and **appends an `asset_event`** carrying the event's actor / operation /
+  status / timestamp — the same audit trail the M4.4 history timeline renders. New
+  `repository.upsert_asset_from_event` (reusing the `xmax = 0` inserted-detection from
+  `upsert_assets`) updates **only** the columns an event knows, so a prior full ingestion's
+  `config` / `tags` / `name` / `location` are **preserved, never clobbered**; the lifecycle is
+  `created` on first sight, else `updated` (or `deleted`). An event with **no `resource_id`**
+  is ignored (no write). Wired into `POST /api/events/azure` alongside (but separate from) the
+  M6.2 policy trigger — one keeps inventory current, the other enforces governance. Fully
+  DB-fixture tested (`test_event_assetdb.py`).
 - **M6.2 — Event-mode policy trigger.** Turns Event Grid ingestion (M6.1) into actual
   **reactive enforcement**: each accepted delivery is handed to the new
   `custodian/eventmode.py` `handle_event`, which selects the policies that both declare an

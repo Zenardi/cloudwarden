@@ -140,6 +140,28 @@ jobs:
           assert ev and ev[0]["status"] == "succeeded", ev
           print(f"event-mode e2e OK: {len(ev)} reactive execution(s), status={ev[0]['status']}")
           PY
+      - name: Assert real-time AssetDB update from the event (M6.3)
+        run: |
+          set -euo pipefail
+          # The same delivery streamed into the AssetDB: the VM asset now exists (active)
+          # and its history has a 'created' event carrying the actor.
+          python3 - <<'PY'
+          import json, urllib.request
+          def post(path, body):
+              req = urllib.request.Request(
+                  f"http://localhost:8000{path}", data=json.dumps(body).encode(),
+                  headers={"Content-Type": "application/json"})
+              return json.load(urllib.request.urlopen(req))
+          def get(path):
+              return json.load(urllib.request.urlopen(f"http://localhost:8000{path}"))
+          assets = post("/api/assets/query", {})
+          vm = [a for a in assets if a["resource_id"].endswith("/vm-web-01")]
+          assert vm and vm[0]["state"] == "active", assets
+          hist = get(f"/api/assets{vm[0]['resource_id']}/history")
+          created = [h for h in hist if h["event_type"] == "created"]
+          assert created and created[0]["data"].get("actor"), hist
+          print(f"assetdb e2e OK: asset state={vm[0]['state']}, actor={created[0]['data']['actor']}")
+          PY
       - name: Assert UI routes render (asset explorer M4.5 + account groups M5.1 + bindings M5.4, mock mode)
         run: |
           set -euo pipefail

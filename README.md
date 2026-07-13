@@ -53,7 +53,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M5.3 | Binding execution engine — run a binding across its accounts, by cron | ✅ done |
 | M5.4 | Bindings & account-groups UI — create/edit/run bindings, last-run status | ✅ done |
 | M6.1 | Real-time enforcement — Azure Event Grid ingestion endpoint (event mode) | ✅ done |
-| M6.2 | Event-mode policy trigger — react to an event by running matching policies | 🚧 in review |
+| M6.2 | Event-mode policy trigger — react to an event by running matching policies | ✅ done |
+| M6.3 | Real-time AssetDB updates — events stream create/update/delete into inventory | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -348,6 +349,19 @@ an event with **no matching policy**, an **unknown/type-less** resource, or only
 / disabled** policies is a **safe no-op** — never an error, so the webhook always drains and
 Event Grid never sees a failure to retry. A single failing policy is isolated (recorded
 `failed`) without sinking the others or the delivery.
+
+**Real-time AssetDB updates (M6.3).** The same delivery also **streams into the inventory**
+(`events.assetdb.apply_asset_event`) so the AssetDB (M4.1) reflects *who / how / when*
+near-instantly instead of waiting for the next poll — Stacklet's streaming inventory. Each
+resource-change event **upserts** the `assets` row on `resource_id` (refreshing `last_seen`
+and identity; a `ResourceDeleteSuccess` marks `state='deleted'`) and **appends an
+`asset_event`** carrying the event's **actor**, **operation**, status and timestamp — the
+same audit trail the M4.4 history timeline renders. The upsert is deliberately narrow: it
+only touches the columns an event actually knows, so a prior full ingestion's `config` /
+`tags` / `name` / `location` are **preserved, never clobbered**; the `asset_event` type is
+`created` on first sight, else `updated` (or `deleted`). An event with **no `resource_id`**
+is ignored (no write). Inventory-streaming and policy-triggering are separate concerns fed by
+one delivery — one keeps the AssetDB current, the other enforces governance.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 
