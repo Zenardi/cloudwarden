@@ -17,6 +17,7 @@ export default function Nav() {
       <Link href="/subscriptions">Subscriptions</Link>
       <Link href="/account-groups">Account Groups</Link>
       <Link href="/bindings">Bindings</Link>
+      <Link href="/notifications">Notifications</Link>
     </nav>
   );
 }

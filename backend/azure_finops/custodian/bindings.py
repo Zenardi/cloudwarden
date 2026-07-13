@@ -118,6 +118,11 @@ def _run_one(
                 resources_matched=len(matches),
                 actions_taken=actions,
             )
+        # M8.4: a violation on a binding with a channel fires a notification. Runs
+        # after the execution commits and never raises — a failed notification must
+        # not fail enforcement.
+        if matches:
+            _fire_binding_notifications(binding_id, policy, matches)
         return {
             "execution_id": execution_id,
             "policy_id": policy["id"],
@@ -136,6 +141,30 @@ def _run_one(
             "status": "failed",
             "error": str(exc),
         }
+
+
+def _fire_binding_notifications(
+    binding_id: int, policy: dict[str, Any], matches: list[Any]
+) -> None:
+    """Dispatch this binding's configured channels for a violation (best-effort).
+
+    Opens its own session so the notification I/O is outside the enforcement
+    transaction, and swallows every error — a broken channel or template must never
+    fail the binding run that produced the violation.
+    """
+    from ..notify.dispatch import dispatch_for_binding
+
+    try:
+        with session_scope() as session:
+            dispatch_for_binding(
+                session,
+                binding_id=binding_id,
+                policy_name=policy.get("name", ""),
+                resource_ids=[m.resource_id for m in matches],
+                resource_type=matches[0].resource_type,
+            )
+    except Exception:  # pragma: no cover - defensive; notifications never break a run
+        logger.exception("binding %s notification dispatch failed", binding_id)
 
 
 def run_enabled_bindings(runner: CustodianRunner | None = None) -> dict[str, Any]:

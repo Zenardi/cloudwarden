@@ -246,6 +246,57 @@ class BindingUpdate(BaseModel):
     enabled: bool | None = None
 
 
+class NotificationChannelIn(BaseModel):
+    """Inbound shape for creating a dispatch channel (M8.4).
+
+    ``transport`` is validated against the known transport registry (a bad value is a
+    ``400``); ``target`` must be non-empty. ``config`` holds transport-specific extras.
+    """
+
+    name: str
+    target: str
+    transport: str = "webhook"
+    config: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+
+
+class NotificationChannelUpdate(BaseModel):
+    """Partial update for a channel (M8.4). Only the fields sent are changed."""
+
+    name: str | None = None
+    target: str | None = None
+    transport: str | None = None
+    config: dict[str, Any] | None = None
+    enabled: bool | None = None
+
+
+class NotificationTemplateIn(BaseModel):
+    """Inbound shape for creating a communication template (M8.4)."""
+
+    name: str
+    body: str
+    subject: str | None = None
+    format: str = "text"
+    description: str | None = None
+
+
+class NotificationTemplateUpdate(BaseModel):
+    """Partial update for a template (M8.4). Only the fields sent are changed."""
+
+    name: str | None = None
+    subject: str | None = None
+    body: str | None = None
+    format: str | None = None
+    description: str | None = None
+
+
+class BindingNotificationIn(BaseModel):
+    """Attach a (channel, template) pair to a binding (M8.4)."""
+
+    channel_id: int
+    template_id: int
+
+
 class CollectionRecord(BaseModel):
     """A persisted policy collection with its members, as returned by the repository."""
 

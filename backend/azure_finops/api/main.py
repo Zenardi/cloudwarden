@@ -30,13 +30,19 @@ from ..models import (
     AccountGroupCreate,
     AssetQuery,
     BindingIn,
+    BindingNotificationIn,
     BindingUpdate,
     CollectionCreate,
+    NotificationChannelIn,
+    NotificationChannelUpdate,
+    NotificationTemplateIn,
+    NotificationTemplateUpdate,
     PolicyCreate,
     PolicyUpdate,
     ValidateRequest,
     ValidateResult,
 )
+from ..notify.dispatch import KNOWN_TRANSPORTS
 from ..remediation import approval as remediation
 from ..resilience import REGISTRY
 from ..storage import repository as repo
@@ -883,3 +889,146 @@ def reject_remediation(action_id: int, actor: str | None = None) -> dict[str, An
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except remediation.AlreadyDecided as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+# --------------------------------------------------------------------------- #
+# Notifications: channels + templates CRUD and per-binding wiring (M8.4)
+# --------------------------------------------------------------------------- #
+@app.get("/api/notification-channels")
+def list_notification_channels() -> list[dict[str, Any]]:
+    with session_scope() as session:
+        return repo.list_notification_channels(session)
+
+
+@app.post("/api/notification-channels", status_code=201)
+def create_notification_channel(body: NotificationChannelIn) -> dict[str, Any]:
+    if body.transport not in KNOWN_TRANSPORTS:
+        raise HTTPException(status_code=400, detail=f"unknown transport '{body.transport}'")
+    if not body.target.strip():
+        raise HTTPException(status_code=400, detail="target is required")
+    try:
+        with session_scope() as session:
+            return repo.create_notification_channel(
+                session,
+                name=body.name,
+                target=body.target,
+                transport=body.transport,
+                config=body.config,
+                enabled=body.enabled,
+            )
+    except IntegrityError as exc:
+        raise HTTPException(status_code=400, detail="channel name already exists") from exc
+
+
+@app.get("/api/notification-channels/{channel_id}")
+def get_notification_channel(channel_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        channel = repo.get_notification_channel(session, channel_id)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="channel not found")
+    return channel
+
+
+@app.put("/api/notification-channels/{channel_id}")
+def update_notification_channel(channel_id: int, body: NotificationChannelUpdate) -> dict[str, Any]:
+    changes = body.model_dump(exclude_unset=True)
+    if "transport" in changes and changes["transport"] not in KNOWN_TRANSPORTS:
+        raise HTTPException(status_code=400, detail=f"unknown transport '{changes['transport']}'")
+    with session_scope() as session:
+        channel = repo.update_notification_channel(session, channel_id, changes)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="channel not found")
+    return channel
+
+
+@app.delete("/api/notification-channels/{channel_id}")
+def delete_notification_channel(channel_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        ok = repo.delete_notification_channel(session, channel_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="channel not found")
+    return {"id": channel_id, "deleted": True}
+
+
+@app.get("/api/notification-templates")
+def list_notification_templates() -> list[dict[str, Any]]:
+    with session_scope() as session:
+        return repo.list_notification_templates(session)
+
+
+@app.post("/api/notification-templates", status_code=201)
+def create_notification_template(body: NotificationTemplateIn) -> dict[str, Any]:
+    try:
+        with session_scope() as session:
+            return repo.create_notification_template(
+                session,
+                name=body.name,
+                body=body.body,
+                subject=body.subject,
+                format=body.format,
+                description=body.description,
+            )
+    except IntegrityError as exc:
+        raise HTTPException(status_code=400, detail="template name already exists") from exc
+
+
+@app.get("/api/notification-templates/{template_id}")
+def get_notification_template(template_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        template = repo.get_notification_template(session, template_id)
+    if template is None:
+        raise HTTPException(status_code=404, detail="template not found")
+    return template
+
+
+@app.put("/api/notification-templates/{template_id}")
+def update_notification_template(
+    template_id: int, body: NotificationTemplateUpdate
+) -> dict[str, Any]:
+    changes = body.model_dump(exclude_unset=True)
+    with session_scope() as session:
+        template = repo.update_notification_template(session, template_id, changes)
+    if template is None:
+        raise HTTPException(status_code=404, detail="template not found")
+    return template
+
+
+@app.delete("/api/notification-templates/{template_id}")
+def delete_notification_template(template_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        ok = repo.delete_notification_template(session, template_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="template not found")
+    return {"id": template_id, "deleted": True}
+
+
+@app.get("/api/bindings/{binding_id}/notifications")
+def list_binding_notifications(binding_id: int) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        return repo.list_binding_notifications(session, binding_id)
+
+
+@app.post("/api/bindings/{binding_id}/notifications", status_code=201)
+def create_binding_notification(binding_id: int, body: BindingNotificationIn) -> dict[str, Any]:
+    with session_scope() as session:
+        try:
+            link = repo.create_binding_notification(
+                session,
+                binding_id=binding_id,
+                channel_id=body.channel_id,
+                template_id=body.template_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if link is None:
+        raise HTTPException(status_code=404, detail="binding, channel or template not found")
+    return link
+
+
+@app.delete("/api/bindings/{binding_id}/notifications/{notification_id}")
+def delete_binding_notification(binding_id: int, notification_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        ok = repo.delete_binding_notification(session, notification_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="notification attachment not found")
+    return {"id": notification_id, "deleted": True}

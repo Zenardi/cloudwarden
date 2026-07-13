@@ -1766,3 +1766,96 @@ def delete_notification_channel(session: Session, channel_id: int) -> bool:
     session.delete(rec)
     session.flush()
     return True
+
+
+def update_notification_template(
+    session: Session, template_id: int, changes: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Partial update (only the given fields). ``None`` if the template is missing."""
+    rec = session.get(schema.NotificationTemplate, template_id)
+    if rec is None:
+        return None
+    for field in ("name", "subject", "body", "format", "description"):
+        if field in changes:
+            setattr(rec, field, changes[field])
+    session.flush()
+    return _notification_template_public(rec)
+
+
+# Binding ↔ notification attachments (M8.4) --------------------------------- #
+def _binding_notification_public(
+    rec: schema.BindingNotification,
+    channel: schema.NotificationChannel,
+    template: schema.NotificationTemplate,
+) -> dict[str, Any]:
+    return {
+        "id": rec.id,
+        "binding_id": rec.binding_id,
+        "channel_id": rec.channel_id,
+        "channel_name": channel.name,
+        "channel_transport": channel.transport,
+        "template_id": rec.template_id,
+        "template_name": template.name,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+    }
+
+
+def create_binding_notification(
+    session: Session, *, binding_id: int, channel_id: int, template_id: int
+) -> dict[str, Any] | None:
+    """Attach a (channel, template) pair to a binding.
+
+    Returns ``None`` if the binding, channel or template does not exist; raises
+    ``ValueError`` if the channel is already attached to this binding.
+    """
+    binding = session.get(schema.Binding, binding_id)
+    channel = session.get(schema.NotificationChannel, channel_id)
+    template = session.get(schema.NotificationTemplate, template_id)
+    if binding is None or channel is None or template is None:
+        return None
+    existing = (
+        session.query(schema.BindingNotification)
+        .filter(
+            schema.BindingNotification.binding_id == binding_id,
+            schema.BindingNotification.channel_id == channel_id,
+        )
+        .first()
+    )
+    if existing is not None:
+        raise ValueError("channel already attached to this binding")
+    rec = schema.BindingNotification(
+        binding_id=binding_id, channel_id=channel_id, template_id=template_id
+    )
+    session.add(rec)
+    session.flush()
+    return _binding_notification_public(rec, channel, template)
+
+
+def list_binding_notifications(session: Session, binding_id: int) -> list[dict[str, Any]]:
+    """The (channel, template) attachments on a binding, enriched with their names."""
+    rows = (
+        session.query(
+            schema.BindingNotification, schema.NotificationChannel, schema.NotificationTemplate
+        )
+        .join(
+            schema.NotificationChannel,
+            schema.NotificationChannel.id == schema.BindingNotification.channel_id,
+        )
+        .join(
+            schema.NotificationTemplate,
+            schema.NotificationTemplate.id == schema.BindingNotification.template_id,
+        )
+        .filter(schema.BindingNotification.binding_id == binding_id)
+        .order_by(schema.BindingNotification.id.asc())
+        .all()
+    )
+    return [_binding_notification_public(rec, channel, template) for rec, channel, template in rows]
+
+
+def delete_binding_notification(session: Session, notification_id: int) -> bool:
+    rec = session.get(schema.BindingNotification, notification_id)
+    if rec is None:
+        return False
+    session.delete(rec)
+    session.flush()
+    return True

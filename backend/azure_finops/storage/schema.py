@@ -563,6 +563,33 @@ class NotificationChannel(Base):
     )
 
 
+class BindingNotification(Base):
+    """Attaches a (channel, template) pair to a binding — fire-on-violation (M8.4).
+
+    A binding may carry several of these; when a binding run records a policy match
+    (a violation), each attached channel is dispatched with the paired template
+    rendered from the violation context. A binding with **no** rows here dispatches
+    nothing. All three foreign keys are ``ON DELETE CASCADE`` so removing a binding,
+    channel or template drops the attachment without orphan rows. ``(binding_id,
+    channel_id)`` is unique — a channel is attached to a binding at most once.
+    """
+
+    __tablename__ = "binding_notifications"
+    __table_args__ = (UniqueConstraint("binding_id", "channel_id", name="uq_binding_channel"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    binding_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("bindings.id", ondelete="CASCADE"), index=True
+    )
+    channel_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("notification_channels.id", ondelete="CASCADE"), index=True
+    )
+    template_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("notification_templates.id", ondelete="CASCADE")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AISummary(Base):
     __tablename__ = "ai_summaries"
 

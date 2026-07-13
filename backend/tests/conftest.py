@@ -22,7 +22,7 @@ _TABLES = (
     "subscriptions, "
     "policies, policy_versions, policy_collections, "
     "collection_policies, policy_executions, policy_matches, "
-    "notification_templates, notification_channels"
+    "notification_templates, notification_channels, binding_notifications"
 )
 
 

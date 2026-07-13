@@ -62,7 +62,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M7.4 | Unified remediation audit & UI — policy actions in `remediation_actions`, source column + filter | ✅ done |
 | M8.1 | Notification service & templates — sandboxed Jinja2 render + pluggable transport | ✅ done |
 | M8.2 | Slack & email transports — webhook / SMTP delivery via injected clients, failures captured | ✅ done |
-| M8.3 | Teams, Jira & ServiceNow transports — ITSM integrations (webhook / create issue / create incident) | 🚧 in review |
+| M8.3 | Teams, Jira & ServiceNow transports — ITSM integrations (webhook / create issue / create incident) | ✅ done |
+| M8.4 | Per-binding notify config & UI — attach channel+template to a binding; fire on violation; `/notifications` page | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -487,6 +488,20 @@ config — and returns the incident number. Each takes an **injectable** HTTP cl
 (live callers build one carrying HTTP basic auth from `config.py`), so nothing touches
 the network in tests, and each captures an auth/permission error (non-2xx), a network
 exception, or missing config as `{"ok": false, "error": …}`.
+
+**Per-binding notify config & UI (M8.4).** Wires the machinery to **bindings**. A new
+`binding_notifications` table attaches one or more **(channel, template)** pairs to a
+binding; when a binding run records a **violation** (a policy match),
+`notify/dispatch.dispatch_for_binding()` renders each paired template from the
+violation context and dispatches it through the transport selected by the channel's
+kind (a small registry: `webhook`/`slack`/`email`/`teams`/`jira`/`servicenow`). A
+binding with **no** attachment dispatches nothing, and dispatch is **best-effort** —
+hooked into the binding executor after the execution commits and wrapped so a failed
+notification never breaks enforcement. The API gains full CRUD for channels
+(`/api/notification-channels`) and templates (`/api/notification-templates`) — a bad
+transport kind or duplicate name is a `400` — plus attach/detach on a binding
+(`/api/bindings/{id}/notifications`). The **`/notifications`** page manages channels and
+templates.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 

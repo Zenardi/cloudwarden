@@ -55,6 +55,24 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M8.4 — Per-binding notify config & UI.** Wires the M8.1–M8.3 notification
+  machinery to **bindings**. New `binding_notifications` table (`storage/schema.py`)
+  attaches one or more **(channel, template)** pairs to a binding, with repository CRUD
+  (`create_/list_/delete_binding_notification`, plus the previously-missing
+  `update_notification_template`). New `notify/dispatch.py`: a transport registry
+  (`build_transport`, `KNOWN_TRANSPORTS`) mapping a channel's kind →
+  webhook/slack/email/teams/jira/servicenow, and `dispatch_for_binding()` which renders
+  each attached template from the violation context and dispatches via an **injected**
+  transport factory (the test seam). Hooked into `custodian/bindings.py`'s binding
+  executor **after** the execution commits and wrapped best-effort — a violation on a
+  binding with a channel fires a notification; a binding without one fires nothing; a
+  failed notification never breaks enforcement. New API endpoints (`api/main.py`): full
+  CRUD for `/api/notification-channels` and `/api/notification-templates` (bad transport
+  kind or duplicate name → `400`) and attach/list/detach on
+  `/api/bindings/{id}/notifications` (unknown ref → `404`, duplicate channel → `409`).
+  New **`/notifications`** Next.js page (+ Nav link + `lib/api.ts` client) manages
+  channels and templates. 17 TDD tests (`test_notify_config.py`); new backend code at
+  100% coverage.
 - **M8.3 — Teams, Jira & ServiceNow transports.** Three more concrete transports on
   the same `send(*, target, subject, body, config)` seam extend delivery to ITSM /
   collaboration systems, each with an **injectable** HTTP client and the same
