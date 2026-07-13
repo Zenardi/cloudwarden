@@ -831,9 +831,11 @@ def remediate(rec_id: int, dry_run: bool = True, actor: str | None = None) -> di
 
 
 @app.get("/api/remediation")
-def remediation_actions(limit: int = 100) -> list[dict[str, Any]]:
+def remediation_actions(limit: int = 100, source: str | None = None) -> list[dict[str, Any]]:
+    """Unified remediation audit (M7.4). Optional ``source`` filter:
+    ``recommendation`` | ``policy`` | ``binding``."""
     with session_scope() as session:
-        return repo.list_remediation_actions(session, limit=limit)
+        return repo.list_remediation_actions(session, limit=limit, source=source)
 
 
 # --------------------------------------------------------------------------- #

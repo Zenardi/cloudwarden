@@ -47,6 +47,24 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M7.4 — Unified remediation audit & UI.** Every remediation attempt — a FinOps
+  recommendation **or** a policy-driven action, dry-run or live — is recorded as a
+  single `remediation_actions` row. Two new columns on `RemediationAction`
+  (`storage/schema.py`) capture provenance: **`source`** (`recommendation` / `policy`
+  / `binding`; defaults to `recommendation`, so the existing recommendation path is
+  unchanged) and the originating **`policy_id`**. `remediation/approval.queue_policy_action`
+  resolves both from the match → execution (tagging `binding` when the run was
+  binding-triggered) and `_result` surfaces them. `repository.list_remediation_actions`
+  now selects `source` + `policy_id`, **filters by `source`** (bound param,
+  injection-safe), and `COALESCE`s the resource id from the action `params` so a policy
+  action shows its target without a recommendation join; `GET /api/remediation` gains a
+  `?source=` query param. The **Remediation** page (`frontend/app/remediation/page.tsx`)
+  adds a **Source** column and a source filter select wired to `?source=`. New
+  `backend/tests/test_remediation_audit.py` (9 tests, TDD) covers the audit write
+  (policy / binding / recommendation-default source), dry-run auditing, the list
+  (source + policy_id + resource-from-params), source filtering, and the empty state;
+  the CI e2e job asserts `/api/remediation` surfaces `source` and filters by it.
+  New/changed code at **100%** coverage.
 - **M7.3 — Guardrails for policy actions.** Enforces every policy-driven action
   **block-by-default** through `remediation/guardrails.check(resource_id, tags,
   settings, action=…, allowed_actions=…)`, which now evaluates three guardrails and

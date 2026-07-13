@@ -58,7 +58,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M6.4 | Event config & status UI — EVENT_MODE_ENABLED gate + recent-events feed | ✅ done |
 | M7.1 | Custodian action executor — map tag/mark-for-op/stop/delete to Azure SDK | ✅ done |
 | M7.2 | Approval workflow — queue policy actions pending; approve/reject before enforce | ✅ done |
-| M7.3 | Guardrails for policy actions — RG allow-list, exclude tag, action allow-list, dry-run default | 🚧 in review |
+| M7.3 | Guardrails for policy actions — RG allow-list, exclude tag, action allow-list, dry-run default | ✅ done |
+| M7.4 | Unified remediation audit & UI — policy actions in `remediation_actions`, source column + filter | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -428,6 +429,18 @@ action=…)`. An action is allowed only when **all** guardrails pass:
 Guardrails hard-block only a *real* (non-dry-run) execution; a dry-run still previews and
 annotates the reason. The approval flow (M7.2) calls this on every approve, so a disallowed
 action comes back `blocked` and never reaches Azure.
+
+**Unified remediation audit & UI (M7.4).** Every remediation attempt — a FinOps
+recommendation *or* a policy-driven action, dry-run or live — is recorded as a single
+`remediation_actions` row. Policy actions carry their provenance: a **`source`**
+(`recommendation` / `policy` / `binding` — `binding` when the originating execution was
+binding-triggered) and the originating **`policy_id`** (resolved from the match → execution).
+`GET /api/remediation[?source=…&limit=…]` returns the unified trail — surfacing `source`,
+`policy_id` and the target `resource_id` (from the action params when there's no recommendation
+to join) — filterable by source. The **Remediation** page (`/remediation`) adds a **Source**
+column and a source filter so policy-sourced actions appear alongside recommendation-sourced
+ones. Because dry-run previews are audited too (`status: dry_run`), the page is a complete
+attempt-by-attempt record.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 
