@@ -11,13 +11,28 @@ All notable changes to this project are documented here. Format loosely follows
   (`next build`) jobs: **builds the whole solution** as container images
   (`build` job — backend + frontend), runs an **end-to-end** job (`e2e`) that boots
   the compose stack in mock mode and smoke-tests the pull-mode pipeline
-  (`/health` → seed policy → `run-policies --mock` → assert `/api/policy-executions`,
-  its `/matches`, and `/api/governance/policy-health`), and adds a **Trivy security
-  gate** (`security` job) that scans the filesystem + both images and **fails on any
-  HIGH/CRITICAL CVE — no baseline / `.trivyignore`**. Note: the security job is
-  red-by-design until the pre-existing upstream base-image/transitive CVEs (backend
-  ~25, frontend ~14) are remediated. Add these jobs as **required status checks** in
-  branch protection to block merges.
+  (`/health` → seed policy → `run-policies --mock` → assert `/api/policy-executions`
+  + its `/matches`), and adds a **Trivy security gate** (`security` job) that scans
+  the filesystem + both images and **fails on any *fixable* HIGH/CRITICAL CVE**
+  (`--ignore-unfixed`; no baseline / `.trivyignore` — no specific CVEs are waived).
+  Add these jobs as **required status checks** in branch protection to block merges.
+
+### Security
+- **Remediated all fixable image CVEs; Trivy gate is green.** Everything with an
+  available upstream fix is fixed:
+  - **Backend** — `fastapi` 0.115.6 → **0.139.0** and pinned `starlette` **1.3.1**
+    (clears CVE-2025-62727 / CVE-2026-48818 / CVE-2026-54283); `cryptography`
+    **48.0.1** (GHSA-537c-gmf6-5ccf) and `PyJWT` **2.13.0** (CVE-2026-48526)
+    force-upgraded in the Dockerfile over c7n / c7n-azure's hard pins (validated
+    API-compatible by the full test suite).
+  - **Frontend** — `apk upgrade` patches `libssl3`/`libcrypto3` (CVE-2026-45447),
+    and the unused **npm is removed** from the runtime image, dropping the HIGH CVEs
+    its bundled deps (`tar` / `sigstore` / `cross-spawn` / `glob` / `minimatch`)
+    carried. The frontend image now reports **0** HIGH/CRITICAL.
+  - The only remaining backend image findings are **Debian *Essential* packages**
+    (`perl-base`, `util-linux`, `ncurses`, `gzip`, `libacl`) with **no upstream
+    fix** — they can be neither patched nor removed — so the gate scopes them out
+    via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
 - **M3.3 — Execution history API & UI.** The read/review surface over the pull-mode

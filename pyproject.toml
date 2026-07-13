@@ -1,7 +1,7 @@
 [project]
 name = "azure-finops"
 version = "0.1.0"
-description = "Azure FinOps Optimizer — cost analysis, right-sizing/shutdown recommendations, and guarded remediation, with pluggable AI and Grafana dashboards."
+description = "Azure governance-as-code (Cloud Custodian) and FinOps — policy management & scheduled execution, cost analysis, right-sizing/shutdown recommendations, and guarded remediation, with pluggable AI and Grafana dashboards."
 requires-python = ">=3.13"
 readme = "README.md"
 

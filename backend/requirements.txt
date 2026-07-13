@@ -37,6 +37,11 @@ psycopg[binary]==3.2.13
 alembic==1.14.0
 
 # --- API / scheduler ---
-fastapi==0.115.6
+# fastapi 0.139.0 drops the old starlette<0.42 cap (now starlette>=0.46), letting
+# us pin the patched starlette 1.3.1 (clears CVE-2025-62727 / CVE-2026-48818 /
+# CVE-2026-54283). PyJWT/cryptography are additionally force-upgraded in the
+# Dockerfile because c7n/c7n-azure hard-pin the vulnerable versions.
+fastapi==0.139.0
+starlette==1.3.1  # patched; satisfies fastapi 0.139's starlette>=0.46.0
 uvicorn[standard]==0.34.0
 apscheduler==3.11.2  # c7n-azure 0.7.50 pin (was 3.11.0)

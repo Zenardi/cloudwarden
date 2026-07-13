@@ -14,6 +14,12 @@ RUN npm run build
 FROM node:20-alpine AS run
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
+# Patch base OS packages (libssl3/libcrypto3 → CVE-2026-45447) and remove the
+# bundled npm: the standalone server runs `node server.js` and never needs npm,
+# whose bundled deps (tar / sigstore / cross-spawn / glob / minimatch) otherwise
+# carry HIGH CVEs into the runtime image.
+RUN apk upgrade --no-cache \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 COPY --from=build /app/public ./public
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static

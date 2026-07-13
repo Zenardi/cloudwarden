@@ -7,9 +7,16 @@
 FROM python:3.13-slim-trixie AS build
 WORKDIR /app
 COPY requirements.txt .
+# Install the pinned set, then force-upgrade cryptography + PyJWT to patched
+# releases: c7n 0.9.51 / c7n-azure 0.7.50 hard-pin the vulnerable
+# cryptography==46.0.7 (GHSA-537c-gmf6-5ccf) and PyJWT 2.12.x (CVE-2026-48526),
+# but both are API-compatible with c7n's usage (validated by the test suite), so
+# a --no-deps override clears the CVEs without disturbing the resolved tree.
 RUN python -m venv /venv \
  && /venv/bin/pip install --no-cache-dir --upgrade pip \
- && /venv/bin/pip install --no-cache-dir -r requirements.txt
+ && /venv/bin/pip install --no-cache-dir -r requirements.txt \
+ && /venv/bin/pip install --no-cache-dir --no-deps --upgrade \
+      "cryptography==48.0.1" "PyJWT==2.13.0"
 
 # Runtime stage: same pinned base, minimal, run as a nonroot user (uid 65532 to
 # match the appdata volume perms wired in docker-compose.yml).
