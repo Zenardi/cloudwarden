@@ -24,6 +24,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/requirements-dev.txt
+          # Apply the same c7n CVE overrides the image ships (issue #58), so the test
+          # suite validates the cryptography/PyJWT versions we actually run.
+          pip install --no-deps --upgrade -r backend/requirements-overrides-security.txt
       - name: Ruff (lint + format check)
         run: |
           ruff check backend

@@ -1,0 +1,18 @@
+# Security overrides for issue #58 — applied AFTER requirements.txt with --no-deps.
+#
+# Cloud Custodian (c7n==0.9.51 / c7n-azure==0.7.50, the latest releases) HARD-pins
+# (==) two packages that carry HIGH advisories. They cannot be bumped inside
+# requirements.txt without `ResolutionImpossible` against those exact pins, so we
+# install the pinned tree first and then force-upgrade *only* these two packages with
+# `pip install --no-deps -r requirements-overrides-security.txt`. Both are API-
+# compatible with c7n's usage (validated by the test suite, which applies this same
+# file — see backend/tests/test_dependency_security.py).
+#
+# Single source of truth: referenced by backend/Dockerfile AND the CI backend job, so
+# the container and the tests validate the SAME versions.
+#
+# REMOVE this file (and the two --no-deps steps) once a c7n / c7n-azure release relaxes
+# the pins; then bump the versions directly in requirements.txt. The watch test
+# `test_upstream_still_pins_the_vulnerable_versions` fails the moment that happens.
+cryptography==48.0.1  # GHSA-537c-gmf6-5ccf (c7n pins the vulnerable 46.0.7); fixed in 48.0.1
+PyJWT==2.13.0         # CVE-2026-48526 (c7n-azure pins the vulnerable 2.12.1); fixed in 2.13.0

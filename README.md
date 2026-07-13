@@ -45,7 +45,7 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M3.4 | Per-policy compliance & health metrics (API + Grafana) | ✅ done |
 | M4.1 | AssetDB — asset inventory with full config (schema + ingestion) | ✅ done |
 | M4.2 | AssetDB — filterable, injection-safe asset query API | ✅ done |
-| M4.3 | AssetDB — asset relationships graph (disk→vm, nic→vm, ip→nic) | 🚧 in review |
+| M4.3 | AssetDB — asset relationships graph (disk→vm, nic→vm, ip→nic) | ✅ done |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.

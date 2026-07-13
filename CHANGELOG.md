@@ -18,6 +18,18 @@ All notable changes to this project are documented here. Format loosely follows
   Add these jobs as **required status checks** in branch protection to block merges.
 
 ### Security
+- **Hardened & guarded the c7n-pinned CVE mitigation (issue #58).** `c7n 0.9.51` /
+  `c7n-azure 0.7.50` (still the latest releases) hard-pin the vulnerable
+  `cryptography==46.0.7` (GHSA-537c-gmf6-5ccf) and `pyjwt==2.12.1` (CVE-2026-48526),
+  so they can't be bumped in `requirements.txt` without `ResolutionImpossible`. The
+  `--no-deps` force-upgrade to the patched `cryptography 48.0.1` / `PyJWT 2.13.0` now
+  lives in a **single source of truth** — `backend/requirements-overrides-security.txt`
+  — applied by both `backend/Dockerfile` **and** the CI backend job, so the test suite
+  validates the exact versions the image ships (previously CI tested the vulnerable
+  pins while the image shipped the patched ones). A new guard/**watch** test
+  (`backend/tests/test_dependency_security.py`) asserts the effective versions stay
+  patched and **fails the moment upstream relaxes a pin** — the trigger to drop the
+  override and bump `requirements.txt` for good.
 - **Remediated all fixable image CVEs; Trivy gate is green.** Everything with an
   available upstream fix is fixed:
   - **Backend** — `fastapi` 0.115.6 → **0.139.0** and pinned `starlette` **1.3.1**
