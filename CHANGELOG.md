@@ -55,6 +55,25 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M8.3 — Teams, Jira & ServiceNow transports.** Three more concrete transports on
+  the same `send(*, target, subject, body, config)` seam extend delivery to ITSM /
+  collaboration systems, each with an **injectable** HTTP client and the same
+  capture-don't-raise contract. New `notify/transports/teams.py` `TeamsTransport` POSTs
+  a legacy **MessageCard** (`title`/`text`) to a Teams incoming webhook (target →
+  `config["webhook_url"]` → `TEAMS_WEBHOOK_URL`). New `notify/transports/jira.py`
+  `JiraTransport` **creates an issue** via `POST {JIRA_BASE_URL}/rest/api/2/issue`
+  (subject → `summary`, body → `description`, project from target → `config["project"]`
+  → `JIRA_PROJECT`, issue type from `config["issue_type"]` → `JIRA_ISSUE_TYPE`) and
+  returns the new key. New `notify/transports/servicenow.py` `ServiceNowTransport`
+  **creates an incident** via `POST {SERVICENOW_INSTANCE_URL}/api/now/table/incident`
+  (subject → `short_description`, body → `description`, optional
+  `urgency`/`impact`/`assignment_group`/`caller_id`/`category` from config) and returns
+  the incident number. All capture an auth/permission error (non-2xx), a network
+  exception, or missing config as `{"ok": false, "error": …}` rather than raising. New
+  config defaults (`config.py` + `.env.example`): `TEAMS_WEBHOOK_URL`, `JIRA_BASE_URL` /
+  `JIRA_EMAIL` / `JIRA_API_TOKEN` / `JIRA_PROJECT` / `JIRA_ISSUE_TYPE`,
+  `SERVICENOW_INSTANCE_URL` / `SERVICENOW_USER` / `SERVICENOW_PASSWORD`. 15 TDD tests
+  (`test_notify_enterprise_transports.py`), all three transports at 100% coverage.
 - **M8.2 — Slack & email transports.** Two concrete transports implement the M8.1
   `send(*, target, subject, body, config)` seam, so both are drop-in for `notify()`.
   New `notify/transports/slack.py` `SlackTransport` POSTs the rendered message as a

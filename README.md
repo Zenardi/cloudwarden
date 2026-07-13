@@ -61,7 +61,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M7.3 | Guardrails for policy actions — RG allow-list, exclude tag, action allow-list, dry-run default | ✅ done |
 | M7.4 | Unified remediation audit & UI — policy actions in `remediation_actions`, source column + filter | ✅ done |
 | M8.1 | Notification service & templates — sandboxed Jinja2 render + pluggable transport | ✅ done |
-| M8.2 | Slack & email transports — webhook / SMTP delivery via injected clients, failures captured | 🚧 in review |
+| M8.2 | Slack & email transports — webhook / SMTP delivery via injected clients, failures captured | ✅ done |
+| M8.3 | Teams, Jira & ServiceNow transports — ITSM integrations (webhook / create issue / create incident) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -471,6 +472,21 @@ client for Slack, an SMTP client for email), so no test touches the network, and
 **capture** delivery failures — a network error, a non-2xx webhook response, an SMTP outage,
 or missing config (no webhook / no recipient) — as `{"ok": false, "error": …}` rather than
 raising: a broken notification must never break the policy run that triggered it.
+
+**Teams, Jira & ServiceNow transports (M8.3).** Three more transports extend delivery
+to the ITSM / collaboration systems, all on the same seam and same capture-don't-raise
+contract. `TeamsTransport` POSTs a legacy **MessageCard** (`title`/`text`) to a Teams
+incoming webhook (channel target → `config["webhook_url"]` → `TEAMS_WEBHOOK_URL`).
+`JiraTransport` **creates an issue** via `POST {JIRA_BASE_URL}/rest/api/2/issue` — the
+rendered subject → issue `summary`, body → `description`, project from the channel
+target → `config["project"]` → `JIRA_PROJECT` — and returns the new issue key.
+`ServiceNowTransport` **creates an incident** via `POST
+{SERVICENOW_INSTANCE_URL}/api/now/table/incident` — subject → `short_description`, body
+→ `description`, optional `urgency`/`impact`/`assignment_group`/… copied from channel
+config — and returns the incident number. Each takes an **injectable** HTTP client
+(live callers build one carrying HTTP basic auth from `config.py`), so nothing touches
+the network in tests, and each captures an auth/permission error (non-2xx), a network
+exception, or missing config as `{"ok": false, "error": …}`.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 

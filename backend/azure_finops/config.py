@@ -64,6 +64,21 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_use_tls: bool = True
 
+    # --- Enterprise transports (M8.3) ---
+    # Microsoft Teams incoming-webhook URL (used when a channel carries no target).
+    teams_webhook_url: str = ""
+    # Jira: one instance, many projects. A channel target selects the project;
+    # base URL + credentials + default project/issue-type are instance-level here.
+    jira_base_url: str = ""
+    jira_email: str | None = None
+    jira_api_token: str | None = None
+    jira_project: str = ""
+    jira_issue_type: str = "Task"
+    # ServiceNow: instance URL + credentials for the Table API (create incident).
+    servicenow_instance_url: str = ""
+    servicenow_user: str | None = None
+    servicenow_password: str | None = None
+
     # --- Database ---
     database_url: str = "postgresql+psycopg://finops:finops@localhost:5432/finops"
 

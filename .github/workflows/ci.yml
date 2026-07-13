@@ -381,6 +381,60 @@ jobs:
           print("transports e2e OK: slack POSTed payload; email built MIME; failure captured; missing-config errored")
           PY
 
+      - name: Smoke-test Teams, Jira & ServiceNow transports (M8.3)
+        run: |
+          set -euo pipefail
+          # Drive the real Teams/Jira/ServiceNow transports inside the deployed backend
+          # image with INJECTED HTTP clients (no network). Assert each builds the right
+          # artifact request (Teams MessageCard, Jira issue, ServiceNow incident), returns
+          # the created id, and captures an auth error (non-2xx) as {ok: false, error}.
+          docker compose exec -T backend python - <<'PY'
+          from azure_finops.notify.transports import TeamsTransport, JiraTransport, ServiceNowTransport
+
+          class _Resp:
+              def __init__(self, status_code=200, payload=None):
+                  self.status_code = status_code; self._p = payload or {}
+              def json(self): return self._p
+          class _HTTP:
+              def __init__(self, status_code=200, payload=None):
+                  self.calls = []; self._s = status_code; self._p = payload or {}
+              def post(self, url, json): self.calls.append((url, json)); return _Resp(self._s, self._p)
+          class _S:
+              jira_base_url = "https://acme.atlassian.net"; jira_email = "b@a.io"
+              jira_api_token = "t"; jira_project = "OPS"; jira_issue_type = "Task"
+              servicenow_instance_url = "https://acme.service-now.com"
+              servicenow_user = "u"; servicenow_password = "p"
+
+          # Teams: MessageCard to the webhook.
+          teams = _HTTP()
+          r = TeamsTransport(client=teams).send(target="https://wh", subject="Idle VMs", body="3 idle", config={})
+          assert r["ok"] is True, r
+          _, card = teams.calls[0]
+          assert card["@type"] == "MessageCard" and card["title"] == "Idle VMs" and card["text"] == "3 idle", card
+
+          # Jira: create issue, return key.
+          jira = _HTTP(status_code=201, payload={"key": "OPS-7", "id": "1007"})
+          r = JiraTransport(client=jira, settings=_S()).send(target="OPS", subject="Idle VM", body="stop it", config={})
+          assert r["ok"] is True and r["key"] == "OPS-7", r
+          url, body = jira.calls[0]
+          assert url == "https://acme.atlassian.net/rest/api/2/issue", url
+          assert body["fields"]["summary"] == "Idle VM" and body["fields"]["project"] == {"key": "OPS"}, body
+
+          # ServiceNow: create incident, return number.
+          snow = _HTTP(status_code=201, payload={"result": {"number": "INC42", "sys_id": "s1"}})
+          r = ServiceNowTransport(client=snow, settings=_S()).send(target="", subject="Disk full", body="80%", config={"urgency": "2"})
+          assert r["ok"] is True and r["number"] == "INC42", r
+          url, body = snow.calls[0]
+          assert url == "https://acme.service-now.com/api/now/table/incident", url
+          assert body["short_description"] == "Disk full" and body["urgency"] == "2", body
+
+          # Auth error (403/401) captured, never raised.
+          auth = TeamsTransport(client=_HTTP(status_code=403)).send(target="https://wh", subject="s", body="b", config={})
+          assert auth["ok"] is False and auth["status_code"] == 403, auth
+
+          print("enterprise transports e2e OK: teams card; jira issue OPS-7; servicenow INC42; auth error captured")
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail
