@@ -51,7 +51,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M5.1 | Account groups — organize subscriptions into named, many-to-many groups | ✅ done |
 | M5.2 | Bindings — link a policy collection to an account group with exec config | ✅ done |
 | M5.3 | Binding execution engine — run a binding across its accounts, by cron | ✅ done |
-| M5.4 | Bindings & account-groups UI — create/edit/run bindings, last-run status | 🚧 in review |
+| M5.4 | Bindings & account-groups UI — create/edit/run bindings, last-run status | ✅ done |
+| M6.1 | Real-time enforcement — Azure Event Grid ingestion endpoint (event mode) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -315,6 +316,23 @@ account group (the button stays disabled until both are chosen); each row is **e
 inline** (schedule / mode / dry-run / enabled → `PUT`); and a **Run** button calls
 `POST /api/bindings/{id}/run` and refreshes the row's status. Empty and error states are
 handled. Consumes the M5.2/M5.3 + collections/account-groups APIs — no backend change.
+
+## Real-time enforcement (event mode)
+
+**Event Grid ingestion (M6.1).** Cloud Custodian's Azure provider supports `mode: event`
+policies that react to **Azure Event Grid** resource-change notifications instead of
+waiting for the next poll — the ingress point for real-time governance. **`POST
+/api/events/azure`** is that webhook: it completes Event Grid's one-time
+`SubscriptionValidation` handshake (echoing `validationCode` in a `validationResponse`),
+**authenticates** each delivery against an optional shared key (`AZURE_EVENTGRID_SHARED_KEY`
+via the `x-events-key` header or `?key=` param — empty accepts all, for local/mock dev;
+a mismatch is `403`), and **normalizes** each `Microsoft.Resources.Resource{Write,Action,
+Delete}Success` `EventGridEvent` into an internal `NormalizedEvent` (actor / operation /
+resource id / time) persisted to the new `event_log` table. Event Grid's **at-least-once**
+delivery means re-delivery is expected, so the write is idempotent on `event_id`
+(`ON CONFLICT DO NOTHING`) — no duplicate rows. Unrecognized event types are skipped; a
+non-JSON body is `400`. `GET /api/events` returns recent deliveries newest-first. The whole
+flow is fixture-driven and unit-tested without a live Event Grid topic.
 
 Two API endpoints expose the engine's offline surface (M1.3):
 

@@ -11,13 +11,19 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
+from ..config import get_settings
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
+from ..events.ingestion import (
+    handle_subscription_validation,
+    normalize_event,
+    verify_event_grid_key,
+)
 from ..models import (
     AccountGroupCreate,
     AssetQuery,
@@ -544,6 +550,48 @@ def run_binding_endpoint(
     if result is None:
         raise HTTPException(status_code=404, detail="binding not found")
     return result
+
+
+# --------------------------------------------------------------------------- #
+# Real-time enforcement: Azure Event Grid ingestion (M6.1)
+# --------------------------------------------------------------------------- #
+@app.post("/api/events/azure")
+async def ingest_azure_events(request: Request) -> dict[str, Any]:
+    """Event Grid webhook: complete the one-time ``SubscriptionValidation`` handshake,
+    authenticate the delivery (shared key), then normalize + persist each resource event.
+
+    Event Grid delivers a JSON array (not CloudEvents). Unauthenticated → ``403``;
+    a non-JSON body → ``400``; unrecognized event types are silently skipped.
+    """
+    settings = get_settings()
+    if not verify_event_grid_key(dict(request.headers), dict(request.query_params), settings):
+        raise HTTPException(status_code=403, detail="invalid event grid key")
+    try:
+        payload = await request.json()
+    except Exception as exc:  # noqa: BLE001 - any parse error is a bad body
+        raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+
+    events = payload if isinstance(payload, list) else [payload]
+    validation = handle_subscription_validation(events)
+    if validation is not None:
+        return validation
+
+    processed = 0
+    with session_scope() as session:
+        for raw in events:
+            normalized = normalize_event(raw)
+            if normalized is None:
+                continue
+            repo.insert_event_log(session, normalized)
+            processed += 1
+    return {"received": len(events), "processed": processed}
+
+
+@app.get("/api/events")
+def list_events(limit: int = 50) -> list[dict[str, Any]]:
+    """Recent Event Grid deliveries, newest-first (audit / M6.4 status UI)."""
+    with session_scope() as session:
+        return repo.list_events(session, limit=limit)
 
 
 @app.get("/api/summary")

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "9f0e1d2c-3b4a-5968-7766-554433221100",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-app/providers/Microsoft.Storage/storageAccounts/stlogs01",
+    "subject": "/blobServices/default/containers/logs/blobs/2026/app.log",
+    "data": {
+      "api": "PutBlob",
+      "contentType": "text/plain",
+      "url": "https://stlogs01.blob.core.windows.net/logs/2026/app.log"
+    },
+    "eventType": "Microsoft.Storage.BlobCreated",
+    "eventTime": "2026-07-06T00:00:00.0000000Z",
+    "dataVersion": "1",
+    "metadataVersion": "1"
+  }
+]

@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # --- Memory metrics (optional) ---
     log_analytics_workspace_id: str | None = None
 
+    # --- Event Grid (real-time enforcement) ---
+    # Optional shared key for authenticating Event Grid deliveries. Empty/unset accepts
+    # all deliveries (local/mock dev); when set, a delivery must present it via the
+    # `x-events-key` header or `?key=` query param or it is rejected with 403.
+    azure_eventgrid_shared_key: str | None = None
+
     # --- AI provider ---
     ai_provider: str = "anthropic"  # anthropic | openai
     ai_model: str = "claude-opus-4-8"

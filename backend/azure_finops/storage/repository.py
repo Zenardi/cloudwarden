@@ -866,6 +866,43 @@ def subscriptions_in_group(
 
 
 # --------------------------------------------------------------------------- #
+# Event Grid deliveries (M6.1)
+# --------------------------------------------------------------------------- #
+def insert_event_log(session: Session, event: Any, status: str = "received") -> int:
+    """Append one normalized Event Grid delivery to ``event_log`` (idempotent on
+    ``event_id``). Returns 1 if inserted, 0 if it was a re-delivery (already logged)."""
+    stmt = (
+        pg_insert(schema.EventLog)
+        .values(
+            event_id=event.event_id,
+            event_type=event.event_type,
+            subject=event.subject,
+            resource_id=event.resource_id,
+            subscription_id=event.subscription_id,
+            event_time=event.event_time,
+            status=status,
+            raw=event.raw,
+        )
+        .on_conflict_do_nothing(index_elements=["event_id"])
+        .returning(schema.EventLog.id)
+    )
+    inserted = session.execute(stmt).fetchall()
+    session.flush()
+    return len(inserted)
+
+
+def list_events(session: Session, limit: int = 50) -> list[dict[str, Any]]:
+    """Recent Event Grid deliveries, newest-first (``id`` breaks same-instant ties)."""
+    return _rows(
+        session,
+        "SELECT id, event_id, event_type, subject, resource_id, subscription_id, "
+        "event_time, received_at, status, raw "
+        "FROM event_log ORDER BY received_at DESC, id DESC LIMIT :limit",
+        limit=limit,
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Inventory + cost
 # --------------------------------------------------------------------------- #
 def upsert_resources(session: Session, resources: list[m.ResourceRecord]) -> int:

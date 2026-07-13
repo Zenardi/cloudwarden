@@ -359,6 +359,30 @@ class Binding(Base):
     )
 
 
+class EventLog(Base):
+    """Audit log of Azure Event Grid deliveries (M6.1 — real-time enforcement ingress).
+
+    ``event_id`` (Event Grid's delivery id) is uniquely indexed: Event Grid guarantees
+    *at-least-once* delivery, so re-delivery must be tolerated — an idempotent
+    ``ON CONFLICT (event_id) DO NOTHING`` upsert never double-logs.
+    """
+
+    __tablename__ = "event_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(128))
+    subject: Mapped[str] = mapped_column(String(512))
+    resource_id: Mapped[str | None] = mapped_column(String(512), index=True)
+    subscription_id: Mapped[str | None] = mapped_column(String(64))
+    event_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    status: Mapped[str] = mapped_column(String(16), default="received")
+    raw: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
 class CostSnapshot(Base):
     __tablename__ = "cost_snapshots"
 

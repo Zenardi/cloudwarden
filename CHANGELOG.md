@@ -47,6 +47,20 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M6.1 — Azure Event Grid ingestion endpoint.** The ingress point for **real-time
+  enforcement** (Cloud Custodian `mode: event`). New **`POST /api/events/azure`** webhook
+  completes Event Grid's one-time `SubscriptionValidation` handshake (echoes
+  `validationCode`), **authenticates** each delivery against an optional shared key
+  (`AZURE_EVENTGRID_SHARED_KEY`; `x-events-key` header or `?key=` param — empty accepts all;
+  mismatch → `403`), and **normalizes** each `Microsoft.Resources.Resource{Write,Action,
+  Delete}Success` `EventGridEvent` into a `NormalizedEvent` (`events/models.py`) persisted to
+  the new **`event_log`** table (auto-created by `init_db()`). Idempotent on `event_id`
+  (`ON CONFLICT DO NOTHING`) so Event Grid's at-least-once **re-delivery never duplicates**;
+  unrecognized event types are skipped; a non-JSON body → `400`. New `GET /api/events`
+  (newest-first). New `events/ingestion.py` (`verify_event_grid_key`,
+  `handle_subscription_validation`, `normalize_event`), `azure_eventgrid_shared_key` config +
+  `AZURE_EVENTGRID_SHARED_KEY` in `.env.example`, and literal fixtures under
+  `fixtures/events/`. Fully fixture-driven — no live Event Grid needed to test.
 - **M5.4 — Bindings & account-groups UI.** A Next.js **`/bindings`** console (the
   Stacklet binding-management UX): lists every binding with its **collection**, **account
   group**, **schedule**, **mode**, dry-run/enabled state and **last-run status** (derived

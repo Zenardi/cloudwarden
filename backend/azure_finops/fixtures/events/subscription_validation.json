@@ -1,0 +1,15 @@
+[
+  {
+    "id": "2d1781af-3a4c-4d7c-bd0c-e34b19da4e66",
+    "topic": "/subscriptions/00000000-0000-0000-0000-000000000000",
+    "subject": "",
+    "data": {
+      "validationCode": "512d38b6-c7b8-40c8-89fe-f46f9e9622b6",
+      "validationUrl": "https://rp-eastus.eventgrid.azure.net/eventsubscriptions/validate"
+    },
+    "eventType": "Microsoft.EventGrid.SubscriptionValidationEvent",
+    "eventTime": "2026-07-01T09:41:52.0000000Z",
+    "metadataVersion": "1",
+    "dataVersion": "2"
+  }
+]

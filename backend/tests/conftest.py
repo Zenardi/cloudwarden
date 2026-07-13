@@ -18,7 +18,8 @@ _TABLES = (
     "runs, resources, assets, asset_events, asset_relationships, cost_snapshots, "
     "utilization_samples, "
     "utilization_rollups, advisor_recommendations, recommendations, remediation_actions, "
-    "ai_summaries, account_groups, account_group_members, bindings, subscriptions, "
+    "ai_summaries, account_groups, account_group_members, bindings, event_log, "
+    "subscriptions, "
     "policies, policy_versions, policy_collections, "
     "collection_policies, policy_executions, policy_matches"
 )
