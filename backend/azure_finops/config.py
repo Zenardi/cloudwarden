@@ -112,6 +112,10 @@ class Settings(BaseSettings):
     # cost-collection pipeline above (Stacklet-style per-policy scheduling).
     policy_run_interval_seconds: int = 86400
     app_data_dir: str = "/data"
+    # Optional scheduled governance report (M9.4): off by default. When enabled, the
+    # scheduler writes a timestamped CSV export under APP_DATA_DIR on this cadence.
+    governance_report_enabled: bool = False
+    governance_report_interval_seconds: int = 86400
 
     # --- Derived helpers ---
     @property

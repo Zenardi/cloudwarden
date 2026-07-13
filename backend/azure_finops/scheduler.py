@@ -62,6 +62,30 @@ def _schedule_bindings(scheduler: Any) -> int:
     return scheduled
 
 
+def _safe_run_governance_report() -> None:
+    from . import reporting
+
+    try:
+        path = reporting.write_report("csv")
+        logger.info("governance report written to %s", path)
+    except Exception:  # noqa: BLE001 - keep the scheduler alive
+        logger.exception("scheduled governance report failed")
+
+
+def _schedule_governance_report(scheduler: Any) -> bool:
+    """Register the optional periodic governance report (M9.4), gated by
+    ``GOVERNANCE_REPORT_ENABLED``. Returns whether a job was scheduled."""
+    settings = get_settings()
+    if not settings.governance_report_enabled:
+        return False
+    interval = max(settings.governance_report_interval_seconds, 60)
+    scheduler.add_job(
+        _safe_run_governance_report, "interval", seconds=interval, id="finops-governance-report"
+    )
+    logger.info("scheduled governance report every %ss", interval)
+    return True
+
+
 def _safe_run() -> None:
     try:
         run_all_subscriptions()
@@ -89,6 +113,7 @@ def run_scheduler() -> None:
         _safe_run_policies, "interval", seconds=policy_interval, id="finops-policy-run"
     )
     _schedule_bindings(scheduler)  # one cron job per enabled binding (M5.3)
+    _schedule_governance_report(scheduler)  # optional periodic export (M9.4)
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
