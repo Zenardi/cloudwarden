@@ -43,7 +43,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M2 | Policy CRUD API + editor UI, collections, GitOps sync, version history & diff | ✅ done |
 | M3.1–M3.3 | Execution results storage, pull-mode orchestrator, execution history API + UI | ✅ done |
 | M3.4 | Per-policy compliance & health metrics (API + Grafana) | ✅ done |
-| M4.1 | AssetDB — queryable asset inventory with full config (schema + ingestion) | 🚧 in review |
+| M4.1 | AssetDB — asset inventory with full config (schema + ingestion) | ✅ done |
+| M4.2 | AssetDB — filterable, injection-safe asset query API | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -229,6 +230,14 @@ the first time a resource is seen an append-only `asset_events` row (`event_type
 `created`, who/how/when + a config snapshot) is written for audit. Each asset carries
 its subscription id (retargeted per subscription in mock mode).
 
+AssetDB is queryable via `POST /api/assets/query` (M4.2) — a structured request of
+allow-listed `{column, op, value}` filters (`type` / `location` / `subscription_id`
+/ `tag` / …, ops `eq`/`ne`/`contains`/`in`), an exact-match `tags` map, and
+`limit`/`offset`. The builder is **injection-safe by construction**: unknown columns
+or operators are rejected with `400` (never executed), and every value — including
+tag values — is bound as a parameter, so a SQL-injection string is a harmless
+literal. `limit` is capped at 500 with a stable order.
+
 Two API endpoints expose the engine's offline surface (M1.3):
 
 - `POST /api/policies/validate` — dry-run schema-validate a policy `spec` (a
@@ -284,7 +293,7 @@ Then open:
   `/api/policies` CRUD, `/api/policies/validate`, `/api/custodian/schema`,
   `/api/policies/{id}/dryrun`, `/api/policies/{id}/versions`,
   `/api/policies/sync`, `/api/collections`, `/api/policy-executions`,
-  `/api/governance/policy-health`, …).
+  `/api/governance/policy-health`, `/api/assets/query`, …).
 
 Run the backend on a schedule instead of one-shot: the `backend` service also
 supports `command: ["scheduler"]`.
@@ -356,7 +365,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 260 tests, **~99% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 270 tests, **~99% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).

@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from ..custodian import engine as custodian
 from ..custodian.engine import CustodianRunner
 from ..models import (
+    AssetQuery,
     CollectionCreate,
     PolicyCreate,
     PolicyUpdate,
@@ -489,6 +490,20 @@ def policy_health() -> list[dict[str, Any]]:
     """
     with session_scope() as session:
         return repo.policy_health(session)
+
+
+@app.post("/api/assets/query")
+def query_assets(body: AssetQuery) -> list[dict[str, Any]]:
+    """Filter AssetDB via an allow-listed, injection-safe query (M4.2).
+
+    An unknown filter column or operator is rejected with ``400`` and never executed;
+    all values (including tag values) are bound as parameters.
+    """
+    with session_scope() as session:
+        try:
+            return repo.query_assets(session, body)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # --------------------------------------------------------------------------- #

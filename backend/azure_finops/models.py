@@ -8,6 +8,7 @@ fixtures without a database.
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -24,6 +25,28 @@ class ResourceRecord(BaseModel):
     power_state: str | None = None
     extra: dict = Field(default_factory=dict)
     config: dict = Field(default_factory=dict)  # full resource properties (AssetDB, M4.1)
+
+
+class AssetFilter(BaseModel):
+    """One allow-listed, parameterized filter clause for an asset query (M4.2).
+
+    ``column`` and ``op`` are validated against server-side allow-lists in
+    ``repository.query_assets``; ``value`` is always bound as a parameter (never
+    interpolated into SQL), so an injection payload is treated as a literal.
+    """
+
+    column: str
+    op: str = "eq"  # eq | ne | contains | in
+    value: Any = None
+
+
+class AssetQuery(BaseModel):
+    """Structured, injection-safe asset query request (M4.2)."""
+
+    filters: list[AssetFilter] = Field(default_factory=list)
+    tags: dict[str, str] = Field(default_factory=dict)  # exact tag key→value match
+    limit: int = 100
+    offset: int = 0
 
 
 class CostRow(BaseModel):

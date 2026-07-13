@@ -35,6 +35,24 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M4.2 — Asset query API (filterable, injection-safe).** A structured query
+  surface over AssetDB (à la Stacklet's SQL-enabled asset queries). New
+  `POST /api/assets/query` takes an `AssetQuery` (a list of `AssetFilter`
+  `{column, op, value}` clauses, an exact-match `tags` map, plus `limit`/`offset`)
+  and returns the matching assets. The builder (`repo.query_assets`) is
+  **injection-safe by construction**: `column` and `op` are checked against
+  server-side **allow-lists** (`resource_id` / `subscription_id` / `resource_group`
+  / `name` / `type` / `location` / `sku` / `state`; ops `eq` / `ne` / `contains` /
+  `in`) — an unknown one raises `ValueError` → **HTTP 400**, never executed — and
+  **every** value, including tag keys/values, is bound as a SQLAlchemy parameter, so
+  a SQL-injection payload is a harmless literal (matches nothing; the table is
+  untouched). `limit` is clamped to 500 and results come back in a stable order
+  (`last_seen` desc, `resource_id` asc). TDD: `test_asset_query.py` (10 tests,
+  DB-backed) covers type / tag / subscription+region filters, the `ne`/`contains`/
+  `in` operators, unknown-column/operator/`in`-not-a-list → 400, a
+  `'; DROP TABLE assets; --` payload returning zero rows with the table intact, and
+  pagination caps + stable order — `api/main.py`, `models.py`, and the new builder at
+  100% coverage.
 - **M4.1 — AssetDB schema & ingestion.** The foundation of the M4 **AssetDB** — a
   queryable, near-real-time inventory of every cloud resource with its full config
   (à la Stacklet's AssetDB). Two new tables auto-created by `init_db()`: `assets`

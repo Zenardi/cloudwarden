@@ -753,6 +753,84 @@ def append_asset_event(
     session.flush()
 
 
+# Allow-listed asset columns for the query builder (M4.2). Only these may be
+# filtered on; anything else is rejected before a query is ever built/executed.
+_ALLOWED_ASSET_COLUMNS = {
+    "resource_id": schema.Asset.resource_id,
+    "subscription_id": schema.Asset.subscription_id,
+    "resource_group": schema.Asset.resource_group,
+    "name": schema.Asset.name,
+    "type": schema.Asset.type,
+    "location": schema.Asset.location,
+    "sku": schema.Asset.sku,
+    "state": schema.Asset.state,
+}
+_MAX_ASSET_LIMIT = 500
+
+
+def _asset_public(rec: schema.Asset) -> dict[str, Any]:
+    return {
+        "resource_id": rec.resource_id,
+        "subscription_id": rec.subscription_id,
+        "resource_group": rec.resource_group,
+        "name": rec.name,
+        "type": rec.type,
+        "location": rec.location,
+        "sku": rec.sku,
+        "tags": rec.tags,
+        "config": rec.config,
+        "state": rec.state,
+        "first_seen": rec.first_seen.isoformat() if rec.first_seen else None,
+        "last_seen": rec.last_seen.isoformat() if rec.last_seen else None,
+    }
+
+
+def _asset_filter_clause(column: Any, op: str, value: Any) -> Any:
+    """Build a parameterized filter clause. Raises ``ValueError`` for a bad operator.
+
+    ``value`` is always bound as a parameter by SQLAlchemy (never interpolated), so
+    an injection payload is a harmless literal.
+    """
+    if op == "eq":
+        return column == value
+    if op == "ne":
+        return column != value
+    if op == "contains":
+        return column.ilike(f"%{value}%")
+    if op == "in":
+        if not isinstance(value, list):
+            raise ValueError("operator 'in' requires a list value")
+        return column.in_(value)
+    raise ValueError(f"unknown operator: {op}")
+
+
+def query_assets(session: Session, query: m.AssetQuery) -> list[dict[str, Any]]:
+    """Filter assets via an allow-listed, fully-parameterized builder (M4.2).
+
+    Only allow-listed columns/operators are honored (an unknown one raises
+    ``ValueError`` → HTTP 400 at the API); every value — including tag keys/values —
+    is bound as a parameter, so a SQL-injection string is a harmless literal.
+    ``limit`` is clamped to ``_MAX_ASSET_LIMIT`` and rows come back in a stable order.
+    """
+    q = session.query(schema.Asset)
+    for f in query.filters:
+        column = _ALLOWED_ASSET_COLUMNS.get(f.column)
+        if column is None:
+            raise ValueError(f"unknown filter column: {f.column}")
+        q = q.filter(_asset_filter_clause(column, f.op, f.value))
+    for key, value in query.tags.items():
+        q = q.filter(schema.Asset.tags[key].astext == value)
+    limit = min(max(query.limit, 1), _MAX_ASSET_LIMIT)
+    offset = max(query.offset, 0)
+    recs = (
+        q.order_by(schema.Asset.last_seen.desc(), schema.Asset.resource_id.asc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    return [_asset_public(r) for r in recs]
+
+
 def upsert_cost_snapshots(session: Session, rows: list[m.CostRow]) -> int:
     if not rows:
         return 0
