@@ -6,6 +6,14 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Changed
+- **CI — bumped deprecated GitHub Actions off the retiring Node 20 runtime.**
+  `actions/checkout@v4 → v5`, `actions/setup-node@v4 → v5`, and
+  `actions/setup-python@v5 → v6` in `.github/workflows/ci.yml` — clears the
+  "Node.js 20 is deprecated … forced to run on Node.js 24" annotations
+  ([GitHub Actions Node 20 deprecation](https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/)).
+  The frontend build's `node-version: "20"` input is left as-is on purpose — it
+  mirrors the `node:20-alpine` image the frontend Dockerfile ships (the deprecation
+  is about the action *runtime*, not the build Node).
 - **CI hardening.** `.github/workflows/ci.yml` now, in addition to the existing
   backend (lint + unit/integration tests + 95% coverage gate) and frontend
   (`next build`) jobs: **builds the whole solution** as container images
@@ -47,6 +55,28 @@ All notable changes to this project are documented here. Format loosely follows
     via `--ignore-unfixed` while still failing on anything actionable.
 
 ### Added
+- **M8.1 — Notification service & templates.** Opens the notifications track — a
+  service that renders a **communication template** from policy-violation context and
+  dispatches it through a **pluggable transport** (Stacklet / c7n-mailer heritage). Two
+  new tables (`storage/schema.py`), `notification_templates` (name / subject / body /
+  format) and `notification_channels` (name / transport / target / config / enabled),
+  with repository CRUD (`create_/get_/list_/delete_notification_template`,
+  `create_/get_/list_/update_/delete_notification_channel`). New `notify/service.py`:
+  `render()` renders template source in a Jinja2 **`SandboxedEnvironment`** — the classic
+  `__class__ → __mro__ → __subclasses__` escape raises `SecurityError` and the
+  `attr()`-filter bypass is closed (`jinja2==3.1.6`, CVE-2025-27516), while a **missing
+  variable renders empty**, never a crash; `notify(session, template_id, channel_id,
+  context, transport)` loads the template + channel, renders subject/body and hands the
+  rendered payload to an **injected** `Transport` (a disabled channel renders but never
+  dispatches); `WebhookTransport` is a concrete transport whose HTTP client is itself
+  injectable (zero network in tests); `build_violation_context(...)` assembles the standard
+  context (policy name, matched resource ids, a `count`). `jinja2==3.1.6` pinned in
+  `requirements.txt` (latest; clears the sandbox-escape CVEs). New
+  `backend/tests/test_notify_service.py` (15 tests, TDD) covers render-with-context, the
+  sandbox blocks (escape chain + `attr()` bypass), missing-variable-safe, the context
+  builder, `WebhookTransport` (injected client), dispatch-via-transport, disabled-channel,
+  unknown template/channel, and channel + template CRUD. New/changed code at **100%**
+  coverage.
 - **M7.4 — Unified remediation audit & UI.** Every remediation attempt — a FinOps
   recommendation **or** a policy-driven action, dry-run or live — is recorded as a
   single `remediation_actions` row. Two new columns on `RemediationAction`

@@ -59,7 +59,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M7.1 | Custodian action executor — map tag/mark-for-op/stop/delete to Azure SDK | ✅ done |
 | M7.2 | Approval workflow — queue policy actions pending; approve/reject before enforce | ✅ done |
 | M7.3 | Guardrails for policy actions — RG allow-list, exclude tag, action allow-list, dry-run default | ✅ done |
-| M7.4 | Unified remediation audit & UI — policy actions in `remediation_actions`, source column + filter | 🚧 in review |
+| M7.4 | Unified remediation audit & UI — policy actions in `remediation_actions`, source column + filter | ✅ done |
+| M8.1 | Notification service & templates — sandboxed Jinja2 render + pluggable transport | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -441,6 +442,21 @@ to join) — filterable by source. The **Remediation** page (`/remediation`) add
 column and a source filter so policy-sourced actions appear alongside recommendation-sourced
 ones. Because dry-run previews are audited too (`status: dry_run`), the page is a complete
 attempt-by-attempt record.
+
+**Notification service & templates (M8.1).** Opens the notifications track — a service
+that renders a **communication template** from policy-violation context and dispatches it
+through a **pluggable transport** (Stacklet / c7n-mailer heritage). Templates and channels
+persist in `notification_templates` / `notification_channels` (repository CRUD).
+`notify/service.render()` renders template source in a Jinja2 **`SandboxedEnvironment`**:
+unsafe attribute access can't escape to Python internals — the classic `__class__ →
+__mro__ → __subclasses__` payload raises `SecurityError`, and the `attr()`-filter bypass is
+closed (`jinja2==3.1.6`, CVE-2025-27516) — while a **missing variable renders empty**, never a
+crash. `notify(session, template_id, channel_id, context, transport)` loads the template +
+channel, renders subject/body, and hands the rendered payload to the **injected** `Transport`
+(a disabled channel renders but never dispatches); `WebhookTransport` is a concrete transport
+whose HTTP client is itself injectable, so nothing touches the network in tests.
+`build_violation_context(policy_name, resource_ids, …)` assembles the standard context
+(policy name, matched resource ids, a `count`).
 
 Two API endpoints expose the engine's offline surface (M1.3):
 

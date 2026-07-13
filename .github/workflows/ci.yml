@@ -16,8 +16,8 @@ jobs:
     name: Backend (lint + unit/integration tests + coverage)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Install dependencies
@@ -42,8 +42,8 @@ jobs:
     name: Frontend (next build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "20"
       - name: Build Next.js app
@@ -57,7 +57,7 @@ jobs:
     name: Build images (backend + frontend)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build backend image
         run: docker build -t azure-finops-backend ./backend
       - name: Build frontend image
@@ -68,7 +68,7 @@ jobs:
     name: End-to-end (docker compose, mock mode)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Prepare env (mock mode)
         run: cp .env.example .env
       - name: Build backend + frontend images
@@ -273,6 +273,61 @@ jobs:
           print(f"audit e2e OK: {len(allrows)} attempt(s); {len(policy)} policy-sourced "
                 f"(policy_id={policy[0]['policy_id']}); source filter works")
           PY
+      - name: Smoke-test notification service & templates (M8.1)
+        run: |
+          set -euo pipefail
+          # Persist a template + channel through the deployed backend image, render the
+          # template from violation context in the SANDBOXED Jinja2 env, and dispatch the
+          # rendered payload through a stub transport (no network). Also assert the sandbox
+          # blocks a real escape attempt and a missing variable renders empty. Fully mock-safe.
+          docker compose exec -T backend python - <<'PY'
+          from azure_finops.notify import service
+          from azure_finops.storage import repository as repo
+          from azure_finops.storage.db import session_scope
+
+          class _StubTransport:
+              def __init__(self): self.sent = []
+              def send(self, *, target, subject, body, config):
+                  self.sent.append({"target": target, "subject": subject, "body": body})
+                  return {"ok": True}
+
+          with session_scope() as s:
+              tid = repo.create_notification_template(
+                  s, name="e2e-violation",
+                  subject="[{{ policy_name }}] {{ count }} violation(s)",
+                  body="Policy {{ policy_name }} matched {{ resource_id }} ({{ count }} total).",
+              )["id"]
+              cid = repo.create_notification_channel(
+                  s, name="e2e-webhook", transport="webhook", target="https://hooks.example/e2e",
+              )["id"]
+
+          transport = _StubTransport()
+          ctx = service.build_violation_context(
+              policy_name="stopped-vms", resource_ids=["/subscriptions/s/vm-1"])
+          with session_scope() as s:
+              res = service.notify(s, template_id=tid, channel_id=cid, context=ctx, transport=transport)
+
+          assert res["dispatched"] is True, res
+          sent = transport.sent[0]
+          assert sent["target"] == "https://hooks.example/e2e", sent
+          assert "stopped-vms" in sent["subject"] and "1 violation" in sent["subject"], sent
+          assert "/subscriptions/s/vm-1" in sent["body"] and "(1 total)" in sent["body"], sent
+
+          # Sandbox: a real escape attempt raises; a missing variable renders empty.
+          try:
+              service.render("{{ ''.__class__.__mro__[1].__subclasses__() }}", {})
+              raise SystemExit("sandbox did NOT block the escape attempt")
+          except service.SecurityError:
+              pass
+          assert service.render("Hello {{ missing }}!", {}) == "Hello !"
+
+          # Clean up so the audit-only tables stay tidy for any later steps.
+          with session_scope() as s:
+              repo.delete_notification_channel(s, cid)
+              repo.delete_notification_template(s, tid)
+          print(f"notify e2e OK: dispatched to {sent['target']}; subject={sent['subject']!r}; "
+                f"sandbox blocked escape; missing var rendered empty")
+          PY
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail
@@ -305,7 +360,7 @@ jobs:
     name: Security (Trivy — fail on any fixable HIGH/CRITICAL)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Trivy
         run: |
           TRIVY_VERSION=0.72.0

@@ -31,6 +31,12 @@ c7n-azure==0.7.50
 anthropic==0.69.0  # >=0.45 required for the `thinking` param (adaptive thinking); 0.42 rejects it
 openai==1.59.6
 
+# --- Notifications (M8.1) ---
+# Sandboxed template rendering for communication templates. 3.1.6 is the latest
+# release and closes the sandbox-escape CVEs (CVE-2025-27516 attr()-filter bypass,
+# CVE-2024-56201, CVE-2024-56326) — exactly the surface this feature relies on.
+jinja2==3.1.6
+
 # --- Storage ---
 SQLAlchemy==2.0.36
 psycopg[binary]==3.2.13

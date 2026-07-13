@@ -21,7 +21,8 @@ _TABLES = (
     "ai_summaries, account_groups, account_group_members, bindings, event_log, "
     "subscriptions, "
     "policies, policy_versions, policy_collections, "
-    "collection_policies, policy_executions, policy_matches"
+    "collection_policies, policy_executions, policy_matches, "
+    "notification_templates, notification_channels"
 )
 
 

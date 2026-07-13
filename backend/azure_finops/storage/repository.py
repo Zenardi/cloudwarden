@@ -1637,3 +1637,132 @@ def list_remediation_actions(
         "ORDER BY ra.requested_at DESC LIMIT :limit",
         **params,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Notification templates & channels (M8.1)
+# --------------------------------------------------------------------------- #
+def _notification_template_public(rec: schema.NotificationTemplate) -> dict[str, Any]:
+    return {
+        "id": rec.id,
+        "name": rec.name,
+        "subject": rec.subject,
+        "body": rec.body,
+        "format": rec.format,
+        "description": rec.description,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+    }
+
+
+def create_notification_template(
+    session: Session,
+    *,
+    name: str,
+    body: str,
+    subject: str | None = None,
+    format: str = "text",
+    description: str | None = None,
+) -> dict[str, Any]:
+    """Persist a communication template. Raises on a duplicate ``name``."""
+    rec = schema.NotificationTemplate(
+        name=name, body=body, subject=subject, format=format, description=description
+    )
+    session.add(rec)
+    session.flush()
+    return _notification_template_public(rec)
+
+
+def get_notification_template(session: Session, template_id: int) -> dict[str, Any] | None:
+    rec = session.get(schema.NotificationTemplate, template_id)
+    return _notification_template_public(rec) if rec is not None else None
+
+
+def list_notification_templates(session: Session) -> list[dict[str, Any]]:
+    recs = (
+        session.query(schema.NotificationTemplate)
+        .order_by(schema.NotificationTemplate.name.asc())
+        .all()
+    )
+    return [_notification_template_public(r) for r in recs]
+
+
+def delete_notification_template(session: Session, template_id: int) -> bool:
+    rec = session.get(schema.NotificationTemplate, template_id)
+    if rec is None:
+        return False
+    session.delete(rec)
+    session.flush()
+    return True
+
+
+def _notification_channel_public(rec: schema.NotificationChannel) -> dict[str, Any]:
+    return {
+        "id": rec.id,
+        "name": rec.name,
+        "transport": rec.transport,
+        "target": rec.target,
+        "config": rec.config,
+        "enabled": rec.enabled,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+    }
+
+
+def create_notification_channel(
+    session: Session,
+    *,
+    name: str,
+    target: str,
+    transport: str = "webhook",
+    config: dict[str, Any] | None = None,
+    enabled: bool = True,
+) -> dict[str, Any]:
+    """Persist a dispatch channel. Raises on a duplicate ``name``."""
+    rec = schema.NotificationChannel(
+        name=name,
+        target=target,
+        transport=transport,
+        config=config if config is not None else {},
+        enabled=enabled,
+    )
+    session.add(rec)
+    session.flush()
+    return _notification_channel_public(rec)
+
+
+def get_notification_channel(session: Session, channel_id: int) -> dict[str, Any] | None:
+    rec = session.get(schema.NotificationChannel, channel_id)
+    return _notification_channel_public(rec) if rec is not None else None
+
+
+def list_notification_channels(session: Session) -> list[dict[str, Any]]:
+    recs = (
+        session.query(schema.NotificationChannel)
+        .order_by(schema.NotificationChannel.name.asc())
+        .all()
+    )
+    return [_notification_channel_public(r) for r in recs]
+
+
+def update_notification_channel(
+    session: Session, channel_id: int, changes: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Partial update (only the given fields). ``None`` if the channel is missing."""
+    rec = session.get(schema.NotificationChannel, channel_id)
+    if rec is None:
+        return None
+    for field in ("name", "transport", "target", "config", "enabled"):
+        if field in changes:
+            setattr(rec, field, changes[field])
+    session.flush()
+    return _notification_channel_public(rec)
+
+
+def delete_notification_channel(session: Session, channel_id: int) -> bool:
+    rec = session.get(schema.NotificationChannel, channel_id)
+    if rec is None:
+        return False
+    session.delete(rec)
+    session.flush()
+    return True

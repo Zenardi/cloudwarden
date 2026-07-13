@@ -516,6 +516,53 @@ class RemediationAction(Base):
     actor: Mapped[str | None] = mapped_column(String(128))
 
 
+class NotificationTemplate(Base):
+    """A communication template rendered from policy-violation context (M8.1).
+
+    Stacklet / c7n-mailer heritage. ``subject`` and ``body`` are Jinja2 source
+    strings rendered in a **sandboxed** environment (``notify/service.render``), so
+    an authored template can reference the violation context (policy name, matched
+    resource ids, a count) but never reach Python internals. ``format`` names the
+    payload shape a transport should expect (``text`` / ``markdown`` / ``html``).
+    """
+
+    __tablename__ = "notification_templates"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(256), unique=True)
+    subject: Mapped[str | None] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    format: Mapped[str] = mapped_column(String(16), default="text")
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class NotificationChannel(Base):
+    """A dispatch destination and its transport kind (M8.1).
+
+    ``transport`` names the delivery mechanism (``webhook`` / ``slack`` / ``email``);
+    ``target`` is where that transport writes (a URL, an address); ``config`` holds
+    transport-specific extras (e.g. a Slack channel). ``enabled`` gates delivery —
+    a disabled channel renders but never dispatches.
+    """
+
+    __tablename__ = "notification_channels"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(256), unique=True)
+    transport: Mapped[str] = mapped_column(String(32), default="webhook")
+    target: Mapped[str] = mapped_column(String(1024))
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class AISummary(Base):
     __tablename__ = "ai_summaries"
 
