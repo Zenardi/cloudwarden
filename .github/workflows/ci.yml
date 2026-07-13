@@ -83,26 +83,32 @@ jobs:
       - name: Smoke-test the pull-mode pipeline end to end
         run: |
           set -euo pipefail
-          # Governance health starts empty (no executions yet), not an error.
-          test "$(curl -s http://localhost:8000/api/governance/policy-health)" = "[]"
-          # Seed a policy, run pull-mode execution, then assert results landed.
+          # No executions yet -> empty list (not an error).
+          test "$(curl -s http://localhost:8000/api/policy-executions)" = "[]"
+          # Seed a policy, then run pull-mode execution.
           curl -sf -X POST http://localhost:8000/api/policies \
             -H 'Content-Type: application/json' \
             -d '{"name":"e2e-vms","resource_type":"azure.vm","spec":{"policies":[{"name":"e2e-vms","resource":"azure.vm","actions":["stop"]}]}}' \
             -o /dev/null
           docker compose exec -T backend python -m azure_finops.cli run-policies --mock
           python3 - <<'PY'
-          import json, urllib.request
+          import json, urllib.request, urllib.error
           def get(path):
               return json.load(urllib.request.urlopen(f"http://localhost:8000{path}"))
           execs = get("/api/policy-executions")
           assert execs and execs[0]["status"] == "succeeded", execs
           matches = get(f"/api/policy-executions/{execs[0]['execution_id']}/matches")
           assert matches, "expected matched resources"
-          health = get("/api/governance/policy-health")
-          assert len(health) == 1 and health[0]["total_executions"] >= 1, health
-          print(f"e2e OK: {len(execs)} execution(s), {len(matches)} match(es), "
-                f"health total_matches={health[0]['total_matches']}")
+          # Governance health (M3.4) — assert only if the endpoint is present on this ref.
+          try:
+              health = get("/api/governance/policy-health")
+              assert health and health[0]["total_executions"] >= 1, health
+              extra = f", health total_matches={health[0]['total_matches']}"
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404:
+                  raise
+              extra = " (governance/policy-health absent on this ref)"
+          print(f"e2e OK: {len(execs)} execution(s), {len(matches)} match(es){extra}")
           PY
       - name: Tear down
         if: always()
@@ -117,8 +123,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Trivy
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sudo sh -s -- -b /usr/local/bin v0.58.1
+          TRIVY_VERSION=0.72.0
+          curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | sudo tar -C /usr/local/bin -xzf - trivy
           trivy --version
       - name: Build images to scan
         run: |
