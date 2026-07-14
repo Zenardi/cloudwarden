@@ -70,7 +70,7 @@ def _seed(
 def test_execution_health_empty(db) -> None:
     with session_scope() as s:
         health = repo.execution_health(s)
-    assert health == {"by_policy": [], "by_binding": []}
+    assert health == {"by_policy": [], "by_binding": [], "by_provider": []}
 
 
 def test_execution_health_success_rate(db) -> None:
@@ -150,7 +150,7 @@ def test_execution_health_per_binding(db) -> None:
 def test_execution_health_api_empty(db) -> None:
     resp = TestClient(app).get("/api/governance/execution-health")
     assert resp.status_code == 200
-    assert resp.json() == {"by_policy": [], "by_binding": []}
+    assert resp.json() == {"by_policy": [], "by_binding": [], "by_provider": []}
 
 
 def test_execution_health_api_returns_health(db) -> None:

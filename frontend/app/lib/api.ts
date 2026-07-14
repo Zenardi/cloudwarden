@@ -254,9 +254,14 @@ export function shortId(resourceId: string): string {
 
 // --- AssetDB explorer (M4.5) — consumes the M4.2/M4.3/M4.4 APIs ------------- //
 
+/** The clouds AssetDB/governance can span (M12 multi-cloud). "all" = no filter. */
+export const PROVIDERS = ["azure", "aws", "gcp"] as const;
+export type Provider = (typeof PROVIDERS)[number];
+
 export interface Asset {
   resource_id: string;
   subscription_id?: string | null;
+  provider?: string | null;
   resource_group?: string | null;
   name?: string | null;
   type?: string | null;
@@ -302,6 +307,7 @@ export interface AssetEvent {
 }
 
 export interface AssetQueryInputs {
+  provider?: string;
   type?: string;
   location?: string;
   contains?: string;
@@ -314,11 +320,14 @@ export interface AssetQueryInputs {
 /**
  * Build an injection-safe {@link AssetQuery} from explorer form fields. Empty
  * fields are omitted; a tag pair contributes only when both key and value are set.
+ * `provider` (M12.4) scopes to one cloud — empty/"all" spans every cloud.
  * `contains` matches anywhere in the resource id. Values are always sent as bound
  * parameters server-side (never interpolated), so the query is injection-safe.
  */
 export function buildAssetQuery(opts: AssetQueryInputs): AssetQuery {
   const filters: AssetFilter[] = [];
+  if (opts.provider && opts.provider !== "all")
+    filters.push({ column: "provider", op: "eq", value: opts.provider });
   if (opts.type) filters.push({ column: "type", op: "eq", value: opts.type });
   if (opts.location) filters.push({ column: "location", op: "eq", value: opts.location });
   if (opts.contains) filters.push({ column: "resource_id", op: "contains", value: opts.contains });
@@ -453,11 +462,21 @@ export interface PosturePolicy {
   evaluated: number;
 }
 
+/** One cloud's posture rollup (M12.4 cross-cloud). */
+export interface PostureProvider {
+  provider: string;
+  compliant: number;
+  non_compliant: number;
+  violations: number;
+  evaluated: number;
+}
+
 export interface Posture {
   totals: { compliant: number; non_compliant: number; violations: number; evaluated: number };
   by_policy: PosturePolicy[];
   by_subscription: unknown[];
   by_collection: unknown[];
+  by_provider: PostureProvider[];
 }
 
 /** A resource currently flagged by a policy (M9.3 drill-down). */
@@ -468,9 +487,14 @@ export interface MatchedResource {
   matched_at?: string | null;
 }
 
-/** Governance compliance posture — the policy list + non-compliant counts (M9.1). */
-export const getGovernancePosture = (): Promise<Posture> =>
-  apiGet<Posture>("/api/governance/posture");
+/**
+ * Governance compliance posture — the policy list + non-compliant counts (M9.1),
+ * optionally scoped to one cloud (M12.4). `provider` empty/"all" spans every cloud.
+ */
+export const getGovernancePosture = (provider?: string): Promise<Posture> => {
+  const qs = provider && provider !== "all" ? `?provider=${encodeURIComponent(provider)}` : "";
+  return apiGet<Posture>(`/api/governance/posture${qs}`);
+};
 
 // --------------------------------------------------------------------------- //
 // Audit log (M11.4): append-only trail of mutating governance actions

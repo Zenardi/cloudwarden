@@ -2,12 +2,13 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Asset, buildAssetQuery, queryAssets, shortId } from "../lib/api";
+import { Asset, buildAssetQuery, PROVIDERS, queryAssets, shortId } from "../lib/api";
 
 const PAGE_SIZE = 50;
 
 export default function Assets() {
   const router = useRouter();
+  const [provider, setProvider] = useState("all");
   const [type, setType] = useState("");
   const [location, setLocation] = useState("");
   const [contains, setContains] = useState("");
@@ -22,6 +23,7 @@ export default function Assets() {
     setLoading(true);
     try {
       const q = buildAssetQuery({
+        provider,
         type,
         location,
         contains,
@@ -38,7 +40,7 @@ export default function Assets() {
     } finally {
       setLoading(false);
     }
-  }, [type, location, contains, tagKey, tagValue, offset]);
+  }, [provider, type, location, contains, tagKey, tagValue, offset]);
 
   useEffect(() => {
     load();
@@ -63,6 +65,17 @@ export default function Assets() {
       </p>
 
       <form className="history-controls" onSubmit={apply}>
+        <div className="field">
+          <label htmlFor="f-provider">Cloud</label>
+          <select id="f-provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
+            <option value="all">All clouds</option>
+            {PROVIDERS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="field">
           <label htmlFor="f-type">Type</label>
           <input
@@ -109,6 +122,7 @@ export default function Assets() {
         <thead>
           <tr>
             <th>Name</th>
+            <th>Cloud</th>
             <th>Type</th>
             <th>Location</th>
             <th>State</th>
@@ -124,6 +138,9 @@ export default function Assets() {
               onClick={() => router.push(`/assets${a.resource_id}`)}
             >
               <td>{a.name || shortId(a.resource_id)}</td>
+              <td>
+                <span className="badge">{a.provider ?? "azure"}</span>
+              </td>
               <td className="muted">{a.type ?? "—"}</td>
               <td>{a.location ?? "—"}</td>
               <td>{a.state ? <span className="badge">{a.state}</span> : "—"}</td>
@@ -135,7 +152,7 @@ export default function Assets() {
           ))}
           {assets.length === 0 && !err && (
             <tr>
-              <td colSpan={6} className="muted">
+              <td colSpan={7} className="muted">
                 {loading ? "Loading…" : "No assets match this query."}
               </td>
             </tr>

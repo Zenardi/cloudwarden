@@ -1248,6 +1248,57 @@ jobs:
           print("gcp OK: onboard(provider=gcp) bad-cred=400 dryrun=matches ingest=assetdb(provider=gcp)")
           PY
 
+      - name: Smoke-test cross-cloud AssetDB & dashboards (M12.4)
+        run: |
+          set -euo pipefail
+          # In the deployed image, against the real DB: onboard one subscription per
+          # cloud, run a policy against each, then assert posture & execution-health
+          # group by provider and honour the ?provider= filter (defaulting to all).
+          # Unique ids keep this order-independent on the shared CI database.
+          docker compose exec -T backend python - <<'PY'
+          from fastapi.testclient import TestClient
+
+          from azure_finops.api.main import app
+          from azure_finops.storage import repository as repo
+          from azure_finops.storage.db import session_scope
+
+          SUBS = {"azure": "ci-m124-az", "aws": "ci-m124-aws", "gcp": "ci-m124-gcp"}
+          MATCHED = {"azure": 0, "aws": 2, "gcp": 5}
+          with session_scope() as s:
+              for provider, sub in SUBS.items():
+                  repo.upsert_subscription(s, subscription_id=sub, display_name=sub, provider=provider)
+              pid = repo.create_policy(
+                  s, name="ci-m124-policy", resource_type="azure.vm",
+                  spec={"policies": [{"name": "ci-m124", "resource": "azure.vm"}]},
+              )["id"]
+              for provider, sub in SUBS.items():
+                  eid = f"ci-m124-{provider}"
+                  repo.create_policy_execution(s, execution_id=eid, policy_id=pid, subscription_id=sub)
+                  repo.finish_policy_execution(s, eid, status="succeeded", resources_matched=MATCHED[provider])
+
+          with TestClient(app) as c:
+              # Posture groups by provider across all clouds (default = all providers).
+              posture = c.get("/api/governance/posture").json()
+              by_prov = {r["provider"]: r for r in posture["by_provider"]}
+              assert {"azure", "aws", "gcp"} <= set(by_prov), by_prov
+              assert by_prov["gcp"]["violations"] >= 5 and by_prov["aws"]["violations"] >= 2, by_prov
+              # Filter scopes the whole response to one cloud.
+              gcp = c.get("/api/governance/posture?provider=gcp").json()
+              assert [r["provider"] for r in gcp["by_provider"]] == ["gcp"], gcp
+              assert SUBS["gcp"] in {r["subscription_id"] for r in gcp["by_subscription"]}, gcp
+              assert all(r["provider"] == "gcp" for r in gcp["by_provider"]), gcp
+              # provider=all behaves like omitting the param.
+              allp = c.get("/api/governance/posture?provider=all").json()
+              assert {"azure", "aws", "gcp"} <= {r["provider"] for r in allp["by_provider"]}, allp
+              # Execution-health groups by provider too, and filters.
+              health = c.get("/api/governance/execution-health").json()
+              assert {"azure", "aws", "gcp"} <= {r["provider"] for r in health["by_provider"]}, health
+              fh = c.get("/api/governance/execution-health?provider=aws").json()
+              assert [r["provider"] for r in fh["by_provider"]] == ["aws"], fh
+              assert fh["by_policy"], fh
+          print("m12.4 OK: posture+exec-health group_by_provider filter=provider default=all-clouds")
+          PY
+
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)
         run: |
           set -euo pipefail

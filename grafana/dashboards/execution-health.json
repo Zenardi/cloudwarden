@@ -5,10 +5,29 @@
   "timezone": "",
   "editable": true,
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "",
   "time": { "from": "now-30d", "to": "now" },
-  "templating": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "provider",
+        "label": "Cloud provider",
+        "description": "Scope execution health to one cloud (M12.4). 'All' spans every cloud.",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "finops_pg" },
+        "definition": "SELECT DISTINCT provider FROM v_execution_health_by_provider ORDER BY 1",
+        "query": "SELECT DISTINCT provider FROM v_execution_health_by_provider ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": true,
+        "allValue": "%",
+        "multi": false,
+        "current": { "text": "All", "value": "$__all" },
+        "options": []
+      }
+    ]
+  },
   "annotations": { "list": [] },
   "panels": [
     {
@@ -22,7 +41,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT COALESCE(ROUND(AVG(success_rate), 4), 0) AS \"Success rate\" FROM v_execution_health" }
+          "rawSql": "SELECT COALESCE(ROUND(AVG(t.success_rate), 4), 0) AS \"Success rate\" FROM (SELECT ROUND(COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded')::numeric / NULLIF(COUNT(e.execution_id), 0), 4) AS success_rate FROM policies p JOIN policy_executions e ON e.policy_id = p.id LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id WHERE COALESCE(s.provider, 'azure') LIKE '$provider' GROUP BY p.id) t" }
       ]
     },
     {
@@ -36,7 +55,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT COALESCE(SUM(total_executions), 0) AS \"Executions\" FROM v_execution_health" }
+          "rawSql": "SELECT COUNT(e.execution_id) AS \"Executions\" FROM policy_executions e LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id WHERE COALESCE(s.provider, 'azure') LIKE '$provider'" }
       ]
     },
     {
@@ -49,7 +68,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT COALESCE(SUM(failed), 0) AS \"Failed\" FROM v_execution_health" }
+          "rawSql": "SELECT COUNT(e.execution_id) FILTER (WHERE e.status = 'failed') AS \"Failed\" FROM policy_executions e LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id WHERE COALESCE(s.provider, 'azure') LIKE '$provider'" }
       ]
     },
     {
@@ -63,7 +82,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT COALESCE(ROUND(AVG(avg_duration_seconds), 3), 0) AS \"Avg duration\" FROM v_execution_health" }
+          "rawSql": "SELECT COALESCE(ROUND(AVG(t.avg_duration_seconds), 3), 0) AS \"Avg duration\" FROM (SELECT COALESCE(ROUND((AVG(EXTRACT(EPOCH FROM (e.finished_at - e.started_at))) FILTER (WHERE e.finished_at IS NOT NULL))::numeric, 3), 0) AS avg_duration_seconds FROM policies p JOIN policy_executions e ON e.policy_id = p.id LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id WHERE COALESCE(s.provider, 'azure') LIKE '$provider' GROUP BY p.id) t" }
       ]
     },
     {
@@ -76,7 +95,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "displayMode": "gradient", "orientation": "horizontal", "showUnfilled": true },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT policy_name, success_rate FROM v_execution_health ORDER BY success_rate ASC, policy_name ASC" }
+          "rawSql": "SELECT p.name AS policy_name, ROUND(COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded')::numeric / NULLIF(COUNT(e.execution_id), 0), 4) AS success_rate FROM policies p JOIN policy_executions e ON e.policy_id = p.id LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id WHERE COALESCE(s.provider, 'azure') LIKE '$provider' GROUP BY p.id, p.name ORDER BY success_rate ASC, policy_name ASC" }
       ]
     },
     {
@@ -89,7 +108,28 @@
       "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "time_series", "rawQuery": true,
-          "rawSql": "SELECT e.started_at AS time, p.name AS metric, EXTRACT(EPOCH FROM (e.finished_at - e.started_at)) AS value FROM policy_executions e JOIN policies p ON e.policy_id = p.id WHERE e.finished_at IS NOT NULL ORDER BY e.started_at" }
+          "rawSql": "SELECT e.started_at AS time, p.name AS metric, EXTRACT(EPOCH FROM (e.finished_at - e.started_at)) AS value FROM policy_executions e JOIN policies p ON e.policy_id = p.id LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id WHERE e.finished_at IS NOT NULL AND COALESCE(s.provider, 'azure') LIKE '$provider' ORDER BY e.started_at" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Execution health by provider",
+      "description": "Cross-cloud rollup (M12.4): engine health per Azure/AWS/GCP.",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 14 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "success_rate" }, "properties": [ { "id": "unit", "value": "percentunit" }, { "id": "custom.cellOptions", "value": { "type": "gauge" } }, { "id": "min", "value": 0 }, { "id": "max", "value": 1 } ] },
+          { "matcher": { "id": "byName", "options": "avg_duration_seconds" }, "properties": [ { "id": "unit", "value": "s" } ] },
+          { "matcher": { "id": "byName", "options": "failed" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } ] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "provider", "desc": false } ] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT provider, total_executions, succeeded, failed, success_rate, avg_duration_seconds, last_status, last_execution_at FROM v_execution_health_by_provider WHERE provider LIKE '$provider' ORDER BY provider ASC" }
       ]
     },
     {
@@ -97,7 +137,7 @@
       "type": "table",
       "title": "Execution health (per policy)",
       "datasource": { "type": "postgres", "uid": "finops_pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 14 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 21 },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
@@ -109,7 +149,7 @@
       "options": { "showHeader": true, "sortBy": [ { "displayName": "last_execution_at", "desc": true } ] },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT policy_name, total_executions, succeeded, failed, success_rate, avg_duration_seconds, last_status, last_execution_at FROM v_execution_health ORDER BY last_execution_at DESC NULLS LAST" }
+          "rawSql": "SELECT p.name AS policy_name, COUNT(e.execution_id) AS total_executions, COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded') AS succeeded, COUNT(e.execution_id) FILTER (WHERE e.status = 'failed') AS failed, ROUND(COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded')::numeric / NULLIF(COUNT(e.execution_id), 0), 4) AS success_rate, COALESCE(ROUND((AVG(EXTRACT(EPOCH FROM (e.finished_at - e.started_at))) FILTER (WHERE e.finished_at IS NOT NULL))::numeric, 3), 0) AS avg_duration_seconds, (ARRAY_AGG(e.status ORDER BY e.started_at DESC, e.execution_id DESC))[1] AS last_status, MAX(e.started_at) AS last_execution_at FROM policies p JOIN policy_executions e ON e.policy_id = p.id LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id WHERE COALESCE(s.provider, 'azure') LIKE '$provider' GROUP BY p.id, p.name ORDER BY last_execution_at DESC NULLS LAST" }
       ]
     },
     {
@@ -117,7 +157,7 @@
       "type": "table",
       "title": "Execution health (per binding)",
       "datasource": { "type": "postgres", "uid": "finops_pg" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
@@ -128,7 +168,7 @@
       "options": { "showHeader": true, "sortBy": [ { "displayName": "last_execution_at", "desc": true } ] },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT binding_id, total_executions, succeeded, failed, success_rate, avg_duration_seconds, last_status, last_execution_at FROM v_execution_health_by_binding ORDER BY last_execution_at DESC NULLS LAST" }
+          "rawSql": "SELECT e.binding_id AS binding_id, COUNT(e.execution_id) AS total_executions, COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded') AS succeeded, COUNT(e.execution_id) FILTER (WHERE e.status = 'failed') AS failed, ROUND(COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded')::numeric / NULLIF(COUNT(e.execution_id), 0), 4) AS success_rate, COALESCE(ROUND((AVG(EXTRACT(EPOCH FROM (e.finished_at - e.started_at))) FILTER (WHERE e.finished_at IS NOT NULL))::numeric, 3), 0) AS avg_duration_seconds, (ARRAY_AGG(e.status ORDER BY e.started_at DESC, e.execution_id DESC))[1] AS last_status, MAX(e.started_at) AS last_execution_at FROM policy_executions e LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id WHERE e.binding_id IS NOT NULL AND COALESCE(s.provider, 'azure') LIKE '$provider' GROUP BY e.binding_id ORDER BY last_execution_at DESC NULLS LAST" }
       ]
     }
   ]

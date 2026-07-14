@@ -150,6 +150,7 @@ SELECT
     r.policy_id                     AS policy_id,
     p.name                          AS policy_name,
     r.subscription_id               AS subscription_id,
+    COALESCE(s.provider, 'azure')   AS provider,
     r.resources_matched             AS resources_matched,
     (r.resources_matched > 0)       AS non_compliant,
     (r.resources_matched = 0)       AS compliant,
@@ -157,6 +158,7 @@ SELECT
     r.started_at                    AS last_execution_at
 FROM ranked r
 JOIN policies p ON p.id = r.policy_id
+LEFT JOIN subscriptions s ON s.subscription_id = r.subscription_id
 WHERE r.rn = 1;
 
 -- Policy execution health (M9.2): the governance engine's OWN health, per policy.
@@ -217,6 +219,35 @@ SELECT
 FROM policy_executions e
 WHERE e.binding_id IS NOT NULL
 GROUP BY e.binding_id;
+
+-- Same measures at the *provider* grain (M12.4 cross-cloud): every execution is
+-- attributed to its subscription's cloud (an un-onboarded subscription defaults to
+-- 'azure', mirroring the server_default backfill), then aggregated per provider so
+-- Azure/AWS/GCP execution health reads as a single multi-cloud pane.
+CREATE OR REPLACE VIEW v_execution_health_by_provider AS
+SELECT
+    COALESCE(s.provider, 'azure')                               AS provider,
+    COUNT(e.execution_id)                                       AS total_executions,
+    COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded')  AS succeeded,
+    COUNT(e.execution_id) FILTER (WHERE e.status = 'failed')     AS failed,
+    ROUND(
+        (COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded'))::numeric
+        / NULLIF(COUNT(e.execution_id), 0),
+        4
+    )                                                            AS success_rate,
+    COALESCE(
+        ROUND(
+            (AVG(EXTRACT(EPOCH FROM (e.finished_at - e.started_at)))
+             FILTER (WHERE e.finished_at IS NOT NULL))::numeric,
+            3
+        ),
+        0
+    )                                                            AS avg_duration_seconds,
+    MAX(e.started_at)                                           AS last_execution_at,
+    (ARRAY_AGG(e.status ORDER BY e.started_at DESC, e.execution_id DESC))[1] AS last_status
+FROM policy_executions e
+LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id
+GROUP BY COALESCE(s.provider, 'azure');
 """
 
 

@@ -6,7 +6,9 @@ import {
   getGovernancePosture,
   getPolicyMatchedResources,
   MatchedResource,
+  PostureProvider,
   PosturePolicy,
+  PROVIDERS,
   shortId,
 } from "../lib/api";
 
@@ -16,7 +18,9 @@ function ts(value?: string | null): string {
 }
 
 export default function Compliance() {
+  const [provider, setProvider] = useState("all");
   const [policies, setPolicies] = useState<PosturePolicy[]>([]);
+  const [byProvider, setByProvider] = useState<PostureProvider[]>([]);
   const [selected, setSelected] = useState<PosturePolicy | null>(null);
   const [resources, setResources] = useState<MatchedResource[]>([]);
   const [err, setErr] = useState("");
@@ -26,19 +30,20 @@ export default function Compliance() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const posture = await getGovernancePosture();
+      const posture = await getGovernancePosture(provider);
       // Non-compliant first, then most-evaluated — the investigation worklist.
       const rows = [...posture.by_policy].sort(
         (a, b) => b.non_compliant - a.non_compliant || b.violations - a.violations,
       );
       setPolicies(rows);
+      setByProvider(posture.by_provider ?? []);
       setErr("");
     } catch (e) {
       setErr(String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [provider]);
 
   useEffect(() => {
     load();
@@ -67,6 +72,51 @@ export default function Compliance() {
         la Stacklet&apos;s compliance explorer. Counts come from the governance posture (latest
         execution per policy &amp; subscription).
       </p>
+
+      <form className="history-controls" onSubmit={(e) => e.preventDefault()}>
+        <div className="field">
+          <label htmlFor="f-provider">Cloud</label>
+          <select id="f-provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
+            <option value="all">All clouds</option>
+            {PROVIDERS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+      </form>
+
+      {byProvider.length > 0 && (
+        <table style={{ marginBottom: "1rem" }}>
+          <thead>
+            <tr>
+              <th>Cloud</th>
+              <th>Compliant</th>
+              <th>Non-compliant</th>
+              <th>Violations</th>
+              <th>Evaluated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {byProvider.map((r) => (
+              <tr key={r.provider}>
+                <td>
+                  <span className="badge">{r.provider}</span>
+                </td>
+                <td className="muted">{r.compliant}</td>
+                <td>
+                  <span className={r.non_compliant > 0 ? "badge rejected" : "badge"}>
+                    {r.non_compliant}
+                  </span>
+                </td>
+                <td className="muted">{r.violations}</td>
+                <td className="muted">{r.evaluated}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       {err && <div className="err">{err}</div>}
 

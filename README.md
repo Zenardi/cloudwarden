@@ -78,7 +78,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M11.4 | Audit log — append-only trail of every mutating action (actor, action, target, before/after); `GET /api/audit` + a UI viewer | ✅ done |
 | M12.1 | Cloud provider abstraction — a `CloudProvider` interface + registry with Azure behind it; `SubscriptionContext` generalized to `AccountContext`; accounts carry a `provider` (multi-cloud foundation) | ✅ done |
 | M12.2 | AWS onboarding & execution — onboard AWS accounts (STS-validated), dry-run c7n aws policies, ingest AWS resources into AssetDB tagged `provider='aws'`; injectable boto clients (no live AWS in tests) | ✅ done |
-| M12.3 | GCP onboarding & execution — onboard GCP projects (Resource-Manager-validated), dry-run c7n gcp policies, ingest GCP resources into AssetDB tagged `provider='gcp'`; injectable clients (no live GCP in tests) | 🚧 in review |
+| M12.3 | GCP onboarding & execution — onboard GCP projects (Resource-Manager-validated), dry-run c7n gcp policies, ingest GCP resources into AssetDB tagged `provider='gcp'`; injectable clients (no live GCP in tests) | ✅ done |
+| M12.4 | Cross-cloud AssetDB & dashboards — asset queries, posture and execution-health filter/group by `provider`; UI + Grafana provider filter defaulting to all clouds (the single multi-cloud pane) | ✅ done |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -453,6 +454,19 @@ so it is an **optional live-only extra** (not installed by default, to keep the 
 Trivy surface minimal); the live paths lazily import it. Onboarding, dry-runs and ingestion
 all work fully offline via injected clients / the `gcp_assets` fixture — **no live GCP call**
 in tests.
+
+**Cross-cloud AssetDB & dashboards (M12.4).** The provider dimension is unified into a single
+multi-cloud pane. AssetDB queries already filter by the allow-listed **`provider`** column
+(`POST /api/assets/query` with a `provider eq aws` filter returns only that cloud's assets).
+Compliance **posture** (`GET /api/governance/posture`) and **execution-health**
+(`GET /api/governance/execution-health`) each grow a **`by_provider`** rollup and accept an
+optional **`?provider=azure|aws|gcp`** filter (omitting it — or `?provider=all` — spans every
+cloud). Provider is intrinsic to the account: an execution's provider is its subscription's
+`provider` (an un-onboarded subscription defaults to `azure`, mirroring the `server_default`
+backfill), joined in via `v_governance_posture` (now carrying `provider`) and the new
+`v_execution_health_by_provider` view. The **assets** and **compliance** UIs expose a *Cloud*
+dropdown, and both Grafana boards (**Compliance Posture**, **Execution Health**) gain a
+`provider` template variable — all defaulting to **all clouds**.
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

@@ -2047,44 +2047,70 @@ _POSTURE_MEASURES = (
 )
 
 
-def governance_posture(session: Session) -> dict[str, Any]:
-    """Compliance posture (M9.1): compliant vs non-compliant rollups.
+def governance_posture(session: Session, *, provider: str | None = None) -> dict[str, Any]:
+    """Compliance posture (M9.1, M12.4): compliant vs non-compliant rollups.
 
     Reads ``v_governance_posture`` — the latest execution per ``(policy,
-    subscription)`` — and aggregates it four ways (by policy, by subscription, by
-    collection, and by CIS ``control_id``) plus a ``totals`` block. ``violations``
-    sums matched resources. The ``by_control`` rollup extracts each policy's
-    ``metadata.control_id`` from its stored spec (M10.4) so posture can be framed
-    against a compliance framework; policies without one are excluded. With nothing
-    executed yet the totals are zeroed and the group lists empty — the empty state
-    is data, never an error.
+    subscription)`` — and aggregates it five ways (by policy, by subscription, by
+    collection, by CIS ``control_id``, and by cloud ``provider``) plus a ``totals``
+    block. ``violations`` sums matched resources. The ``by_control`` rollup extracts
+    each policy's ``metadata.control_id`` from its stored spec (M10.4) so posture can
+    be framed against a compliance framework; policies without one are excluded.
+
+    ``provider`` filters the *entire* response to one cloud (``azure``/``aws``/``gcp``);
+    ``None`` (the default) spans all clouds — the cross-cloud single pane. With
+    nothing executed yet the totals are zeroed and the group lists empty — the empty
+    state is data, never an error.
     """
+    # Optional provider predicate, bound as a parameter (injection-safe). ``where`` is
+    # for the group queries that carry no filter today; ``and_`` extends by_control's
+    # existing WHERE. Both are empty strings when no provider is requested.
+    params: dict[str, Any] = {}
+    where = ""
+    and_ = ""
+    if provider:
+        params["provider"] = provider
+        where = " WHERE gp.provider = :provider"
+        and_ = " AND gp.provider = :provider"
+
     totals = _rows(
         session,
-        f"SELECT {_POSTURE_MEASURES} FROM v_governance_posture gp",
+        f"SELECT {_POSTURE_MEASURES} FROM v_governance_posture gp{where}",
+        **params,
     )[0]
     by_policy = _rows(
         session,
         f"SELECT gp.policy_id, gp.policy_name, {_POSTURE_MEASURES} "
-        "FROM v_governance_posture gp "
+        f"FROM v_governance_posture gp{where} "
         "GROUP BY gp.policy_id, gp.policy_name "
         "ORDER BY gp.policy_name ASC",
+        **params,
     )
     by_subscription = _rows(
         session,
         f"SELECT gp.subscription_id, {_POSTURE_MEASURES} "
-        "FROM v_governance_posture gp "
+        f"FROM v_governance_posture gp{where} "
         "GROUP BY gp.subscription_id "
         "ORDER BY gp.subscription_id ASC",
+        **params,
+    )
+    by_provider = _rows(
+        session,
+        f"SELECT gp.provider, {_POSTURE_MEASURES} "
+        f"FROM v_governance_posture gp{where} "
+        "GROUP BY gp.provider "
+        "ORDER BY gp.provider ASC",
+        **params,
     )
     by_collection = _rows(
         session,
         f"SELECT c.id AS collection_id, c.name AS collection_name, {_POSTURE_MEASURES} "
         "FROM v_governance_posture gp "
         "JOIN collection_policies cp ON cp.policy_id = gp.policy_id "
-        "JOIN policy_collections c ON c.id = cp.collection_id "
+        f"JOIN policy_collections c ON c.id = cp.collection_id{where} "
         "GROUP BY c.id, c.name "
         "ORDER BY c.name ASC",
+        **params,
     )
     # by CIS control id (M10.4): extract metadata.control_id from the stored spec
     # (spec -> policies[0] -> metadata -> control_id); uncontrolled policies drop out.
@@ -2094,9 +2120,10 @@ def governance_posture(session: Session) -> dict[str, Any]:
         f"SELECT ({control_expr}) AS control_id, {_POSTURE_MEASURES} "
         "FROM v_governance_posture gp "
         "JOIN policies p ON p.id = gp.policy_id "
-        f"WHERE ({control_expr}) IS NOT NULL "
+        f"WHERE ({control_expr}) IS NOT NULL{and_} "
         "GROUP BY control_id "
         "ORDER BY control_id ASC",
+        **params,
     )
     return {
         "totals": totals,
@@ -2104,28 +2131,86 @@ def governance_posture(session: Session) -> dict[str, Any]:
         "by_subscription": by_subscription,
         "by_collection": by_collection,
         "by_control": by_control,
+        "by_provider": by_provider,
     }
 
 
-def execution_health(session: Session) -> dict[str, Any]:
-    """Policy execution health (M9.2): the governance engine's own health.
+# The execution-health measures at the *execution* grain (executions aliased ``e``).
+# Kept identical to the v_execution_health / v_execution_health_by_binding view
+# columns so a provider-filtered recompute (which must join subscriptions) returns
+# the very same shape as the unfiltered view read.
+_EXEC_MEASURES = (
+    "COUNT(e.execution_id)                                       AS total_executions, "
+    "COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded')  AS succeeded, "
+    "COUNT(e.execution_id) FILTER (WHERE e.status = 'failed')     AS failed, "
+    "ROUND((COUNT(e.execution_id) FILTER (WHERE e.status = 'succeeded'))::numeric "
+    "      / NULLIF(COUNT(e.execution_id), 0), 4)                 AS success_rate, "
+    "COALESCE(ROUND((AVG(EXTRACT(EPOCH FROM (e.finished_at - e.started_at))) "
+    "         FILTER (WHERE e.finished_at IS NOT NULL))::numeric, 3), 0) AS avg_duration_seconds, "
+    "MAX(e.started_at)                                           AS last_execution_at, "
+    "(ARRAY_AGG(e.status ORDER BY e.started_at DESC, e.execution_id DESC))[1] AS last_status"
+)
 
-    Reads ``v_execution_health`` (per policy) and ``v_execution_health_by_binding``
-    (per binding) — succeeded/failed counts, success rate, average wall-clock
-    duration and last run — newest-executed first. A policy/binding that has never
-    executed is absent, so the empty state is two empty lists — never an error.
+
+def execution_health(session: Session, *, provider: str | None = None) -> dict[str, Any]:
+    """Policy execution health (M9.2, M12.4): the governance engine's own health.
+
+    Returns ``by_policy`` (per policy), ``by_binding`` (per binding) and
+    ``by_provider`` (per cloud) — succeeded/failed counts, success rate, average
+    wall-clock duration and last run — newest-executed first. A policy/binding/
+    provider that has never executed is absent, so the empty state is three empty
+    lists — never an error.
+
+    ``provider`` scopes ``by_policy``/``by_binding`` to executions attributed to
+    that cloud (an execution's provider is its subscription's ``provider``, defaulting
+    to ``azure``) and narrows ``by_provider`` to the single row; ``None`` (the
+    default) spans all clouds.
     """
-    by_policy = _rows(
-        session,
-        "SELECT * FROM v_execution_health "
-        "ORDER BY last_execution_at DESC NULLS LAST, policy_name ASC",
-    )
-    by_binding = _rows(
-        session,
-        "SELECT * FROM v_execution_health_by_binding "
-        "ORDER BY last_execution_at DESC NULLS LAST, binding_id ASC",
-    )
-    return {"by_policy": by_policy, "by_binding": by_binding}
+    if provider:
+        params = {"provider": provider}
+        by_policy = _rows(
+            session,
+            f"SELECT p.id AS policy_id, p.name AS policy_name, {_EXEC_MEASURES} "
+            "FROM policies p "
+            "JOIN policy_executions e ON e.policy_id = p.id "
+            "LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id "
+            "WHERE COALESCE(s.provider, 'azure') = :provider "
+            "GROUP BY p.id, p.name "
+            "ORDER BY MAX(e.started_at) DESC NULLS LAST, p.name ASC",
+            **params,
+        )
+        by_binding = _rows(
+            session,
+            f"SELECT e.binding_id AS binding_id, {_EXEC_MEASURES} "
+            "FROM policy_executions e "
+            "LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id "
+            "WHERE e.binding_id IS NOT NULL AND COALESCE(s.provider, 'azure') = :provider "
+            "GROUP BY e.binding_id "
+            "ORDER BY MAX(e.started_at) DESC NULLS LAST, e.binding_id ASC",
+            **params,
+        )
+        by_provider = _rows(
+            session,
+            "SELECT * FROM v_execution_health_by_provider WHERE provider = :provider "
+            "ORDER BY provider ASC",
+            **params,
+        )
+    else:
+        by_policy = _rows(
+            session,
+            "SELECT * FROM v_execution_health "
+            "ORDER BY last_execution_at DESC NULLS LAST, policy_name ASC",
+        )
+        by_binding = _rows(
+            session,
+            "SELECT * FROM v_execution_health_by_binding "
+            "ORDER BY last_execution_at DESC NULLS LAST, binding_id ASC",
+        )
+        by_provider = _rows(
+            session,
+            "SELECT * FROM v_execution_health_by_provider ORDER BY provider ASC",
+        )
+    return {"by_policy": by_policy, "by_binding": by_binding, "by_provider": by_provider}
 
 
 # Column order for the governance export (M9.4) — the CSV header and JSON keys.

@@ -5,10 +5,29 @@
   "timezone": "",
   "editable": true,
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "",
   "time": { "from": "now-30d", "to": "now" },
-  "templating": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "provider",
+        "label": "Cloud provider",
+        "description": "Scope posture to one cloud (M12.4). 'All' spans every cloud.",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "finops_pg" },
+        "definition": "SELECT DISTINCT provider FROM v_governance_posture ORDER BY 1",
+        "query": "SELECT DISTINCT provider FROM v_governance_posture ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": true,
+        "allValue": "%",
+        "multi": false,
+        "current": { "text": "All", "value": "$__all" },
+        "options": []
+      }
+    ]
+  },
   "annotations": { "list": [] },
   "panels": [
     {
@@ -22,7 +41,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE compliant), 0) AS \"Compliant\" FROM v_governance_posture" }
+          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE compliant), 0) AS \"Compliant\" FROM v_governance_posture WHERE provider LIKE '$provider'" }
       ]
     },
     {
@@ -36,7 +55,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE non_compliant), 0) AS \"Non-compliant\" FROM v_governance_posture" }
+          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE non_compliant), 0) AS \"Non-compliant\" FROM v_governance_posture WHERE provider LIKE '$provider'" }
       ]
     },
     {
@@ -50,7 +69,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT COALESCE(SUM(resources_matched), 0) AS \"Violations\" FROM v_governance_posture" }
+          "rawSql": "SELECT COALESCE(SUM(resources_matched), 0) AS \"Violations\" FROM v_governance_posture WHERE provider LIKE '$provider'" }
       ]
     },
     {
@@ -64,7 +83,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT COALESCE(ROUND(COUNT(*) FILTER (WHERE compliant)::numeric / NULLIF(COUNT(*), 0), 4), 0) AS \"Compliance rate\" FROM v_governance_posture" }
+          "rawSql": "SELECT COALESCE(ROUND(COUNT(*) FILTER (WHERE compliant)::numeric / NULLIF(COUNT(*), 0), 4), 0) AS \"Compliance rate\" FROM v_governance_posture WHERE provider LIKE '$provider'" }
       ]
     },
     {
@@ -77,7 +96,7 @@
       "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "pieType": "donut", "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom", "values": ["value"] }, "tooltip": { "mode": "single", "sort": "none" } },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE compliant), 0) AS \"Compliant\", COALESCE(COUNT(*) FILTER (WHERE non_compliant), 0) AS \"Non-compliant\" FROM v_governance_posture" }
+          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE compliant), 0) AS \"Compliant\", COALESCE(COUNT(*) FILTER (WHERE non_compliant), 0) AS \"Non-compliant\" FROM v_governance_posture WHERE provider LIKE '$provider'" }
       ]
     },
     {
@@ -90,15 +109,16 @@
       "options": { "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "time_series", "rawQuery": true,
-          "rawSql": "SELECT e.started_at AS time, p.name AS metric, e.resources_matched AS value FROM policy_executions e JOIN policies p ON e.policy_id = p.id WHERE e.started_at IS NOT NULL ORDER BY e.started_at" }
+          "rawSql": "SELECT e.started_at AS time, p.name AS metric, e.resources_matched AS value FROM policy_executions e JOIN policies p ON e.policy_id = p.id LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id WHERE e.started_at IS NOT NULL AND COALESCE(s.provider, 'azure') LIKE '$provider' ORDER BY e.started_at" }
       ]
     },
     {
-      "id": 7,
+      "id": 9,
       "type": "table",
-      "title": "Posture by policy",
+      "title": "Posture by provider",
+      "description": "Cross-cloud rollup (M12.4): compliance per Azure/AWS/GCP.",
       "datasource": { "type": "postgres", "uid": "finops_pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 14 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 14 },
       "fieldConfig": {
         "defaults": {},
         "overrides": [
@@ -108,7 +128,25 @@
       "options": { "showHeader": true, "sortBy": [ { "displayName": "non_compliant", "desc": true } ] },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT policy_name, COUNT(*) FILTER (WHERE compliant) AS compliant, COUNT(*) FILTER (WHERE non_compliant) AS non_compliant, COALESCE(SUM(resources_matched), 0) AS violations, COUNT(*) AS evaluated FROM v_governance_posture GROUP BY policy_name ORDER BY non_compliant DESC, policy_name ASC" }
+          "rawSql": "SELECT provider, COUNT(*) FILTER (WHERE compliant) AS compliant, COUNT(*) FILTER (WHERE non_compliant) AS non_compliant, COALESCE(SUM(resources_matched), 0) AS violations, COUNT(*) AS evaluated FROM v_governance_posture WHERE provider LIKE '$provider' GROUP BY provider ORDER BY non_compliant DESC, provider ASC" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Posture by policy",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 22 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "non_compliant" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "color", "value": { "mode": "thresholds" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } ] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "non_compliant", "desc": true } ] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT policy_name, COUNT(*) FILTER (WHERE compliant) AS compliant, COUNT(*) FILTER (WHERE non_compliant) AS non_compliant, COALESCE(SUM(resources_matched), 0) AS violations, COUNT(*) AS evaluated FROM v_governance_posture WHERE provider LIKE '$provider' GROUP BY policy_name ORDER BY non_compliant DESC, policy_name ASC" }
       ]
     },
     {
@@ -116,12 +154,12 @@
       "type": "table",
       "title": "Posture by subscription",
       "datasource": { "type": "postgres", "uid": "finops_pg" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 31 },
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "options": { "showHeader": true, "sortBy": [ { "displayName": "non_compliant", "desc": true } ] },
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
-          "rawSql": "SELECT subscription_id, COUNT(*) FILTER (WHERE compliant) AS compliant, COUNT(*) FILTER (WHERE non_compliant) AS non_compliant, COALESCE(SUM(resources_matched), 0) AS violations, COUNT(*) AS evaluated FROM v_governance_posture GROUP BY subscription_id ORDER BY non_compliant DESC, subscription_id ASC" }
+          "rawSql": "SELECT subscription_id, provider, COUNT(*) FILTER (WHERE compliant) AS compliant, COUNT(*) FILTER (WHERE non_compliant) AS non_compliant, COALESCE(SUM(resources_matched), 0) AS violations, COUNT(*) AS evaluated FROM v_governance_posture WHERE provider LIKE '$provider' GROUP BY subscription_id, provider ORDER BY non_compliant DESC, subscription_id ASC" }
       ]
     }
   ]

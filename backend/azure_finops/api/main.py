@@ -1170,32 +1170,43 @@ def policy_health() -> list[dict[str, Any]]:
         return repo.policy_health(session)
 
 
-@app.get("/api/governance/posture")
-def governance_posture() -> dict[str, Any]:
-    """Compliance posture (M9.1, M10.4): compliant vs non-compliant counts grouped by
-    policy, subscription, collection, and CIS ``control_id``, from the latest execution
-    per ``(policy, subscription)``.
+def _provider_filter(provider: str | None) -> str | None:
+    """Normalize a ``?provider=`` filter (M12.4). Empty / ``all`` → ``None`` (all clouds)."""
+    if provider is None:
+        return None
+    normalized = provider.strip().lower()
+    return None if normalized in ("", "all") else normalized
 
-    The response is ``{totals, by_policy, by_subscription, by_collection, by_control}``.
-    ``by_control`` rolls posture up by each policy's ``metadata.control_id`` (framework
-    framing, e.g. the CIS Azure pack); policies without one are excluded. With nothing
-    executed yet the totals are zeroed and the group lists empty — the empty state is
-    data, never an error.
+
+@app.get("/api/governance/posture")
+def governance_posture(provider: str | None = Query(None)) -> dict[str, Any]:
+    """Compliance posture (M9.1, M10.4, M12.4): compliant vs non-compliant counts grouped
+    by policy, subscription, collection, CIS ``control_id`` and cloud ``provider``, from
+    the latest execution per ``(policy, subscription)``.
+
+    The response is ``{totals, by_policy, by_subscription, by_collection, by_control,
+    by_provider}``. ``by_control`` rolls posture up by each policy's ``metadata.control_id``
+    (framework framing, e.g. the CIS Azure pack); policies without one are excluded.
+    ``?provider=azure|aws|gcp`` scopes the whole response to one cloud; omitting it (or
+    ``?provider=all``) spans every cloud. With nothing executed yet the totals are zeroed
+    and the group lists empty — the empty state is data, never an error.
     """
     with session_scope() as session:
-        return repo.governance_posture(session)
+        return repo.governance_posture(session, provider=_provider_filter(provider))
 
 
 @app.get("/api/governance/execution-health")
-def execution_health() -> dict[str, Any]:
-    """Policy execution health (M9.2): the governance engine's own health.
+def execution_health(provider: str | None = Query(None)) -> dict[str, Any]:
+    """Policy execution health (M9.2, M12.4): the governance engine's own health.
 
-    Returns ``{by_policy, by_binding}`` — succeeded/failed counts, success rate,
-    average wall-clock duration and last run, per policy and per binding. With
-    nothing executed yet both lists are empty — never an error.
+    Returns ``{by_policy, by_binding, by_provider}`` — succeeded/failed counts, success
+    rate, average wall-clock duration and last run, per policy, per binding and per cloud.
+    ``?provider=azure|aws|gcp`` scopes ``by_policy``/``by_binding`` to that cloud and
+    narrows ``by_provider`` to its row; omitting it (or ``?provider=all``) spans every
+    cloud. With nothing executed yet the lists are empty — never an error.
     """
     with session_scope() as session:
-        return repo.execution_health(session)
+        return repo.execution_health(session, provider=_provider_filter(provider))
 
 
 @app.get("/api/governance/policies/{policy_id}/matches")

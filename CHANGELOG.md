@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Cross-cloud AssetDB & dashboards — the single multi-cloud pane (M12.4).** The `provider`
+  dimension now unifies Azure/AWS/GCP across AssetDB and the governance surface. Asset queries
+  already filter by the allow-listed **`provider`** column (`POST /api/assets/query` with a
+  `provider eq aws` filter returns only that cloud's assets). Compliance **posture** and
+  **execution-health** each grow a **`by_provider`** rollup and accept an optional
+  **`?provider=azure|aws|gcp`** filter that defaults to *all clouds* (`?provider=all` or omitted).
+  Provider is intrinsic to the account — an execution's provider is its subscription's `provider`
+  (an un-onboarded subscription defaults to `azure`, mirroring the `server_default` backfill):
+  `v_governance_posture` now carries a `provider` column, and a new
+  **`v_execution_health_by_provider`** view aggregates engine health per cloud. The **assets**
+  and **compliance** UIs gain a *Cloud* dropdown (and an asset *Cloud* column / a posture
+  by-provider strip), and both Grafana boards (**Compliance Posture**, **Execution Health**) gain
+  a `provider` template variable — all defaulting to **all clouds**. No new dependency, no schema
+  migration (the provider columns were added with `server_default='azure'` in M12.1/M12.2).
 - **GCP onboarding & execution — the third cloud (M12.3).** New
   `azure_finops.providers.gcp.GcpProvider` (registered as `providers.registry.get("gcp")`)
   onboards GCP projects, runs Cloud Custodian **gcp** policy dry-runs, and ingests GCP
