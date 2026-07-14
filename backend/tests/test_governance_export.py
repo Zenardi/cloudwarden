@@ -16,11 +16,11 @@ import io
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops import reporting
-from azure_finops.api.main import app
-from azure_finops.config import get_settings
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden import reporting
+from cloudwarden.api.main import app
+from cloudwarden.config import get_settings
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 
 def _make_policy(session, name: str = "p1") -> int:
@@ -143,7 +143,7 @@ def test_scheduled_report_writes_file(db, monkeypatch, tmp_path) -> None:
         pid = _make_policy(s)
         _seed_exec(s, eid="e1", pid=pid, matched=1)
 
-    import azure_finops.scheduler as sched
+    import cloudwarden.scheduler as sched
 
     sched._safe_run_governance_report()
     files = list(tmp_path.glob("governance-report-*.csv"))
@@ -152,14 +152,14 @@ def test_scheduled_report_writes_file(db, monkeypatch, tmp_path) -> None:
 
 
 def test_safe_run_governance_report_swallows_errors(monkeypatch) -> None:
-    import azure_finops.scheduler as sched
+    import cloudwarden.scheduler as sched
 
-    monkeypatch.setattr("azure_finops.reporting.write_report", _boom)
+    monkeypatch.setattr("cloudwarden.reporting.write_report", _boom)
     sched._safe_run_governance_report()  # must not raise
 
 
 def test_schedule_governance_report_respects_flag(monkeypatch) -> None:
-    import azure_finops.scheduler as sched
+    import cloudwarden.scheduler as sched
 
     class _Fake:
         def __init__(self) -> None:

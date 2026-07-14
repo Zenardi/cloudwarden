@@ -1,13 +1,13 @@
 [project]
-name = "azure-finops"
+name = "cloudwarden"
 version = "0.1.0"
-description = "Azure governance-as-code (Cloud Custodian) and FinOps — policy management & scheduled execution, cost analysis, right-sizing/shutdown recommendations, and guarded remediation, with pluggable AI and Grafana dashboards."
+description = "CloudWarden — multi-cloud governance-as-code (Cloud Custodian) and FinOps across Azure/AWS/GCP: policy management & scheduled execution, cost analysis, right-sizing/shutdown recommendations, and guarded remediation, with pluggable AI and Grafana dashboards."
 requires-python = ">=3.13"
 readme = "README.md"
 
 [tool.setuptools.packages.find]
 where = ["backend"]
-include = ["azure_finops*"]
+include = ["cloudwarden*"]
 
 [tool.ruff]
 line-length = 100
@@ -26,7 +26,7 @@ pythonpath = ["backend"]
 addopts = "-q"
 
 [tool.coverage.run]
-source = ["azure_finops"]
+source = ["cloudwarden"]
 omit = ["backend/tests/*"]
 
 [tool.coverage.report]

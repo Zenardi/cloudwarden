@@ -19,9 +19,9 @@ import azure.mgmt.compute
 import azure.mgmt.resource
 import pytest
 
-from azure_finops.config import Settings
-from azure_finops.custodian import engine
-from azure_finops.remediation import executor
+from cloudwarden.config import Settings
+from cloudwarden.custodian import engine
+from cloudwarden.remediation import executor
 
 # --------------------------------------------------------------------------- #
 # Test doubles — spy SDK clients sharing one call log
@@ -270,7 +270,7 @@ def test_live_path_builds_default_clients(monkeypatch) -> None:
     monkeypatch.setattr(
         azure.mgmt.resource, "ResourceManagementClient", lambda cred, sub: _SpyResource(calls)
     )
-    monkeypatch.setattr("azure_finops.auth.write_credential", lambda: object())
+    monkeypatch.setattr("cloudwarden.auth.write_credential", lambda: object())
 
     res = executor.execute_action("stop", VM, settings=Settings(), clients=None, dry_run=False)
 

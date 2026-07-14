@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import datetime as dt
 
-from azure_finops.analysis.idle import detect_idle
-from azure_finops.analysis.rollup import build_rollup
-from azure_finops.analysis.rules import evaluate_vms, prioritize
-from azure_finops.analysis.savings import monthly_cost_map
-from azure_finops.config import Settings
-from azure_finops.metricnames import CPU, MEM_USED_PCT, NET_IN, NET_OUT
-from azure_finops.models import (
+from cloudwarden.analysis.idle import detect_idle
+from cloudwarden.analysis.rollup import build_rollup
+from cloudwarden.analysis.rules import evaluate_vms, prioritize
+from cloudwarden.analysis.savings import monthly_cost_map
+from cloudwarden.config import Settings
+from cloudwarden.metricnames import CPU, MEM_USED_PCT, NET_IN, NET_OUT
+from cloudwarden.models import (
     CostRow,
     MetricSample,
     Recommendation,

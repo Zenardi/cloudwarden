@@ -21,7 +21,7 @@ All notable changes to this project are documented here. Format loosely follows
   a `provider` template variable — all defaulting to **all clouds**. No new dependency, no schema
   migration (the provider columns were added with `server_default='azure'` in M12.1/M12.2).
 - **GCP onboarding & execution — the third cloud (M12.3).** New
-  `azure_finops.providers.gcp.GcpProvider` (registered as `providers.registry.get("gcp")`)
+  `cloudwarden.providers.gcp.GcpProvider` (registered as `providers.registry.get("gcp")`)
   onboards GCP projects, runs Cloud Custodian **gcp** policy dry-runs, and ingests GCP
   resources into AssetDB tagged **`provider='gcp'`**. Onboarding validates credentials via
   Resource Manager `get_project` through an **injectable** client seam
@@ -35,7 +35,7 @@ All notable changes to this project are documented here. Format loosely follows
   live paths lazily import it (`# pragma: no cover`). Every test uses injected clients / offline
   fixtures — **no live GCP call**.
 - **AWS onboarding & execution — the second cloud (M12.2).** New
-  `azure_finops.providers.aws.AwsProvider` (registered as `providers.registry.get("aws")`)
+  `cloudwarden.providers.aws.AwsProvider` (registered as `providers.registry.get("aws")`)
   onboards AWS accounts, runs Cloud Custodian **aws** policy dry-runs, and ingests AWS
   resources into AssetDB. Onboarding validates credentials via STS
   `get_caller_identity` through an **injectable** client seam (`POST /api/aws/accounts`;
@@ -49,7 +49,7 @@ All notable changes to this project are documented here. Format loosely follows
   and is now pinned explicitly), so the Trivy surface is unchanged. Every test uses injected
   clients / offline fixtures — **no live AWS call**.
 - **Cloud provider abstraction — the multi-cloud foundation (M12.1).** New
-  `azure_finops.providers` package introduces a `CloudProvider` interface
+  `cloudwarden.providers` package introduces a `CloudProvider` interface
   (`providers.base`) and a name-keyed registry (`providers.registry`) so the engine,
   orchestrator and onboarding talk to a provider seam instead of Azure directly.
   `providers.registry.get("azure")` resolves the Azure implementation
@@ -64,7 +64,7 @@ All notable changes to this project are documented here. Format loosely follows
   `GET /api/subscriptions` and settable via `POST /api/subscriptions`. This is a pure,
   behaviour-preserving refactor — the entire existing suite stays green.
 - **Audit log — append-only trail of mutating governance actions (M11.4).** New
-  `audit_log` table and an `azure_finops.authz.audit` helper. Creating, updating,
+  `audit_log` table and an `cloudwarden.authz.audit` helper. Creating, updating,
   deleting or enabling/disabling a policy writes one row capturing the actor (resolved
   RBAC/SSO principal), the action (`policy.create` / `policy.update` / `policy.delete` /
   `policy.enable` / `policy.disable`), the target (`target_type`/`target_id`), and the
@@ -75,7 +75,7 @@ All notable changes to this project are documented here. Format loosely follows
   paginated by `limit`/`offset`; a new **Audit** UI page renders the trail. The log is
   append-only by construction — there is no update or delete path in the repository or
   the API (mutating verbs on `/api/audit` return `405`).
-- **SSO / OIDC authentication (M11.3).** New `azure_finops.authz.oidc` module adds an
+- **SSO / OIDC authentication (M11.3).** New `cloudwarden.authz.oidc` module adds an
   identity layer that feeds the RBAC principal. The API accepts either an OIDC bearer
   token (`Authorization: Bearer <jwt>`, verified with PyJWT — RS256 signature +
   `exp`/`iss`/`aud` — against a static public key or the issuer's JWKS) or a first-party
@@ -90,7 +90,7 @@ All notable changes to this project are documented here. Format loosely follows
   and the OIDC client are injectable, so the whole flow is unit-tested offline (no IdP
   contacted). The Next.js UI gates behind `/login` when `NEXT_PUBLIC_AUTH_ENABLED=true`.
 - **Teams & membership — team-scoped multi-tenancy (M11.2).** New `teams` and
-  `team_members` tables and an `azure_finops.authz.teams` module scope governance
+  `team_members` tables and an `cloudwarden.authz.teams` module scope governance
   resources to an owning team. Policies gain a nullable `team_id`
   (`ON DELETE SET NULL`); when RBAC is enabled, creating a policy assigns the caller's
   team as owner (derived from membership, or an explicit `team` name the caller must
@@ -104,7 +104,7 @@ All notable changes to this project are documented here. Format loosely follows
   the API stays backward-compatible. The scoping core (`is_admin` / `visible_team_ids`
   / `ensure_policy_access` / `resolve_owning_team`) is unit-tested in isolation.
 - **RBAC — roles, permissions & role bindings with endpoint enforcement (M11.1).**
-  New `roles` / `permissions` / `role_bindings` tables and an `azure_finops.authz.rbac`
+  New `roles` / `permissions` / `role_bindings` tables and an `cloudwarden.authz.rbac`
   module. A `require_permission(action)` FastAPI dependency guards every mutating
   endpoint: it reads the caller from the `X-Principal` header, resolves the union of its
   bound roles' permission grants, and enforces the route's action — **401** with no
@@ -118,7 +118,7 @@ All notable changes to this project are documented here. Format loosely follows
   unit-tested in isolation.
 - **CIS Azure compliance pack + posture grouped by control id (M10.4).** A starter
   subset of the CIS Microsoft Azure Foundations Benchmark mapped to Cloud Custodian
-  policies — a **directory pack** at `backend/azure_finops/packs/cis-azure/` that
+  policies — a **directory pack** at `backend/cloudwarden/packs/cis-azure/` that
   installs into a **CIS Azure** collection. Five controls: 3.1 (storage secure
   transfer), 3.8 (storage default-deny network rule), 6.1 (restrict RDP from the
   internet), 6.2 (restrict SSH from the internet), and 7.3 (disk CMK encryption).
@@ -128,7 +128,7 @@ All notable changes to this project are documented here. Format loosely follows
   (extracted from each policy's stored spec via JSONB); policies without a control id
   are excluded.
 - **Security & tagging-hygiene pack (M10.3).** A curated **directory pack** at
-  `backend/azure_finops/packs/security/` (`pack.yaml` manifest + one `*.yml` per
+  `backend/cloudwarden/packs/security/` (`pack.yaml` manifest + one `*.yml` per
   policy) that installs into a **Security Baseline** collection. Four policies:
   `security-public-ip-exposure` (public IPs with an assigned address),
   `security-nsg-permissive-inbound` (NSGs allowing inbound from `0.0.0.0/0` to
@@ -139,7 +139,7 @@ All notable changes to this project are documented here. Format loosely follows
   Every policy is schema-valid via the engine, and the required-tags policy matches
   a resource missing a mandated tag (offline `engine.match_resources`).
 - **Cost governance pack — FinOps heuristics as Cloud Custodian policies (M10.2).**
-  A curated **directory pack** at `backend/azure_finops/packs/cost/` (`pack.yaml`
+  A curated **directory pack** at `backend/cloudwarden/packs/cost/` (`pack.yaml`
   manifest + one `*.yml` per policy) installs into a **Cost Governance** collection.
   Five policies: `cost-idle-vm-deallocated` (deallocated/stopped VMs),
   `cost-unattached-disk` (Unattached managed disks), `cost-idle-public-ip`
@@ -153,9 +153,9 @@ All notable changes to this project are documented here. Format loosely follows
   policies match the mock idle/orphan fixtures.
 - **Policy packs — installable, versioned bundles of curated policies (M10.1).**
   Curated Cloud Custodian policies now ship as **packs** (YAML under
-  `backend/azure_finops/packs/defs/`): `cost-hygiene` (unattached disks,
+  `backend/cloudwarden/packs/defs/`): `cost-hygiene` (unattached disks,
   unassociated public IPs) and `tag-compliance` (Environment / CostCenter tag
-  baselines). `azure_finops.packs.registry` discovers them (`list_packs` /
+  baselines). `cloudwarden.packs.registry` discovers them (`list_packs` /
   `get_pack`) and installs one (`install_pack`) by **validating every policy
   through the engine, then materializing** the (upsert-by-name, `source='pack'`)
   policies plus a collection named after the pack, tracking the installed version
@@ -646,7 +646,7 @@ All notable changes to this project are documented here. Format loosely follows
   isolated to its own row and never aborts its siblings. `run_all_policies(mock=None)`
   fans that out across every enabled subscription with the same per-subscription
   isolation as `run_all_subscriptions`, seeding the default subscription on first
-  use. Wired into a new `python -m azure_finops.cli run-policies [--mock]` command
+  use. Wired into a new `python -m cloudwarden.cli run-policies [--mock]` command
   and a second, independently-cadenced APScheduler job (`finops-policy-run`) on
   `POLICY_RUN_INTERVAL_SECONDS` (new `Settings` field + `.env.example`). No test
   touches live Azure or a real c7n `PolicyCollection` — the engine seam is injected

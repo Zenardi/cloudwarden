@@ -22,13 +22,13 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app
-from azure_finops.azure._fixtures import load_fixture
-from azure_finops.events.assetdb import apply_asset_event
-from azure_finops.events.models import NormalizedEvent
-from azure_finops.storage import repository as repo
-from azure_finops.storage import schema
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app
+from cloudwarden.azure._fixtures import load_fixture
+from cloudwarden.events.assetdb import apply_asset_event
+from cloudwarden.events.models import NormalizedEvent
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage import schema
+from cloudwarden.storage.db import session_scope
 
 _RID = (
     "/subscriptions/00000000-0000-0000-0000-000000000000/resourcegroups/rg-app/"
@@ -157,7 +157,7 @@ def test_delete_for_unseen_resource_still_records(db) -> None:
 
 def test_event_update_preserves_prior_config_and_tags(db) -> None:
     # A full ingestion (M4.1) sets rich config/tags; a later event must not wipe them.
-    from azure_finops.models import ResourceRecord
+    from cloudwarden.models import ResourceRecord
 
     with session_scope() as s:
         repo.upsert_assets(

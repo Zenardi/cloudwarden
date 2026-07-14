@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import pytest
 
-from azure_finops.config import get_settings
+from cloudwarden.config import get_settings
 
 
 def test_full_pipeline_and_reads(db) -> None:
-    from azure_finops.orchestrator import run_pipeline
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.orchestrator import run_pipeline
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     counts = run_pipeline(mock=True)["counts"]
     assert counts["resources"] == 7 and counts["cost_rows"] == 360
@@ -33,9 +33,9 @@ def test_full_pipeline_and_reads(db) -> None:
 
 
 def test_orchestrator_records_failure(db, monkeypatch) -> None:
-    import azure_finops.orchestrator as orch
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    import cloudwarden.orchestrator as orch
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     def boom(*a, **k):
         raise RuntimeError("collector down")
@@ -48,9 +48,9 @@ def test_orchestrator_records_failure(db, monkeypatch) -> None:
 
 
 def test_session_rollback(db) -> None:
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage import schema
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage import schema
+    from cloudwarden.storage.db import session_scope
 
     with pytest.raises(RuntimeError):
         with session_scope() as s:
@@ -70,8 +70,8 @@ def test_session_rollback(db) -> None:
 def test_api_endpoints(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app
-    from azure_finops.orchestrator import run_pipeline
+    from cloudwarden.api.main import app
+    from cloudwarden.orchestrator import run_pipeline
 
     run_pipeline(mock=True)
     c = TestClient(app)
@@ -121,7 +121,7 @@ def test_api_endpoints(db) -> None:
 def test_api_trigger_run_default_param(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     c = TestClient(app)
     body = c.post("/api/runs").json()
@@ -129,10 +129,10 @@ def test_api_trigger_run_default_param(db) -> None:
 
 
 def test_approval_flows(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_pipeline
-    from azure_finops.remediation import approval
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.orchestrator import run_pipeline
+    from cloudwarden.remediation import approval
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     run_pipeline(mock=True)
     with session_scope() as s:
@@ -166,10 +166,10 @@ def test_approval_flows(db, monkeypatch) -> None:
 
 
 def test_approval_live_branch(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_pipeline
-    from azure_finops.remediation import approval, executor
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.orchestrator import run_pipeline
+    from cloudwarden.remediation import approval, executor
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     run_pipeline(mock=True)
     with session_scope() as s:
@@ -180,7 +180,7 @@ def test_approval_live_branch(db, monkeypatch) -> None:
     monkeypatch.setenv("REMEDIATION_ENABLED", "true")
     monkeypatch.setenv("ALLOWED_RESOURCE_GROUPS", "rg-batch")
     get_settings.cache_clear()
-    monkeypatch.setattr("azure_finops.auth.write_credential", lambda: object())
+    monkeypatch.setattr("cloudwarden.auth.write_credential", lambda: object())
     monkeypatch.setattr(executor, "execute", lambda *a, **k: {"executed": True, "message": "done"})
     with session_scope() as s:
         repo.decide_recommendation(s, batch["id"], "approved", "t")
@@ -202,7 +202,7 @@ def test_approval_live_branch(db, monkeypatch) -> None:
 def test_cli_initdb_and_run(db) -> None:
     from typer.testing import CliRunner
 
-    from azure_finops.cli import app
+    from cloudwarden.cli import app
 
     runner = CliRunner()
     assert runner.invoke(app, ["initdb"]).exit_code == 0
@@ -213,7 +213,7 @@ def test_cli_initdb_and_run(db) -> None:
 def test_cli_api_and_scheduler_commands(monkeypatch) -> None:
     from typer.testing import CliRunner
 
-    import azure_finops.cli as cli
+    import cloudwarden.cli as cli
 
     called: dict[str, bool] = {}
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: called.setdefault("api", True))
@@ -222,14 +222,14 @@ def test_cli_api_and_scheduler_commands(monkeypatch) -> None:
     assert called.get("api")
 
     monkeypatch.setattr(
-        "azure_finops.scheduler.run_scheduler", lambda: called.setdefault("sched", True)
+        "cloudwarden.scheduler.run_scheduler", lambda: called.setdefault("sched", True)
     )
     assert runner.invoke(cli.app, ["scheduler"]).exit_code == 0
     assert called.get("sched")
 
 
 def test_scheduler_safe_run(monkeypatch) -> None:
-    import azure_finops.scheduler as sched
+    import cloudwarden.scheduler as sched
 
     ran: list[str] = []
     monkeypatch.setattr(sched, "run_all_subscriptions", lambda: ran.append("ok"))
@@ -244,7 +244,7 @@ def test_scheduler_safe_run(monkeypatch) -> None:
 
 
 def test_run_scheduler_loop(monkeypatch) -> None:
-    import azure_finops.scheduler as sched
+    import cloudwarden.scheduler as sched
 
     events: list[str] = []
     monkeypatch.setattr(sched, "run_all_subscriptions", lambda: events.append("run"))
@@ -267,7 +267,7 @@ def test_run_scheduler_loop(monkeypatch) -> None:
 def test_api_lifespan_handles_initdb_error(monkeypatch) -> None:
     from fastapi.testclient import TestClient
 
-    import azure_finops.api.main as apimain
+    import cloudwarden.api.main as apimain
 
     def boom():
         raise RuntimeError("db down")

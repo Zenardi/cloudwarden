@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from azure_finops.custodian.gitops import sync_policies
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.custodian.gitops import sync_policies
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 GOOD_VM = "policies:\n  - name: stopped-vms\n    resource: azure.vm\n"
 GOOD_DISK = "policies:\n  - name: unattached-disks\n    resource: azure.disk\n"
@@ -76,7 +76,7 @@ def gitops_env(monkeypatch):
     monkeypatch.setenv("GITOPS_REPO_URL", "https://example.test/policies.git")
     monkeypatch.setenv("GITOPS_BRANCH", "main")
     monkeypatch.setenv("GITOPS_POLICY_PATH", "policies")
-    from azure_finops.config import get_settings
+    from cloudwarden.config import get_settings
 
     get_settings.cache_clear()
     yield
@@ -215,7 +215,7 @@ def test_sync_clone_failure_returns_error(db, gitops_env, tmp_path) -> None:
 
 
 def test_sync_not_configured_returns_error(db) -> None:
-    from azure_finops.config import get_settings
+    from cloudwarden.config import get_settings
 
     get_settings.cache_clear()  # GITOPS_REPO_URL unset by the isolate-settings fixture
 
@@ -226,7 +226,7 @@ def test_sync_not_configured_returns_error(db) -> None:
 
 
 def test_default_git_client_is_live() -> None:
-    from azure_finops.custodian import gitops
+    from cloudwarden.custodian import gitops
 
     assert isinstance(gitops._default_git_client(), gitops.LiveGitClient)
 
@@ -237,8 +237,8 @@ def test_default_git_client_is_live() -> None:
 def test_api_sync_endpoint(db, gitops_env, tmp_path, monkeypatch) -> None:
     from fastapi.testclient import TestClient
 
-    import azure_finops.custodian.gitops as gitops_mod
-    from azure_finops.api.main import app, get_custodian_runner
+    import cloudwarden.custodian.gitops as gitops_mod
+    from cloudwarden.api.main import app, get_custodian_runner
 
     root = _write_repo(tmp_path, {"a.yml": GOOD_VM})
     monkeypatch.setattr(gitops_mod, "_default_git_client", lambda: FakeGitClient(root))

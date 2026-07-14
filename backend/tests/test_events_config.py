@@ -18,12 +18,12 @@ import datetime as dt
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app, get_custodian_runner
-from azure_finops.azure._fixtures import load_fixture
-from azure_finops.config import get_settings
-from azure_finops.events.models import NormalizedEvent
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app, get_custodian_runner
+from cloudwarden.azure._fixtures import load_fixture
+from cloudwarden.config import get_settings
+from cloudwarden.events.models import NormalizedEvent
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 _EVENT_SPEC = {
     "policies": [

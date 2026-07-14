@@ -11,11 +11,11 @@ each row carrying its (retargeted) ``subscription_id``. No live Azure — mock m
 
 from __future__ import annotations
 
-from azure_finops import models as m
-from azure_finops.azure.context import SubscriptionContext
-from azure_finops.azure.inventory import collect_inventory
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden import models as m
+from cloudwarden.azure.context import SubscriptionContext
+from cloudwarden.azure.inventory import collect_inventory
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 
 def _asset(
@@ -149,7 +149,7 @@ def test_asset_events_only_on_first_sight(db) -> None:
 # --------------------------------------------------------------------------- #
 def test_to_records_coerces_non_dict_config_and_tags() -> None:
     # Resource Graph can return a non-object properties/tags; coerce to {} defensively.
-    from azure_finops.azure.inventory import _to_records
+    from cloudwarden.azure.inventory import _to_records
 
     records = _to_records(
         [{"id": "/X", "properties": "not-a-dict", "tags": "nope"}], "sub-1", mock=True
@@ -183,7 +183,7 @@ def test_assets_tagged_with_subscription_id(db) -> None:
 # End-to-end ingestion via the pipeline
 # --------------------------------------------------------------------------- #
 def test_ingestion_captures_full_config(db) -> None:
-    from azure_finops.orchestrator import run_pipeline
+    from cloudwarden.orchestrator import run_pipeline
 
     run_pipeline(mock=True)
 

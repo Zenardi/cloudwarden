@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from azure_finops.azure.context import SubscriptionContext, resolve_subscription_id
+from cloudwarden.azure.context import SubscriptionContext, resolve_subscription_id
 
 SUB_A = "11111111-1111-1111-1111-111111111111"
 SUB_B = "22222222-2222-2222-2222-222222222222"
@@ -19,7 +19,7 @@ PLACEHOLDER = "00000000-0000-0000-0000-000000000000"
 # auth.credential_for
 # --------------------------------------------------------------------------- #
 def test_credential_for_falls_back_to_shared_sp(monkeypatch) -> None:
-    import azure_finops.auth as auth
+    import cloudwarden.auth as auth
 
     monkeypatch.setattr(auth, "read_credential", lambda: "SHARED")
     assert auth.credential_for(None, None, None) == "SHARED"
@@ -27,15 +27,15 @@ def test_credential_for_falls_back_to_shared_sp(monkeypatch) -> None:
 
 
 def test_credential_for_builds_dedicated_sp(monkeypatch) -> None:
-    import azure_finops.auth as auth
+    import cloudwarden.auth as auth
 
     monkeypatch.setattr(auth, "_make_credential", lambda t, c, s: ("MADE", t, c, s))
     assert auth.credential_for("tid", "cid", "sec") == ("MADE", "tid", "cid", "sec")
 
 
 def test_credential_for_defaults_tenant_to_env(monkeypatch) -> None:
-    import azure_finops.auth as auth
-    from azure_finops.config import get_settings
+    import cloudwarden.auth as auth
+    from cloudwarden.config import get_settings
 
     monkeypatch.setenv("AZURE_TENANT_ID", "env-tenant")
     get_settings.cache_clear()
@@ -55,7 +55,7 @@ def test_resolve_subscription_id() -> None:
 # Collector retargeting (mock mode)
 # --------------------------------------------------------------------------- #
 def test_inventory_retargets_to_subscription() -> None:
-    from azure_finops.azure.inventory import collect_inventory
+    from cloudwarden.azure.inventory import collect_inventory
 
     recs = collect_inventory(subscription=SubscriptionContext(SUB_A))
     assert recs and all(SUB_A in r.resource_id for r in recs)
@@ -63,7 +63,7 @@ def test_inventory_retargets_to_subscription() -> None:
 
 
 def test_cost_retargets_to_subscription() -> None:
-    from azure_finops.azure.cost import collect_cost
+    from cloudwarden.azure.cost import collect_cost
 
     rows = collect_cost(subscription=SubscriptionContext(SUB_A))
     assert rows and all(r.subscription_id == SUB_A for r in rows)
@@ -71,8 +71,8 @@ def test_cost_retargets_to_subscription() -> None:
 
 
 def test_metrics_retargets_to_subscription() -> None:
-    from azure_finops.azure.inventory import collect_inventory
-    from azure_finops.azure.metrics import collect_metrics
+    from cloudwarden.azure.inventory import collect_inventory
+    from cloudwarden.azure.metrics import collect_metrics
 
     ctx = SubscriptionContext(SUB_A)
     resources = collect_inventory(subscription=ctx)
@@ -81,14 +81,14 @@ def test_metrics_retargets_to_subscription() -> None:
 
 
 def test_advisor_retargets_to_subscription() -> None:
-    from azure_finops.azure.advisor import collect_advisor
+    from cloudwarden.azure.advisor import collect_advisor
 
     recs = collect_advisor(subscription=SubscriptionContext(SUB_A))
     assert any(r.get("resource_id") and SUB_A in r["resource_id"] for r in recs)
 
 
 def test_collectors_default_to_env_subscription() -> None:
-    from azure_finops.azure.inventory import collect_inventory
+    from cloudwarden.azure.inventory import collect_inventory
 
     recs = collect_inventory()  # no subscription → env placeholder, no rewrite
     assert recs and all(PLACEHOLDER in r.resource_id for r in recs)
@@ -98,9 +98,9 @@ def test_collectors_default_to_env_subscription() -> None:
 # Repository CRUD
 # --------------------------------------------------------------------------- #
 def test_ensure_default_subscription_seeds_once(db) -> None:
-    from azure_finops.config import get_settings
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.config import get_settings
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as s:
         repo.ensure_default_subscription(s, get_settings())
@@ -114,8 +114,8 @@ def test_ensure_default_subscription_seeds_once(db) -> None:
 
 
 def test_upsert_create_update_and_secret_semantics(db) -> None:
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as s:
         first = repo.upsert_subscription(
@@ -147,8 +147,8 @@ def test_upsert_create_update_and_secret_semantics(db) -> None:
 
 
 def test_set_default_and_enabled_filter(db) -> None:
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as s:
         repo.upsert_subscription(s, subscription_id=SUB_A, display_name="A")
@@ -163,8 +163,8 @@ def test_set_default_and_enabled_filter(db) -> None:
 
 
 def test_delete_reassigns_default(db) -> None:
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as s:
         repo.upsert_subscription(s, subscription_id=SUB_A, display_name="A")  # default
@@ -181,8 +181,8 @@ def test_delete_reassigns_default(db) -> None:
 # Orchestrator fan-out
 # --------------------------------------------------------------------------- #
 def test_context_from_record_live_credential(monkeypatch) -> None:
-    import azure_finops.auth as auth
-    import azure_finops.orchestrator as orch
+    import cloudwarden.auth as auth
+    import cloudwarden.orchestrator as orch
 
     monkeypatch.setattr(auth, "credential_for", lambda t, c, s: ("CRED", t, c, s))
     rec = SimpleNamespace(
@@ -199,15 +199,15 @@ def test_context_from_record_live_credential(monkeypatch) -> None:
 
 
 def test_run_one_subscription_unknown(db) -> None:
-    from azure_finops.orchestrator import run_one_subscription
+    from cloudwarden.orchestrator import run_one_subscription
 
     assert run_one_subscription("does-not-exist", mock=True) is None
 
 
 def test_run_all_subscriptions_fans_out(db) -> None:
-    from azure_finops.orchestrator import run_all_subscriptions
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.orchestrator import run_all_subscriptions
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     # Two explicit enabled subscriptions (the empty-table seed is covered elsewhere).
     with session_scope() as s:
@@ -227,7 +227,7 @@ def test_run_all_subscriptions_fans_out(db) -> None:
 
 
 def test_run_all_subscriptions_isolates_failure(db, monkeypatch) -> None:
-    import azure_finops.orchestrator as orch
+    import cloudwarden.orchestrator as orch
 
     def boom(*a, **k):
         raise RuntimeError("collector down")
@@ -244,7 +244,7 @@ def test_run_all_subscriptions_isolates_failure(db, monkeypatch) -> None:
 def test_subscription_api(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     with TestClient(app) as c:  # context manager runs lifespan → seeds default
         subs = c.get("/api/subscriptions").json()
@@ -278,7 +278,7 @@ def test_subscription_api(db) -> None:
 
 
 def test_run_pipeline_reports_subscription_id(db) -> None:
-    from azure_finops.orchestrator import run_pipeline
+    from cloudwarden.orchestrator import run_pipeline
 
     out = run_pipeline(mock=True, subscription=SubscriptionContext(SUB_A, display_name="A"))
     assert out["subscription_id"] == SUB_A and "run_id" in out
@@ -318,21 +318,21 @@ class _Cred:
 
 
 def _go_live(monkeypatch) -> None:
-    from azure_finops.config import get_settings
+    from cloudwarden.config import get_settings
 
     monkeypatch.setenv("FINOPS_MOCK", "0")
     get_settings.cache_clear()
 
 
 def test_check_connection_mock() -> None:
-    from azure_finops.azure.connectivity import check_connection
+    from cloudwarden.azure.connectivity import check_connection
 
     r = check_connection(SUB_A)
     assert r["ok"] is True and r["mock"] is True
 
 
 def test_check_connection_success(monkeypatch) -> None:
-    from azure_finops.azure.connectivity import check_connection
+    from cloudwarden.azure.connectivity import check_connection
 
     _go_live(monkeypatch)
     http = _Http(_Resp(200, {"displayName": "Prod", "state": "Enabled"}))
@@ -341,7 +341,7 @@ def test_check_connection_success(monkeypatch) -> None:
 
 
 def test_check_connection_default_http_client(monkeypatch) -> None:
-    import azure_finops.azure.connectivity as conn
+    import cloudwarden.azure.connectivity as conn
 
     _go_live(monkeypatch)
 
@@ -358,7 +358,7 @@ def test_check_connection_default_http_client(monkeypatch) -> None:
 
 
 def test_check_connection_access_denied(monkeypatch) -> None:
-    from azure_finops.azure.connectivity import check_connection
+    from cloudwarden.azure.connectivity import check_connection
 
     _go_live(monkeypatch)
     r = check_connection(SUB_A, credential=_Cred(), http=_Http(_Resp(403)))
@@ -366,7 +366,7 @@ def test_check_connection_access_denied(monkeypatch) -> None:
 
 
 def test_check_connection_not_found(monkeypatch) -> None:
-    from azure_finops.azure.connectivity import check_connection
+    from cloudwarden.azure.connectivity import check_connection
 
     _go_live(monkeypatch)
     r = check_connection(SUB_A, credential=_Cred(), http=_Http(_Resp(404)))
@@ -374,7 +374,7 @@ def test_check_connection_not_found(monkeypatch) -> None:
 
 
 def test_check_connection_other_status(monkeypatch) -> None:
-    from azure_finops.azure.connectivity import check_connection
+    from cloudwarden.azure.connectivity import check_connection
 
     _go_live(monkeypatch)
     r = check_connection(SUB_A, credential=_Cred(), http=_Http(_Resp(500)))
@@ -382,7 +382,7 @@ def test_check_connection_other_status(monkeypatch) -> None:
 
 
 def test_check_connection_token_failure(monkeypatch) -> None:
-    from azure_finops.azure.connectivity import check_connection
+    from cloudwarden.azure.connectivity import check_connection
 
     _go_live(monkeypatch)
     r = check_connection(SUB_A, credential=_Cred(raise_exc=RuntimeError("no token")))
@@ -390,7 +390,7 @@ def test_check_connection_token_failure(monkeypatch) -> None:
 
 
 def test_check_connection_request_failure(monkeypatch) -> None:
-    from azure_finops.azure.connectivity import check_connection
+    from cloudwarden.azure.connectivity import check_connection
 
     _go_live(monkeypatch)
     r = check_connection(SUB_A, credential=_Cred(), http=_Http(raise_exc=RuntimeError("boom")))
@@ -400,9 +400,9 @@ def test_check_connection_request_failure(monkeypatch) -> None:
 def test_test_subscription_endpoint_mock(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.api.main import app
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as s:
         repo.upsert_subscription(s, subscription_id=SUB_A, display_name="A")
@@ -415,10 +415,10 @@ def test_test_subscription_endpoint_mock(db) -> None:
 def test_test_subscription_endpoint_live_credential(db, monkeypatch) -> None:
     from fastapi.testclient import TestClient
 
-    import azure_finops.api.main as apimain
-    from azure_finops.config import get_settings
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    import cloudwarden.api.main as apimain
+    from cloudwarden.config import get_settings
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as s:
         repo.upsert_subscription(
@@ -432,8 +432,8 @@ def test_test_subscription_endpoint_live_credential(db, monkeypatch) -> None:
         captured["cred"] = credential
         return {"ok": True, "message": "stub"}
 
-    monkeypatch.setattr("azure_finops.auth.credential_for", lambda t, c, sec: "DEDICATED")
-    monkeypatch.setattr("azure_finops.azure.connectivity.check_connection", fake_check)
+    monkeypatch.setattr("cloudwarden.auth.credential_for", lambda t, c, sec: "DEDICATED")
+    monkeypatch.setattr("cloudwarden.azure.connectivity.check_connection", fake_check)
     monkeypatch.setenv("FINOPS_MOCK", "0")
     get_settings.cache_clear()
     c = TestClient(apimain.app)

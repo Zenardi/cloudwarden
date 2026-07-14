@@ -1,10 +1,10 @@
 """Slack & email transports (M8.2) — concrete delivery via injected clients.
 
-Written test-first (TDD). Two concrete :class:`~azure_finops.notify.service.Transport`
+Written test-first (TDD). Two concrete :class:`~cloudwarden.notify.service.Transport`
 implementations — Slack (webhook POST) and email (SMTP) — turn a *rendered* message
 into a delivery. The HTTP client and the SMTP client are **injected**, so no test
 ever touches the network. Both conform to the same ``send(*, target, subject, body,
-config)`` seam that :func:`azure_finops.notify.service.notify` dispatches through.
+config)`` seam that :func:`cloudwarden.notify.service.notify` dispatches through.
 
 Invariants (Arrange–Act–Assert), each test one reason to fail:
 
@@ -23,8 +23,8 @@ test uses the ``db`` fixture.
 
 from __future__ import annotations
 
-from azure_finops.notify import service
-from azure_finops.notify.transports import EmailTransport, SlackTransport
+from cloudwarden.notify import service
+from cloudwarden.notify.transports import EmailTransport, SlackTransport
 
 
 # --------------------------------------------------------------------------- #
@@ -238,8 +238,8 @@ def test_transports_satisfy_protocol() -> None:
 
 
 def test_notify_dispatches_via_slack_transport(db) -> None:
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as s:
         tid = repo.create_notification_template(

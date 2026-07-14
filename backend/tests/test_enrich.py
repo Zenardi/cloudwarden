@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import datetime as dt
 
-from azure_finops.models import CostRow, ResourceRecord
-from azure_finops.orchestrator import _enrich_cost
+from cloudwarden.models import CostRow, ResourceRecord
+from cloudwarden.orchestrator import _enrich_cost
 
 
 def test_enrich_fills_type_and_location() -> None:
@@ -46,7 +46,7 @@ def test_enrich_skips_when_no_resource_id_or_unknown() -> None:
 
 
 def test_config_helpers() -> None:
-    from azure_finops.config import Settings
+    from cloudwarden.config import Settings
 
     s = Settings(
         exclude_tag="nocolon",

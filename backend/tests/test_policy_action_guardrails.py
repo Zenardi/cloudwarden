@@ -18,10 +18,10 @@ Contract under test (Arrange–Act–Assert), each test one reason to fail:
 
 from __future__ import annotations
 
-from azure_finops.config import Settings, get_settings
-from azure_finops.remediation import approval, guardrails
-from azure_finops.storage import schema
-from azure_finops.storage.db import session_scope
+from cloudwarden.config import Settings, get_settings
+from cloudwarden.remediation import approval, guardrails
+from cloudwarden.storage import schema
+from cloudwarden.storage.db import session_scope
 
 RID = "/subscriptions/s/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-1"
 
@@ -160,7 +160,7 @@ def test_resource_group_of_none_when_absent() -> None:
 # enforcement — the guardrail actually blocks in the approval flow (DB-backed)
 # --------------------------------------------------------------------------- #
 def _seed_match(resource_id: str = RID, resource_type: str = "azure.vm") -> int:
-    from azure_finops.storage import repository as repo
+    from cloudwarden.storage import repository as repo
 
     with session_scope() as s:
         pid = repo.create_policy(

@@ -1,7 +1,7 @@
 """Enterprise transports (M8.3) — Teams, Jira & ServiceNow via injected clients.
 
 Written test-first (TDD). Three concrete
-:class:`~azure_finops.notify.service.Transport` implementations extend the delivery
+:class:`~cloudwarden.notify.service.Transport` implementations extend the delivery
 layer to ITSM / collaboration systems (Stacklet heritage):
 
 * **Teams** POSTs a MessageCard payload to an incoming webhook (like Slack);
@@ -21,8 +21,8 @@ Invariants (Arrange–Act–Assert), each test one reason to fail. Every test of
 
 from __future__ import annotations
 
-from azure_finops.notify import service
-from azure_finops.notify.transports import (
+from cloudwarden.notify import service
+from cloudwarden.notify.transports import (
     JiraTransport,
     ServiceNowTransport,
     TeamsTransport,
@@ -281,8 +281,8 @@ def test_transports_satisfy_protocol() -> None:
 
 
 def test_notify_dispatches_via_teams_transport(db) -> None:
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as s:
         tid = repo.create_notification_template(

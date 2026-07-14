@@ -13,10 +13,10 @@ posture can be grouped by CIS control id. Invariants:
 
 from __future__ import annotations
 
-from azure_finops.custodian import engine
-from azure_finops.packs import registry
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.custodian import engine
+from cloudwarden.packs import registry
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 CIS_PACK = "cis-azure"
 CIS_COLLECTION = "CIS Azure"
@@ -142,7 +142,7 @@ def test_posture_by_control_excludes_uncontrolled_policies(db) -> None:
 def test_api_posture_exposes_by_control(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     registry.install_pack(CIS_PACK, runner=FakeRunner())
     with session_scope() as s:

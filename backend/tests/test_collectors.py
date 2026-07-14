@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import datetime as dt
 
-from azure_finops.azure.cost import _parse_response, collect_cost
-from azure_finops.azure.inventory import collect_inventory
-from azure_finops.config import get_settings
+from cloudwarden.azure.cost import _parse_response, collect_cost
+from cloudwarden.azure.inventory import collect_inventory
+from cloudwarden.config import get_settings
 
 
 def test_inventory_mock_shape() -> None:

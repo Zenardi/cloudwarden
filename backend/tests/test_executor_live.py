@@ -5,8 +5,8 @@ from __future__ import annotations
 import azure.mgmt.compute
 import azure.mgmt.network
 
-from azure_finops.config import Settings
-from azure_finops.remediation import executor
+from cloudwarden.config import Settings
+from cloudwarden.remediation import executor
 
 RID = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm"
 DISK = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Compute/disks/d"
@@ -50,7 +50,7 @@ class _FakeNetwork:
 def _patch(monkeypatch) -> None:
     monkeypatch.setattr(azure.mgmt.compute, "ComputeManagementClient", _FakeCompute)
     monkeypatch.setattr(azure.mgmt.network, "NetworkManagementClient", _FakeNetwork)
-    monkeypatch.setattr("azure_finops.auth.write_credential", lambda: object())
+    monkeypatch.setattr("cloudwarden.auth.write_credential", lambda: object())
 
 
 def test_execute_deallocate(monkeypatch) -> None:

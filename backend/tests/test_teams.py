@@ -21,15 +21,15 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
-from azure_finops.authz import rbac, teams
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.authz import rbac, teams
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 VALID_SPEC = {"policies": [{"name": "team-p", "resource": "azure.vm"}]}
 
 
 def _enable_rbac(monkeypatch) -> None:
-    from azure_finops.config import get_settings
+    from cloudwarden.config import get_settings
 
     monkeypatch.setenv("RBAC_ENABLED", "1")
     get_settings.cache_clear()
@@ -322,7 +322,7 @@ def test_resolve_owning_team_admin_derives_none(db) -> None:
 # API end-to-end (require_permission + team scoping)
 # --------------------------------------------------------------------------- #
 def test_api_create_team_requires_admin(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("root", "admin")
@@ -337,7 +337,7 @@ def test_api_create_team_requires_admin(db, monkeypatch) -> None:
 
 
 def test_api_create_team_duplicate_409(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("root", "admin")
@@ -350,7 +350,7 @@ def test_api_create_team_duplicate_409(db, monkeypatch) -> None:
 
 
 def test_api_add_member_unknown_team_404(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("root", "admin")
@@ -365,7 +365,7 @@ def test_api_add_member_unknown_team_404(db, monkeypatch) -> None:
 
 
 def test_api_create_policy_assigns_team(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("alice", "editor")
@@ -384,7 +384,7 @@ def test_api_create_policy_assigns_team(db, monkeypatch) -> None:
 
 
 def test_api_member_sees_only_team_resources(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("alice", "editor")
@@ -406,7 +406,7 @@ def test_api_member_sees_only_team_resources(db, monkeypatch) -> None:
 
 
 def test_api_admin_sees_all_teams(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("root", "admin")
@@ -421,7 +421,7 @@ def test_api_admin_sees_all_teams(db, monkeypatch) -> None:
 
 
 def test_api_cross_team_access_denied(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("alice", "editor")
@@ -442,7 +442,7 @@ def test_api_cross_team_access_denied(db, monkeypatch) -> None:
 
 
 def test_api_cross_team_update_denied(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("alice", "editor")
@@ -460,7 +460,7 @@ def test_api_cross_team_update_denied(db, monkeypatch) -> None:
 
 
 def test_api_remove_member_revokes_access(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("root", "admin")
@@ -487,7 +487,7 @@ def test_api_remove_member_revokes_access(db, monkeypatch) -> None:
 
 
 def test_api_remove_member_unknown_404(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("root", "admin")
@@ -501,7 +501,7 @@ def test_api_remove_member_unknown_404(db, monkeypatch) -> None:
 
 
 def test_api_list_and_get_team(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("root", "admin")
@@ -522,7 +522,7 @@ def test_api_list_and_get_team(db, monkeypatch) -> None:
 
 
 def test_api_add_member_via_endpoint(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("root", "admin")
@@ -541,7 +541,7 @@ def test_api_add_member_via_endpoint(db, monkeypatch) -> None:
 
 def test_api_rbac_disabled_lists_all_policies(db) -> None:
     """Backward compatibility: with RBAC off, listing is unscoped (no team filter)."""
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     a = _new_team("a")
     _member_policy("a-p", a)

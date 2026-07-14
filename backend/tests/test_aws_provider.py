@@ -12,10 +12,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from azure_finops.azure.context import AccountContext
-from azure_finops.models import ResourceRecord
-from azure_finops.providers import base, registry
-from azure_finops.providers.aws import AwsProvider, InvalidCredentialsError
+from cloudwarden.azure.context import AccountContext
+from cloudwarden.models import ResourceRecord
+from cloudwarden.providers import base, registry
+from cloudwarden.providers.aws import AwsProvider, InvalidCredentialsError
 
 
 # --- Fake STS clients (never touch AWS) ------------------------------------ #
@@ -165,9 +165,9 @@ def test_aws_collect_assets_are_tagged_aws() -> None:
 
 
 def test_aws_assets_ingested_provider_aws(db) -> None:
-    from azure_finops.models import AssetFilter, AssetQuery
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.models import AssetFilter, AssetQuery
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     provider = registry.get("aws")
     records = provider.collect_assets(account_id="111122223333")
@@ -208,7 +208,7 @@ def test_aws_register_resources_is_idempotent() -> None:
 # --------------------------------------------------------------------------- #
 def test_get_aws_sts_client_seam_defaults_none() -> None:
     # The seam returns None so the provider falls back to a live boto3 client.
-    from azure_finops.api.main import get_aws_sts_client
+    from cloudwarden.api.main import get_aws_sts_client
 
     assert get_aws_sts_client() is None
 
@@ -216,7 +216,7 @@ def test_get_aws_sts_client_seam_defaults_none() -> None:
 def test_aws_onboard_endpoint_requires_account_id(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     with TestClient(app) as c:
         resp = c.post("/api/aws/accounts", json={"account_id": "  ", "display_name": "x"})
@@ -226,7 +226,7 @@ def test_aws_onboard_endpoint_requires_account_id(db) -> None:
 def test_aws_onboard_endpoint(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app, get_aws_sts_client
+    from cloudwarden.api.main import app, get_aws_sts_client
 
     app.dependency_overrides[get_aws_sts_client] = lambda: _FakeSts("111122223333")
     try:
@@ -249,7 +249,7 @@ def test_aws_onboard_endpoint(db) -> None:
 def test_aws_onboard_endpoint_invalid_credentials(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app, get_aws_sts_client
+    from cloudwarden.api.main import app, get_aws_sts_client
 
     app.dependency_overrides[get_aws_sts_client] = lambda: _BoomSts()
     try:
@@ -266,7 +266,7 @@ def test_aws_onboard_endpoint_invalid_credentials(db) -> None:
 def test_aws_ingest_endpoint(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     with TestClient(app) as c:
         resp = c.post("/api/aws/accounts/111122223333/ingest")
@@ -282,7 +282,7 @@ def test_aws_ingest_endpoint(db) -> None:
 def test_aws_policy_dryrun_endpoint(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     with TestClient(app) as c:
         resp = c.post(

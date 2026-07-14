@@ -19,10 +19,10 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app, get_custodian_runner
-from azure_finops.azure._fixtures import load_fixture
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app, get_custodian_runner
+from cloudwarden.azure._fixtures import load_fixture
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 _SPEC = {"policies": [{"name": "stopped-vms", "resource": "azure.vm"}]}
 SUB_A = "11111111-1111-1111-1111-111111111111"
@@ -122,7 +122,7 @@ def test_dryrun_unknown_subscription_returns_404(db, client) -> None:
 # Guard — a dry-run must never execute an action
 # --------------------------------------------------------------------------- #
 def test_dryrun_does_not_execute_any_action(db, client, monkeypatch) -> None:
-    from azure_finops.remediation import executor
+    from cloudwarden.remediation import executor
 
     calls: list = []
     monkeypatch.setattr(executor, "execute", lambda *a, **k: calls.append((a, k)))

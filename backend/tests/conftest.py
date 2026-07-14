@@ -34,8 +34,8 @@ def _pg_engine():
     except Exception:  # pragma: no cover - optional dependency
         pytest.skip("testcontainers not installed")
 
-    import azure_finops.storage.db as dbmod
-    from azure_finops.config import get_settings
+    import cloudwarden.storage.db as dbmod
+    from cloudwarden.config import get_settings
 
     try:
         container = PostgresContainer("postgres:16-alpine")
@@ -60,7 +60,7 @@ def _pg_engine():
 def db(_pg_engine):
     from sqlalchemy import text
 
-    from azure_finops.config import get_settings
+    from cloudwarden.config import get_settings
 
     get_settings.cache_clear()
     yield _pg_engine
@@ -74,7 +74,7 @@ def _isolate_settings(monkeypatch, tmp_path):
     """Clean, mock-mode settings before every test (isolate from host Azure env,
     any real project `.env`, and cross-test leakage). Tests that need live mode
     override these. chdir to a temp dir so `env_file=".env"` finds nothing."""
-    from azure_finops.config import get_settings
+    from cloudwarden.config import get_settings
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("FINOPS_MOCK", "1")

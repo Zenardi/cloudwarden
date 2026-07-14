@@ -29,8 +29,8 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
-from azure_finops.authz import oidc
-from azure_finops.config import Settings
+from cloudwarden.authz import oidc
+from cloudwarden.config import Settings
 
 ISSUER = "https://idp.example.com"
 CLIENT_ID = "finops-client"
@@ -283,7 +283,7 @@ def test_callback_token_without_principal_claim_401() -> None:
 # API end-to-end
 # --------------------------------------------------------------------------- #
 def _enable(monkeypatch, **over) -> None:
-    from azure_finops.config import get_settings
+    from cloudwarden.config import get_settings
 
     env = {
         "RBAC_ENABLED": "1",
@@ -306,7 +306,7 @@ VALID_SPEC = {"policies": [{"name": "oidc-p", "resource": "azure.vm"}]}
 
 def test_auth_disabled_allows_local(db) -> None:
     """DoD: with OIDC off (default), local/mock dev needs no token — write still works."""
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     resp = TestClient(app).post(
         "/api/policies",
@@ -318,10 +318,10 @@ def test_auth_disabled_allows_local(db) -> None:
 
 def test_api_valid_oidc_token_authenticates_rbac(db, monkeypatch) -> None:
     """A valid bearer's subject flows into RBAC: bound to admin → the write is allowed."""
-    from azure_finops.api.main import app
-    from azure_finops.authz import rbac
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.api.main import app
+    from cloudwarden.authz import rbac
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     _enable(monkeypatch)
     with session_scope() as s:
@@ -338,7 +338,7 @@ def test_api_valid_oidc_token_authenticates_rbac(db, monkeypatch) -> None:
 
 
 def test_api_expired_token_401(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable(monkeypatch)
 
@@ -352,7 +352,7 @@ def test_api_expired_token_401(db, monkeypatch) -> None:
 
 
 def test_api_invalid_token_on_read_401(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable(monkeypatch)
 
@@ -364,7 +364,7 @@ def test_api_invalid_token_on_read_401(db, monkeypatch) -> None:
 
 
 def test_api_login_returns_authorization_url(db, monkeypatch) -> None:
-    from azure_finops.api.main import app, get_oidc_client
+    from cloudwarden.api.main import app, get_oidc_client
 
     _enable(monkeypatch)
     app.dependency_overrides[get_oidc_client] = lambda: _FakeClient(_token())
@@ -378,7 +378,7 @@ def test_api_login_returns_authorization_url(db, monkeypatch) -> None:
 
 
 def test_api_callback_sets_session(db, monkeypatch) -> None:
-    from azure_finops.api.main import app, get_oidc_client, get_token_verifier
+    from cloudwarden.api.main import app, get_oidc_client, get_token_verifier
 
     _enable(monkeypatch)
     app.dependency_overrides[get_oidc_client] = lambda: _FakeClient(_token("hank@corp"))
@@ -398,7 +398,7 @@ def test_api_callback_sets_session(db, monkeypatch) -> None:
 
 
 def test_api_callback_bad_code_401(db, monkeypatch) -> None:
-    from azure_finops.api.main import app, get_oidc_client, get_token_verifier
+    from cloudwarden.api.main import app, get_oidc_client, get_token_verifier
 
     _enable(monkeypatch)
     app.dependency_overrides[get_oidc_client] = lambda: _FakeClient(_token())
@@ -414,7 +414,7 @@ def test_api_callback_bad_code_401(db, monkeypatch) -> None:
 
 def test_api_auth_endpoints_404_when_disabled(db) -> None:
     """DoD: auth is disabled via config for local mock dev — the routes are inert."""
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     client = TestClient(app)
     assert client.get("/api/auth/login", follow_redirects=False).status_code == 404
@@ -422,8 +422,8 @@ def test_api_auth_endpoints_404_when_disabled(db) -> None:
 
 
 def test_api_logout_clears_session(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
-    from azure_finops.config import get_settings
+    from cloudwarden.api.main import app
+    from cloudwarden.config import get_settings
 
     _enable(monkeypatch)
     # Build the session via the app's own settings to guarantee the same secret.

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from azure_finops.ai import factory
-from azure_finops.ai.base import AIProvider, StubProvider
-from azure_finops.ai.openai_compatible_provider import OpenAICompatibleProvider
-from azure_finops.config import get_settings
+from cloudwarden.ai import factory
+from cloudwarden.ai.base import AIProvider, StubProvider
+from cloudwarden.ai.openai_compatible_provider import OpenAICompatibleProvider
+from cloudwarden.config import get_settings
 
 
 def _payload() -> dict:
@@ -27,7 +27,7 @@ def test_factory_anthropic_with_key(monkeypatch) -> None:
     monkeypatch.setenv("AI_PROVIDER", "anthropic")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     get_settings.cache_clear()
-    from azure_finops.ai.anthropic_provider import AnthropicProvider
+    from cloudwarden.ai.anthropic_provider import AnthropicProvider
 
     assert isinstance(factory.get_provider(), AnthropicProvider)
     get_settings.cache_clear()
@@ -85,7 +85,7 @@ def test_generate_falls_back_on_error(monkeypatch) -> None:
 def test_anthropic_get_client(monkeypatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
     get_settings.cache_clear()
-    from azure_finops.ai.anthropic_provider import AnthropicProvider
+    from cloudwarden.ai.anthropic_provider import AnthropicProvider
 
     assert AnthropicProvider()._get_client() is not None
     fake = object()

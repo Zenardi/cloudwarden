@@ -25,12 +25,12 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app
-from azure_finops.config import get_settings
-from azure_finops.remediation import approval
-from azure_finops.storage import repository as repo
-from azure_finops.storage import schema
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app
+from cloudwarden.config import get_settings
+from cloudwarden.remediation import approval
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage import schema
+from cloudwarden.storage.db import session_scope
 
 RID = "/subscriptions/s/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-1"
 

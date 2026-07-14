@@ -17,15 +17,15 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from azure_finops.authz import audit
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.authz import audit
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 VALID_SPEC = {"policies": [{"name": "audit-p", "resource": "azure.vm"}]}
 
 
 def _client() -> TestClient:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     return TestClient(app)
 

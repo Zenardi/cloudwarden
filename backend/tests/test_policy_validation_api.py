@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app, get_custodian_runner
+from cloudwarden.api.main import app, get_custodian_runner
 
 
 # --------------------------------------------------------------------------- #

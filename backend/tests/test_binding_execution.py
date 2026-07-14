@@ -16,10 +16,10 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app, get_custodian_runner
-from azure_finops.custodian.bindings import run_binding
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app, get_custodian_runner
+from cloudwarden.custodian.bindings import run_binding
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 _SPEC = {"policies": [{"name": "stopped-vms", "resource": "azure.vm", "actions": ["stop"]}]}
 
@@ -164,7 +164,7 @@ def test_run_binding_records_policy_failure_in_isolation(db) -> None:
 
 
 def test_run_enabled_bindings_runs_only_enabled(db) -> None:
-    from azure_finops.custodian.bindings import run_enabled_bindings
+    from cloudwarden.custodian.bindings import run_enabled_bindings
 
     _seed_binding(name="on", n_policies=1, n_subs=1, enabled=True)
     _seed_binding(name="off", n_policies=1, n_subs=1, enabled=False)
@@ -193,7 +193,7 @@ def test_api_run_unknown_binding_404(db, client) -> None:
 # Scheduler — wire enabled bindings by cron
 # --------------------------------------------------------------------------- #
 def test_scheduler_wires_enabled_bindings_by_cron(db) -> None:
-    import azure_finops.scheduler as sched
+    import cloudwarden.scheduler as sched
 
     good = _seed_binding(name="good", schedule="0 2 * * *", enabled=True)
     _seed_binding(name="off", schedule="0 3 * * *", enabled=False)  # disabled → not scheduled
@@ -219,12 +219,12 @@ def _boom(*args, **kwargs):
 
 
 def test_safe_run_binding_runs_then_swallows_errors(db, monkeypatch) -> None:
-    import azure_finops.scheduler as sched
+    import cloudwarden.scheduler as sched
 
     bid = _seed_binding(name="safe", n_policies=1, n_subs=1)
     sched._safe_run_binding(bid)  # success path (default runner, mock mode) — must not raise
     with session_scope() as s:
         assert repo._rows(s, "SELECT count(*) AS n FROM policy_executions")[0]["n"] == 1
 
-    monkeypatch.setattr("azure_finops.custodian.bindings.run_binding", _boom)
+    monkeypatch.setattr("cloudwarden.custodian.bindings.run_binding", _boom)
     sched._safe_run_binding(bid)  # error path — must be swallowed, not raised

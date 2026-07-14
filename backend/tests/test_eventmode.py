@@ -22,12 +22,12 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app, get_custodian_runner
-from azure_finops.azure._fixtures import load_fixture
-from azure_finops.custodian.eventmode import handle_event
-from azure_finops.events.models import NormalizedEvent
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app, get_custodian_runner
+from cloudwarden.azure._fixtures import load_fixture
+from cloudwarden.custodian.eventmode import handle_event
+from cloudwarden.events.models import NormalizedEvent
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 # An event-mode c7n policy declares a ``mode`` block; a pull policy has none.
 _EVENT_SPEC = {
@@ -231,7 +231,7 @@ def test_run_reactive_records_failure(db) -> None:
 # Pure helpers (offline)
 # --------------------------------------------------------------------------- #
 def test_resource_type_matches_variants() -> None:
-    from azure_finops.custodian.eventmode import _resource_type_matches
+    from cloudwarden.custodian.eventmode import _resource_type_matches
 
     arm = "microsoft.compute/virtualmachines"
     assert _resource_type_matches("azure.vm", arm) is True  # c7n short name
@@ -243,7 +243,7 @@ def test_resource_type_matches_variants() -> None:
 
 
 def test_is_event_mode_variants() -> None:
-    from azure_finops.custodian.eventmode import _is_event_mode
+    from cloudwarden.custodian.eventmode import _is_event_mode
 
     assert _is_event_mode(_EVENT_SPEC) is True
     assert _is_event_mode(_PULL_SPEC) is False  # no mode block

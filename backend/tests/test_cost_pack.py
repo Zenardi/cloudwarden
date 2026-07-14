@@ -13,11 +13,11 @@ operations), and an injected fake runner + the `db` fixture for install. Invaria
 
 from __future__ import annotations
 
-from azure_finops.azure._fixtures import load_fixture
-from azure_finops.custodian import engine
-from azure_finops.packs import registry
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.azure._fixtures import load_fixture
+from cloudwarden.custodian import engine
+from cloudwarden.packs import registry
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 COST_PACK = "cost-governance"
 COST_COLLECTION = "Cost Governance"

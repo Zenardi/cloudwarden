@@ -1,6 +1,19 @@
-# Azure Governance-as-Code & FinOps
+# CloudWarden
 
-[![CI](https://github.com/Zenardi/azure-finops/actions/workflows/ci.yml/badge.svg)](https://github.com/Zenardi/azure-finops/actions/workflows/ci.yml)
+**Multi-cloud governance-as-code & FinOps.** Guard your policy posture and govern
+your cloud spend across Azure, AWS, and GCP from one control plane.
+
+[![CI](https://github.com/Zenardi/cloudwarden/actions/workflows/ci.yml/badge.svg)](https://github.com/Zenardi/cloudwarden/actions/workflows/ci.yml)
+
+**Overview Page**
+![overview](./docs/images/overview.png)
+
+**Grafana - Cost Overview Dashboard**
+![overview](./docs/images/grafana-cost-overview.png)
+
+**Grafana - Recommendation & Savings Dashboards**
+![overview](./docs/images/grafana-recommendation.png)
+
 
 **Cloud governance-as-code *and* FinOps for Azure, in one self-hostable stack.**
 Two pillars over a shared *collect → store → surface* backbone:
@@ -233,7 +246,7 @@ and closes the execution `succeeded` (with `resources_matched` + the policy's
 declared `actions_taken`) or `failed` (with the error) — one policy's failure never
 aborts its siblings. `run_all_policies()` fans that across every enabled
 subscription with the same per-subscription isolation as the cost pipeline. It runs
-via `python -m azure_finops.cli run-policies [--mock]` and as a second APScheduler
+via `python -m cloudwarden.cli run-policies [--mock]` and as a second APScheduler
 job (`finops-policy-run`) on `POLICY_RUN_INTERVAL_SECONDS`, separate from the
 cost-pipeline `RUN_INTERVAL_SECONDS`.
 
@@ -299,7 +312,7 @@ scheduler writes a timestamped CSV to `APP_DATA_DIR` every
 flag).
 
 **Policy packs (M10.1).** Curated Cloud Custodian policies ship as installable,
-versioned **packs** — YAML under `azure_finops/packs/` (à la Stacklet's out-of-the-box
+versioned **packs** — YAML under `cloudwarden/packs/` (à la Stacklet's out-of-the-box
 packs), either a single `<name>.yaml` file or a `<slug>/` directory with a `pack.yaml`
 manifest. `GET /api/packs` lists what's available (name, version, policy count);
 `POST /api/packs/{name}/install` **validates every policy through the engine, then
@@ -314,7 +327,7 @@ runs). Single-file packs today: `cost-hygiene` (unattached disks, unassociated p
 IPs) and `tag-compliance` (Environment / CostCenter tag baselines).
 
 **Cost governance pack (M10.2).** The FinOps heuristics the app already computes,
-now expressed as c7n policies — a **directory pack** at `azure_finops/packs/cost/`
+now expressed as c7n policies — a **directory pack** at `cloudwarden/packs/cost/`
 (`pack.yaml` manifest + one `*.yml` per policy) that installs into a **Cost Governance**
 collection. Five policies: deallocated/stopped VMs (`cost-idle-vm-deallocated`),
 unattached disks (`cost-unattached-disk`), unassociated public IPs
@@ -327,7 +340,7 @@ running one, and the unattached-disk policy matches an `Unattached` disk but not
 attached one.
 
 **Security & tagging pack (M10.3).** A security-hygiene **directory pack** at
-`azure_finops/packs/security/` that installs into a **Security Baseline** collection.
+`cloudwarden/packs/security/` that installs into a **Security Baseline** collection.
 Four policies: internet-exposed public IPs (`security-public-ip-exposure`), permissive
 inbound NSG rules — Allow from `0.0.0.0/0` to SSH/RDP via c7n-azure's `ingress` filter
 (`security-nsg-permissive-inbound`), resources missing a mandated `Environment`/`Owner`
@@ -339,7 +352,7 @@ policy matches a resource missing a mandated tag (offline `match_resources`).
 
 **CIS Azure compliance pack (M10.4).** A starter subset of the CIS Microsoft Azure
 Foundations Benchmark mapped to c7n policies — a **directory pack** at
-`azure_finops/packs/cis-azure/` that installs into a **CIS Azure** collection. Each
+`cloudwarden/packs/cis-azure/` that installs into a **CIS Azure** collection. Each
 policy carries its CIS control id in `metadata.control_id`, and compliance posture
 (`GET /api/governance/posture`) gains a **`by_control`** rollup that groups
 compliant/non-compliant counts by control id (extracted from each policy's stored
@@ -414,7 +427,7 @@ it. The log is tamper-evident by construction: there is deliberately no update o
 path, in the repository or the API (mutating verbs on `/api/audit` are `405`).
 
 **Cloud provider abstraction (M12.1).** The engine, orchestrator and onboarding talk to
-a **`CloudProvider`** seam (`azure_finops.providers.base`) instead of Azure directly — the
+a **`CloudProvider`** seam (`cloudwarden.providers.base`) instead of Azure directly — the
 foundation for extending governance to AWS/GCP through Cloud Custodian. A name-keyed
 **registry** resolves providers: `providers.registry.get("azure")` returns the Azure
 implementation (`providers.azure.AzureProvider`), which owns c7n resource registration,
@@ -833,7 +846,7 @@ Full list: `.env.example`.
 ## Project layout
 
 ```
-backend/azure_finops/
+backend/cloudwarden/
   config.py auth.py resilience.py models.py orchestrator.py scheduler.py cli.py
   azure/       inventory.py cost.py metrics.py logs.py advisor.py context.py
   analysis/    (rollup/rules/idle/pricing/savings — Phase 2)

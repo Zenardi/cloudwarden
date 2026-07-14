@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import pytest
 
-from azure_finops.azure.context import SubscriptionContext
-from azure_finops.custodian import engine
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.azure.context import SubscriptionContext
+from cloudwarden.custodian import engine
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 SUB_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 SUB_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -69,7 +69,7 @@ def _fake_run_policy(by_name: dict):
 # run_policies — one subscription, every enabled policy
 # --------------------------------------------------------------------------- #
 def test_run_policies_persists_execution_per_policy(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_policies
+    from cloudwarden.orchestrator import run_policies
 
     with session_scope() as s:
         _make_policy(s, "p-one")
@@ -90,7 +90,7 @@ def test_run_policies_persists_execution_per_policy(db, monkeypatch) -> None:
 
 
 def test_run_policies_records_resources_matched_count(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_policies
+    from cloudwarden.orchestrator import run_policies
 
     with session_scope() as s:
         _make_policy(s, "p-count")
@@ -108,7 +108,7 @@ def test_run_policies_records_resources_matched_count(db, monkeypatch) -> None:
 
 
 def test_run_policies_stores_matches_for_each_matched_resource(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_policies
+    from cloudwarden.orchestrator import run_policies
 
     with session_scope() as s:
         _make_policy(s, "p-match")
@@ -128,7 +128,7 @@ def test_run_policies_stores_matches_for_each_matched_resource(db, monkeypatch) 
 
 
 def test_run_policies_one_policy_failure_marks_failed_status_with_error(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_policies
+    from cloudwarden.orchestrator import run_policies
 
     with session_scope() as s:
         _make_policy(s, "p-good")
@@ -149,7 +149,7 @@ def test_run_policies_one_policy_failure_marks_failed_status_with_error(db, monk
 
 
 def test_run_policies_one_policy_failure_does_not_abort_other_policies(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_policies
+    from cloudwarden.orchestrator import run_policies
 
     with session_scope() as s:
         pid_good = _make_policy(s, "p-good")
@@ -172,7 +172,7 @@ def test_run_policies_one_policy_failure_does_not_abort_other_policies(db, monke
 
 
 def test_run_policies_records_declared_actions_on_execution(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_policies
+    from cloudwarden.orchestrator import run_policies
 
     with session_scope() as s:
         repo.create_policy(
@@ -191,7 +191,7 @@ def test_run_policies_records_declared_actions_on_execution(db, monkeypatch) -> 
 
 
 def test_declared_actions_extracts_string_and_typed_action_identifiers() -> None:
-    from azure_finops.orchestrator import _declared_actions
+    from cloudwarden.orchestrator import _declared_actions
 
     spec = {"policies": [{"actions": ["stop", {"type": "tag"}, {"no": "type"}]}]}
     # bare-string and ``{"type": ...}`` forms are kept; a typeless mapping is dropped.
@@ -199,7 +199,7 @@ def test_declared_actions_extracts_string_and_typed_action_identifiers() -> None
 
 
 def test_declared_actions_returns_empty_without_policies_or_actions() -> None:
-    from azure_finops.orchestrator import _declared_actions
+    from cloudwarden.orchestrator import _declared_actions
 
     assert _declared_actions({}) == []
     assert _declared_actions({"policies": []}) == []
@@ -210,7 +210,7 @@ def test_declared_actions_returns_empty_without_policies_or_actions() -> None:
 # run_all_policies — fan out across every enabled subscription
 # --------------------------------------------------------------------------- #
 def test_run_all_policies_fans_out_across_enabled_subscriptions(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_all_policies
+    from cloudwarden.orchestrator import run_all_policies
 
     with session_scope() as s:
         repo.upsert_subscription(s, subscription_id=SUB_A, display_name="A")
@@ -227,7 +227,7 @@ def test_run_all_policies_fans_out_across_enabled_subscriptions(db, monkeypatch)
 
 
 def test_run_all_policies_one_subscription_failure_does_not_abort_others(db, monkeypatch) -> None:
-    import azure_finops.orchestrator as orch
+    import cloudwarden.orchestrator as orch
 
     with session_scope() as s:
         repo.upsert_subscription(s, subscription_id=SUB_A, display_name="A")
@@ -246,7 +246,7 @@ def test_run_all_policies_one_subscription_failure_does_not_abort_others(db, mon
 
 
 def test_run_all_policies_skips_disabled_subscriptions(db, monkeypatch) -> None:
-    from azure_finops.orchestrator import run_all_policies
+    from cloudwarden.orchestrator import run_all_policies
 
     with session_scope() as s:
         repo.upsert_subscription(s, subscription_id=SUB_A, display_name="A")
@@ -268,8 +268,8 @@ def test_run_all_policies_skips_disabled_subscriptions(db, monkeypatch) -> None:
 def test_cli_run_policies_command_invokes_run_all_policies(monkeypatch) -> None:
     from typer.testing import CliRunner
 
-    import azure_finops.cli as cli
-    import azure_finops.orchestrator as orch
+    import cloudwarden.cli as cli
+    import cloudwarden.orchestrator as orch
 
     called: dict = {}
 
@@ -286,8 +286,8 @@ def test_cli_run_policies_command_invokes_run_all_policies(monkeypatch) -> None:
 
 
 def test_scheduler_registers_independent_policy_job_interval(monkeypatch) -> None:
-    import azure_finops.scheduler as sched
-    from azure_finops.config import get_settings
+    import cloudwarden.scheduler as sched
+    from cloudwarden.config import get_settings
 
     monkeypatch.setenv("RUN_INTERVAL_SECONDS", "60")
     monkeypatch.setenv("POLICY_RUN_INTERVAL_SECONDS", "120")
@@ -317,7 +317,7 @@ def test_scheduler_registers_independent_policy_job_interval(monkeypatch) -> Non
 
 
 def test_scheduler_safe_run_policies_swallows_errors(monkeypatch) -> None:
-    import azure_finops.scheduler as sched
+    import cloudwarden.scheduler as sched
 
     ran: list[str] = []
     monkeypatch.setattr(sched, "run_all_policies", lambda: ran.append("ok"))

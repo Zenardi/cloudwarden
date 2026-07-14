@@ -17,10 +17,10 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app
-from azure_finops.storage import repository as repo
-from azure_finops.storage import schema
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage import schema
+from cloudwarden.storage.db import session_scope
 
 _BASE = datetime(2026, 1, 1, tzinfo=UTC)
 

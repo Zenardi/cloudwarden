@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 
-from azure_finops.azure import advisor, cost, inventory, logs, metrics
-from azure_finops.azure.advisor import _to_float
-from azure_finops.config import get_settings
-from azure_finops.models import ResourceRecord
+from cloudwarden.azure import advisor, cost, inventory, logs, metrics
+from cloudwarden.azure.advisor import _to_float
+from cloudwarden.config import get_settings
+from cloudwarden.models import ResourceRecord
 
 _VM_RID = "/subscriptions/s/resourcegroups/rg/providers/microsoft.compute/virtualmachines/vm"
 
@@ -189,7 +189,7 @@ class _FakeHttpClient:
 def test_cost_live(monkeypatch) -> None:
     monkeypatch.setenv("FINOPS_MOCK", "0")
     get_settings.cache_clear()
-    monkeypatch.setattr("azure_finops.auth.arm_token", lambda credential=None: "tok")
+    monkeypatch.setattr("cloudwarden.auth.arm_token", lambda credential=None: "tok")
     monkeypatch.setattr(cost.httpx, "Client", _FakeHttpClient)
     rows = cost.collect_cost()
     assert rows and rows[0].cost == 5.0

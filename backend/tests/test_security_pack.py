@@ -12,10 +12,10 @@ install. Invariants:
 
 from __future__ import annotations
 
-from azure_finops.custodian import engine
-from azure_finops.packs import registry
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.custodian import engine
+from cloudwarden.packs import registry
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 SECURITY_PACK = "security-baseline"
 SECURITY_COLLECTION = "Security Baseline"

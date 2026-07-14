@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from azure_finops import resilience as R
+from cloudwarden import resilience as R
 
 
 class _Resp:

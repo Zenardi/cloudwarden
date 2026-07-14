@@ -11,14 +11,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from azure_finops.azure.context import (
+from cloudwarden.azure.context import (
     AccountContext,
     SubscriptionContext,
     resolve_account_id,
     resolve_subscription_id,
 )
-from azure_finops.providers import base, registry
-from azure_finops.providers.azure import AzureProvider
+from cloudwarden.providers import base, registry
+from cloudwarden.providers.azure import AzureProvider
 
 # --------------------------------------------------------------------------- #
 # Registry
@@ -131,7 +131,7 @@ def test_resolve_helpers_return_default_or_id() -> None:
 
 
 def test_context_from_record_uses_provider() -> None:
-    import azure_finops.orchestrator as orch
+    import cloudwarden.orchestrator as orch
 
     rec = SimpleNamespace(
         subscription_id="s9",
@@ -148,7 +148,7 @@ def test_context_from_record_uses_provider() -> None:
 
 
 def test_existing_run_still_works(db) -> None:
-    from azure_finops.orchestrator import run_pipeline
+    from cloudwarden.orchestrator import run_pipeline
 
     provider = registry.get("azure")
     ctx = provider.account_context(account_id="sub-run", display_name="Run")
@@ -164,8 +164,8 @@ def test_existing_run_still_works(db) -> None:
 
 
 def test_account_defaults_provider_azure(db) -> None:
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as session:
         public = repo.upsert_subscription(
@@ -180,8 +180,8 @@ def test_account_defaults_provider_azure(db) -> None:
 
 
 def test_upsert_subscription_accepts_explicit_provider(db) -> None:
-    from azure_finops.storage import repository as repo
-    from azure_finops.storage.db import session_scope
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
 
     with session_scope() as session:
         public = repo.upsert_subscription(

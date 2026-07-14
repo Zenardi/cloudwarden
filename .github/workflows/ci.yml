@@ -35,7 +35,7 @@ jobs:
       # spins up a real Postgres — this run covers unit AND DB-backed integration
       # tests. Coverage gate (fail_under=95) is enforced via pyproject.
       - name: Tests + coverage (unit + integration; fails under 95%)
-        run: pytest backend/tests --cov=azure_finops --cov-report=term-missing
+        run: pytest backend/tests --cov=cloudwarden --cov-report=term-missing
 
   # --- Build the Next.js app (tsc typecheck via next build) ---------------- #
   frontend:
@@ -59,9 +59,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Build backend image
-        run: docker build -t azure-finops-backend ./backend
+        run: docker build -t cloudwarden-backend ./backend
       - name: Build frontend image
-        run: docker build -t azure-finops-frontend ./frontend
+        run: docker build -t cloudwarden-frontend ./frontend
 
   # --- End-to-end: boot the stack in mock mode and smoke-test the API ------ #
   e2e:
@@ -93,7 +93,7 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"name":"e2e-vms","resource_type":"azure.vm","spec":{"policies":[{"name":"e2e-vms","resource":"azure.vm","actions":["stop"]}]}}' \
             -o /dev/null
-          docker compose exec -T backend python -m azure_finops.cli run-policies --mock
+          docker compose exec -T backend python -m cloudwarden.cli run-policies --mock
           python3 - <<'PY'
           import json, urllib.request, urllib.error
           def get(path):
@@ -168,9 +168,9 @@ jobs:
           # Resolve a policy's actions and dry-run one through the deployed backend
           # image. Dry-run makes ZERO Azure calls, so this is fully mock-safe.
           docker compose exec -T backend python - <<'PY'
-          from azure_finops.config import Settings
-          from azure_finops.custodian import engine
-          from azure_finops.remediation import executor
+          from cloudwarden.config import Settings
+          from cloudwarden.custodian import engine
+          from cloudwarden.remediation import executor
           spec = {"policies": [{"name": "p", "resource": "azure.vm",
                   "actions": ["stop", {"type": "tag", "tag": "cost-center", "value": "eng"}]}]}
           actions = engine.resolve_actions(spec)
@@ -234,8 +234,8 @@ jobs:
           # action-type allow-list, and the dry-run default. Pure functions — zero
           # Azure calls, fully mock-safe.
           docker compose exec -T backend python - <<'PY'
-          from azure_finops.config import Settings
-          from azure_finops.remediation import guardrails
+          from cloudwarden.config import Settings
+          from cloudwarden.remediation import guardrails
           rid = ("/subscriptions/s/resourceGroups/rg-app/providers/"
                  "Microsoft.Compute/virtualMachines/vm-1")
           cfg = Settings(remediation_enabled=True, allowed_resource_groups="rg-app")
@@ -281,9 +281,9 @@ jobs:
           # rendered payload through a stub transport (no network). Also assert the sandbox
           # blocks a real escape attempt and a missing variable renders empty. Fully mock-safe.
           docker compose exec -T backend python - <<'PY'
-          from azure_finops.notify import service
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.notify import service
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           class _StubTransport:
               def __init__(self): self.sent = []
@@ -337,7 +337,7 @@ jobs:
           # payload to the webhook, email builds a MIME message with the right to/subject/body,
           # a failing client is captured as {ok: false, error}, and missing config errors.
           docker compose exec -T backend python - <<'PY'
-          from azure_finops.notify.transports import SlackTransport, EmailTransport
+          from cloudwarden.notify.transports import SlackTransport, EmailTransport
 
           class _FakeResp:
               status_code = 200
@@ -389,7 +389,7 @@ jobs:
           # artifact request (Teams MessageCard, Jira issue, ServiceNow incident), returns
           # the created id, and captures an auth error (non-2xx) as {ok: false, error}.
           docker compose exec -T backend python - <<'PY'
-          from azure_finops.notify.transports import TeamsTransport, JiraTransport, ServiceNowTransport
+          from cloudwarden.notify.transports import TeamsTransport, JiraTransport, ServiceNowTransport
 
           class _Resp:
               def __init__(self, status_code=200, payload=None):
@@ -444,9 +444,9 @@ jobs:
           # WITHOUT one dispatches nothing. Also exercise the channel/template CRUD + the
           # transport-validation (bad kind → rejected). Fully mock-safe; cleans up after.
           docker compose exec -T backend python - <<'PY'
-          from azure_finops.notify import dispatch
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.notify import dispatch
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           class _Spy:
               def __init__(self): self.sent = []
@@ -456,7 +456,7 @@ jobs:
 
           # registry maps a channel kind → the right transport class (and validates input).
           assert "slack" in dispatch.KNOWN_TRANSPORTS and "servicenow" in dispatch.KNOWN_TRANSPORTS
-          from azure_finops.notify.transports import SlackTransport
+          from cloudwarden.notify.transports import SlackTransport
           assert isinstance(dispatch.build_transport("slack"), SlackTransport)
 
           with session_scope() as s:
@@ -512,8 +512,8 @@ jobs:
           # collection, across two subscriptions) and assert the rollup by policy,
           # subscription and collection. Fully mock-safe.
           docker compose exec -T backend python - <<'PY'
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           def seed(s, *, eid, pid, sub, matched):
               repo.create_policy_execution(s, execution_id=eid, policy_id=pid, subscription_id=sub)
@@ -566,9 +566,9 @@ jobs:
           docker compose exec -T backend python - <<'PY'
           import json, urllib.request
           from datetime import UTC, datetime, timedelta
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage import schema
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage import schema
+          from cloudwarden.storage.db import session_scope
 
           base = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -615,9 +615,9 @@ jobs:
           # policy is a 404 (not a 500). Fully mock-safe.
           docker compose exec -T backend python - <<'PY'
           import json, urllib.error, urllib.request
-          from azure_finops import models as m
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden import models as m
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           with session_scope() as s:
               pid = repo.create_policy(
@@ -653,8 +653,8 @@ jobs:
           # a 400, and the paginated cursor returns every row (batch_size < row count).
           docker compose exec -T backend python - <<'PY'
           import csv, io, json, urllib.error, urllib.request
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           with session_scope() as s:
               pid = repo.create_policy(
@@ -752,9 +752,9 @@ jobs:
           # fixtures via the offline filter engine. Idempotent → safe on the shared CI DB.
           docker compose exec -T backend python - <<'PY'
           import json, urllib.request
-          from azure_finops.custodian import engine
-          from azure_finops.packs import registry
-          from azure_finops.azure._fixtures import load_fixture
+          from cloudwarden.custodian import engine
+          from cloudwarden.packs import registry
+          from cloudwarden.azure._fixtures import load_fixture
 
           def call(path, method="GET", body=None):
               data = json.dumps(body).encode() if body is not None else None
@@ -803,8 +803,8 @@ jobs:
           # resource missing a mandated tag via the offline filter engine.
           docker compose exec -T backend python - <<'PY'
           import json, urllib.request
-          from azure_finops.custodian import engine
-          from azure_finops.packs import registry
+          from cloudwarden.custodian import engine
+          from cloudwarden.packs import registry
 
           def call(path, method="GET", body=None):
               data = json.dumps(body).encode() if body is not None else None
@@ -850,10 +850,10 @@ jobs:
           # control-tagged policies so it is order-independent on the shared CI DB.
           docker compose exec -T backend python - <<'PY'
           import json, urllib.request
-          from azure_finops.custodian import engine
-          from azure_finops.packs import registry
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.custodian import engine
+          from cloudwarden.packs import registry
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           def call(path, method="GET", body=None):
               data = json.dumps(body).encode() if body is not None else None
@@ -915,10 +915,10 @@ jobs:
           PY
           docker compose exec -T -e RBAC_ENABLED=1 backend python - <<'PY'
           from fastapi.testclient import TestClient
-          from azure_finops.api.main import app
-          from azure_finops.authz import rbac
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.api.main import app
+          from cloudwarden.authz import rbac
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           with session_scope() as s:
               rbac.seed_default_roles(s, bootstrap_admin="ci-admin")
@@ -948,10 +948,10 @@ jobs:
           # another team is 403; and removing a member revokes their access.
           docker compose exec -T -e RBAC_ENABLED=1 backend python - <<'PY'
           from fastapi.testclient import TestClient
-          from azure_finops.api.main import app
-          from azure_finops.authz import rbac
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.api.main import app
+          from cloudwarden.authz import rbac
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           with session_scope() as s:
               rbac.seed_default_roles(s, bootstrap_admin="ci-team-admin")
@@ -1023,13 +1023,13 @@ jobs:
               SESSION_SECRET="ci-session-secret-0123456789abcdef")
 
           import jwt
-          from azure_finops.config import get_settings
+          from cloudwarden.config import get_settings
           get_settings.cache_clear()
           from fastapi.testclient import TestClient
-          from azure_finops.api.main import app, get_oidc_client, get_token_verifier
-          from azure_finops.authz import oidc, rbac
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.api.main import app, get_oidc_client, get_token_verifier
+          from cloudwarden.authz import oidc, rbac
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           def tok(sub="ci-admin@corp", exp_delta=3600):
               now = int(time.time())
@@ -1124,7 +1124,7 @@ jobs:
           docker compose exec -T backend python - <<'PY'
           import json, urllib.error, urllib.request
 
-          from azure_finops.providers import base, registry
+          from cloudwarden.providers import base, registry
 
           # Registry resolves azure and fails loudly on an unknown cloud.
           azure = registry.get("azure")
@@ -1136,7 +1136,7 @@ jobs:
               pass
 
           # A run still works when its context is built via the Azure provider.
-          from azure_finops.orchestrator import run_pipeline
+          from cloudwarden.orchestrator import run_pipeline
           out = run_pipeline(mock=True, subscription=azure.account_context(account_id="m121-ci"))
           assert out["subscription_id"] == "m121-ci" and out["counts"]["resources"] > 0, out
 
@@ -1170,7 +1170,7 @@ jobs:
 
           from fastapi.testclient import TestClient
 
-          from azure_finops.api.main import app, get_aws_sts_client
+          from cloudwarden.api.main import app, get_aws_sts_client
 
           class _Sts:
               def __init__(self, account): self.account = account
@@ -1216,7 +1216,7 @@ jobs:
           docker compose exec -T backend python - <<'PY'
           from fastapi.testclient import TestClient
 
-          from azure_finops.api.main import app, get_gcp_client
+          from cloudwarden.api.main import app, get_gcp_client
 
           class _Rm:
               def __init__(self, project): self.project = project
@@ -1258,9 +1258,9 @@ jobs:
           docker compose exec -T backend python - <<'PY'
           from fastapi.testclient import TestClient
 
-          from azure_finops.api.main import app
-          from azure_finops.storage import repository as repo
-          from azure_finops.storage.db import session_scope
+          from cloudwarden.api.main import app
+          from cloudwarden.storage import repository as repo
+          from cloudwarden.storage.db import session_scope
 
           SUBS = {"azure": "ci-m124-az", "aws": "ci-m124-aws", "gcp": "ci-m124-gcp"}
           MATCHED = {"azure": 0, "aws": 2, "gcp": 5}
@@ -1340,8 +1340,8 @@ jobs:
           trivy --version
       - name: Build images to scan
         run: |
-          docker build -t azure-finops-backend ./backend
-          docker build -t azure-finops-frontend ./frontend
+          docker build -t cloudwarden-backend ./backend
+          docker build -t cloudwarden-frontend ./frontend
       # Warm the vuln DB once; subsequent scans reuse the cache.
       - name: Trivy filesystem scan (dependencies)
         run: |
@@ -1350,8 +1350,8 @@ jobs:
       - name: Trivy image scan (backend)
         run: |
           trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
-            --exit-code 1 --no-progress azure-finops-backend
+            --exit-code 1 --no-progress cloudwarden-backend
       - name: Trivy image scan (frontend)
         run: |
           trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
-            --exit-code 1 --no-progress azure-finops-frontend
+            --exit-code 1 --no-progress cloudwarden-frontend

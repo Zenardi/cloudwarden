@@ -3,7 +3,7 @@ import Link from "next/link";
 export default function Nav() {
   return (
     <nav className="nav">
-      <span className="brand">⚡ Azure FinOps</span>
+      <span className="brand">🛡️ CloudWarden</span>
       <Link href="/">Overview</Link>
       <Link href="/costs">Costs</Link>
       <Link href="/recommendations">Recommendations</Link>

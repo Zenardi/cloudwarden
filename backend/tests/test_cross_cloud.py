@@ -19,10 +19,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app
-from azure_finops.models import AssetFilter, AssetQuery, ResourceRecord
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app
+from cloudwarden.models import AssetFilter, AssetQuery, ResourceRecord
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 # --------------------------------------------------------------------------- #
 # Seed helpers

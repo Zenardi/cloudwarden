@@ -17,9 +17,9 @@ import types
 
 import pytest
 
-from azure_finops.azure._fixtures import PLACEHOLDER_SUBSCRIPTION, load_fixture
-from azure_finops.azure.context import SubscriptionContext
-from azure_finops.custodian import engine
+from cloudwarden.azure._fixtures import PLACEHOLDER_SUBSCRIPTION, load_fixture
+from cloudwarden.azure.context import SubscriptionContext
+from cloudwarden.custodian import engine
 
 
 # --------------------------------------------------------------------------- #
@@ -155,7 +155,7 @@ def test_run_policy_passes_subscription_context(fake_runner: FakeCustodianRunner
 
 
 def test_run_policy_defaults_subscription_to_settings(fake_runner: FakeCustodianRunner) -> None:
-    from azure_finops.config import get_settings
+    from cloudwarden.config import get_settings
 
     engine.run_policy(_vm_policy(), runner=fake_runner)
 
@@ -239,7 +239,7 @@ def test_live_runner_validate_surfaces_c7n_error_not_raise(
     # (valid=False) and records unhealthy status instead of propagating.
     import c7n.schema as c7n_schema
 
-    from azure_finops.resilience import REGISTRY
+    from cloudwarden.resilience import REGISTRY
 
     def _boom(*args, **kwargs):
         raise RuntimeError("schema explosion")
@@ -285,7 +285,7 @@ def test_live_runner_run_mock_mode_returns_fixture_without_session(
 
 
 def test_live_runner_reports_health_to_registry(live_runner: engine.LiveCustodianRunner) -> None:
-    from azure_finops.resilience import REGISTRY
+    from cloudwarden.resilience import REGISTRY
 
     live_runner.validate(_vm_policy())
 

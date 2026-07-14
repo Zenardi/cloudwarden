@@ -11,11 +11,11 @@ import datetime as dt
 
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app
-from azure_finops.azure.activitylog import _parse, collect_activity_log
-from azure_finops.config import get_settings
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app
+from cloudwarden.azure.activitylog import _parse, collect_activity_log
+from cloudwarden.config import get_settings
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 _SUB = "00000000-0000-0000-0000-000000000000"
 # Stored asset ids are lower-cased; the fixtures/live API return mixed case.
@@ -129,7 +129,7 @@ def _event(operation: str, actor: str, timestamp: str) -> dict:
 
 
 def test_parse_ts_variants() -> None:
-    from azure_finops.storage.repository import _parse_ts
+    from cloudwarden.storage.repository import _parse_ts
 
     assert _parse_ts("2026-07-10T14:23:01Z").tzinfo is not None  # trailing-Z string
     assert _parse_ts("2026-07-10T14:23:01").tzinfo == dt.UTC  # naive string → assumed UTC

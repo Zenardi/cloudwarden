@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from azure_finops import auth
-from azure_finops.config import get_settings
+from cloudwarden import auth
+from cloudwarden.config import get_settings
 
 
 def _clear() -> None:

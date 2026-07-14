@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import datetime as dt
 
-from azure_finops.ai import factory
-from azure_finops.ai.anthropic_provider import AnthropicProvider
-from azure_finops.ai.base import StubProvider
-from azure_finops.ai.prompt import build_payload, extract_json
-from azure_finops.config import get_settings
-from azure_finops.models import CostRow, Recommendation
+from cloudwarden.ai import factory
+from cloudwarden.ai.anthropic_provider import AnthropicProvider
+from cloudwarden.ai.base import StubProvider
+from cloudwarden.ai.prompt import build_payload, extract_json
+from cloudwarden.config import get_settings
+from cloudwarden.models import CostRow, Recommendation
 
 
 def _payload() -> dict:

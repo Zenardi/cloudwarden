@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from azure_finops.packs import registry
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.packs import registry
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 # Resource types the bundled packs use (all real c7n-azure types). The fake runner
 # treats exactly these as schema-valid so the suite never touches live c7n.
@@ -195,7 +195,7 @@ def test_set_pack_enabled_unknown_returns_none(db) -> None:
 def _client():
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app, get_custodian_runner
+    from cloudwarden.api.main import app, get_custodian_runner
 
     app.dependency_overrides[get_custodian_runner] = lambda: FakePackRunner()
     return TestClient(app), app
@@ -240,7 +240,7 @@ def test_api_install_unknown_pack_404(db) -> None:
 def test_api_install_invalid_pack_422(db) -> None:
     from fastapi.testclient import TestClient
 
-    from azure_finops.api.main import app, get_custodian_runner
+    from cloudwarden.api.main import app, get_custodian_runner
 
     class RejectAllRunner:
         def validate(self, spec):

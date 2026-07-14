@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from azure_finops.config import Settings
-from azure_finops.remediation import executor, guardrails
+from cloudwarden.config import Settings
+from cloudwarden.remediation import executor, guardrails
 
 RID = "/subscriptions/s/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-web-01"
 

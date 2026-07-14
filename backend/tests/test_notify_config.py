@@ -26,17 +26,17 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app
-from azure_finops.notify import dispatch
-from azure_finops.notify.transports import (
+from cloudwarden.api.main import app
+from cloudwarden.notify import dispatch
+from cloudwarden.notify.transports import (
     EmailTransport,
     JiraTransport,
     ServiceNowTransport,
     SlackTransport,
     TeamsTransport,
 )
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 
 @pytest.fixture
@@ -92,7 +92,7 @@ def test_build_transport_registry() -> None:
     assert isinstance(dispatch.build_transport("jira"), JiraTransport)
     assert isinstance(dispatch.build_transport("servicenow"), ServiceNowTransport)
     # webhook is the default and the fallback for any unknown transport name.
-    from azure_finops.notify.service import WebhookTransport
+    from cloudwarden.notify.service import WebhookTransport
 
     assert isinstance(dispatch.build_transport("webhook"), WebhookTransport)
     assert isinstance(dispatch.build_transport("carrier-pigeon"), WebhookTransport)

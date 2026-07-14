@@ -25,12 +25,12 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app
-from azure_finops.config import get_settings
-from azure_finops.remediation import approval, executor
-from azure_finops.storage import repository as repo
-from azure_finops.storage import schema
-from azure_finops.storage.db import session_scope
+from cloudwarden.api.main import app
+from cloudwarden.config import get_settings
+from cloudwarden.remediation import approval, executor
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage import schema
+from cloudwarden.storage.db import session_scope
 
 RID = "/subscriptions/s/resourceGroups/rg-app/providers/Microsoft.Compute/virtualMachines/vm-1"
 
@@ -189,7 +189,7 @@ def test_approve_live_executes(db, monkeypatch) -> None:
     _enable_remediation(monkeypatch)
     monkeypatch.setenv("FINOPS_MOCK", "0")
     get_settings.cache_clear()
-    monkeypatch.setattr("azure_finops.auth.write_credential", lambda: object())
+    monkeypatch.setattr("cloudwarden.auth.write_credential", lambda: object())
     monkeypatch.setattr(
         executor, "execute_action", lambda *a, **k: {"executed": True, "message": "stop completed"}
     )
@@ -208,7 +208,7 @@ def test_approve_live_failure_records_failed(db, monkeypatch) -> None:
     _enable_remediation(monkeypatch)
     monkeypatch.setenv("FINOPS_MOCK", "0")
     get_settings.cache_clear()
-    monkeypatch.setattr("azure_finops.auth.write_credential", lambda: object())
+    monkeypatch.setattr("cloudwarden.auth.write_credential", lambda: object())
 
     def boom(*a, **k):
         raise RuntimeError("azure boom")
@@ -230,7 +230,7 @@ def test_approve_live_unsupported_action_records_failed(db, monkeypatch) -> None
     _enable_remediation(monkeypatch)
     monkeypatch.setenv("FINOPS_MOCK", "0")
     get_settings.cache_clear()
-    monkeypatch.setattr("azure_finops.auth.write_credential", lambda: object())
+    monkeypatch.setattr("cloudwarden.auth.write_credential", lambda: object())
     with session_scope() as s:
         aid = approval.queue_policy_action(s, match_id, "frobnicate", dry_run=False)["action_id"]
 
@@ -318,7 +318,7 @@ def test_approve_live_dry_run_appends_guard_note(db, monkeypatch) -> None:
     _enable_remediation(monkeypatch, allow="rg-other")  # would block a real exec
     monkeypatch.setenv("FINOPS_MOCK", "0")
     get_settings.cache_clear()
-    monkeypatch.setattr("azure_finops.auth.write_credential", lambda: object())
+    monkeypatch.setattr("cloudwarden.auth.write_credential", lambda: object())
     monkeypatch.setattr(
         executor,
         "execute_action",

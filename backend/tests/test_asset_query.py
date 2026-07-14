@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from azure_finops import models as m
-from azure_finops.api.main import app
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden import models as m
+from cloudwarden.api.main import app
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 
 def _asset(

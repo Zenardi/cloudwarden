@@ -18,16 +18,16 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from azure_finops.api.main import app
-from azure_finops.azure._fixtures import load_fixture
-from azure_finops.config import Settings, get_settings
-from azure_finops.events.ingestion import (
+from cloudwarden.api.main import app
+from cloudwarden.azure._fixtures import load_fixture
+from cloudwarden.config import Settings, get_settings
+from cloudwarden.events.ingestion import (
     handle_subscription_validation,
     normalize_event,
     verify_event_grid_key,
 )
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 
 def _event(name: str) -> dict:
@@ -108,7 +108,7 @@ def test_normalize_event_falls_back_to_subject_and_defaults() -> None:
 
 
 def test_resource_type_from_operation_edge_cases() -> None:
-    from azure_finops.events.ingestion import _resource_type_from_operation
+    from cloudwarden.events.ingestion import _resource_type_from_operation
 
     assert _resource_type_from_operation(None) is None
     assert _resource_type_from_operation("tooshort") is None
@@ -121,7 +121,7 @@ def test_resource_type_from_operation_edge_cases() -> None:
 def test_parse_event_time_variants() -> None:
     import datetime as dt
 
-    from azure_finops.events.ingestion import _parse_event_time
+    from cloudwarden.events.ingestion import _parse_event_time
 
     assert _parse_event_time(None) is None
     assert _parse_event_time("") is None

@@ -30,11 +30,11 @@ ENV PATH="/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     APP_DATA_DIR=/data
 COPY --from=build /venv /venv
-COPY azure_finops ./azure_finops
+COPY cloudwarden ./cloudwarden
 # Nonroot user + a writable data dir for the appdata named volume.
 RUN useradd -u 65532 -m -d /home/nonroot -s /usr/sbin/nologin nonroot \
  && mkdir -p /data \
  && chown -R 65532:65532 /data /app
 USER 65532:65532
-ENTRYPOINT ["python", "-m", "azure_finops.cli"]
+ENTRYPOINT ["python", "-m", "cloudwarden.cli"]
 CMD ["api"]

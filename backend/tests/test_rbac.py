@@ -14,15 +14,15 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from azure_finops.authz import rbac
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.authz import rbac
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 VALID_SPEC = {"policies": [{"name": "rbac-p", "resource": "azure.vm"}]}
 
 
 def _enable_rbac(monkeypatch) -> None:
-    from azure_finops.config import get_settings
+    from cloudwarden.config import get_settings
 
     monkeypatch.setenv("RBAC_ENABLED", "1")
     get_settings.cache_clear()
@@ -143,7 +143,7 @@ def test_admin_wildcard_allows_any_action(db) -> None:
 # --------------------------------------------------------------------------- #
 def test_api_rbac_disabled_allows_write(db) -> None:
     """Backward compatibility: with RBAC off, an unauthenticated write still works."""
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     resp = TestClient(app).post(
         "/api/policies",
@@ -154,7 +154,7 @@ def test_api_rbac_disabled_allows_write(db) -> None:
 
 
 def test_api_editor_can_create_policy(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("ed", "editor")
@@ -169,7 +169,7 @@ def test_api_editor_can_create_policy(db, monkeypatch) -> None:
 
 
 def test_api_viewer_can_read_not_write(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("vv", "viewer")
@@ -187,7 +187,7 @@ def test_api_viewer_can_read_not_write(db, monkeypatch) -> None:
 
 
 def test_api_write_without_principal_is_401(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     with session_scope() as s:
@@ -202,7 +202,7 @@ def test_api_write_without_principal_is_401(db, monkeypatch) -> None:
 
 
 def test_api_authz_me_reports_permissions(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("ed", "editor")
@@ -222,7 +222,7 @@ def test_remove_binding_unknown_role_is_false(db) -> None:
 
 
 def test_api_create_binding_unknown_role_404(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("boss", "admin")
@@ -238,7 +238,7 @@ def test_api_create_binding_unknown_role_404(db, monkeypatch) -> None:
 
 def test_api_authz_me_anonymous(db) -> None:
     """With no principal header the caller sees an empty permission set (never errors)."""
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     resp = TestClient(app).get("/api/authz/me")
 
@@ -247,7 +247,7 @@ def test_api_authz_me_anonymous(db) -> None:
 
 
 def test_api_lists_roles_and_bindings(db) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _seed_and_bind("dana", "editor")
     client = TestClient(app)
@@ -260,7 +260,7 @@ def test_api_lists_roles_and_bindings(db) -> None:
 
 
 def test_api_delete_role_binding(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("boss", "admin")
@@ -287,7 +287,7 @@ def test_api_delete_role_binding(db, monkeypatch) -> None:
 
 
 def test_api_role_binding_requires_admin(db, monkeypatch) -> None:
-    from azure_finops.api.main import app
+    from cloudwarden.api.main import app
 
     _enable_rbac(monkeypatch)
     _seed_and_bind("boss", "admin")

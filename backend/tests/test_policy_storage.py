@@ -17,9 +17,9 @@ from __future__ import annotations
 
 from sqlalchemy import inspect
 
-from azure_finops import models as m
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden import models as m
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 
 def _make_policy(session, name: str = "exec-pol") -> int:

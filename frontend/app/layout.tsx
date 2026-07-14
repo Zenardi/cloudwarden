@@ -5,8 +5,8 @@ import AuthGate from "./components/AuthGate";
 import Nav from "./components/Nav";
 
 export const metadata: Metadata = {
-  title: "Azure FinOps Optimizer",
-  description: "Azure cost analysis, right-sizing recommendations, and remediation.",
+  title: "CloudWarden",
+  description: "Multi-cloud governance-as-code & FinOps: policy posture, cost analysis, right-sizing recommendations, and guarded remediation.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

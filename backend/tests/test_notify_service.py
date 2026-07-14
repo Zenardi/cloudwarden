@@ -25,9 +25,9 @@ from __future__ import annotations
 
 import pytest
 
-from azure_finops.notify import service
-from azure_finops.storage import repository as repo
-from azure_finops.storage.db import session_scope
+from cloudwarden.notify import service
+from cloudwarden.storage import repository as repo
+from cloudwarden.storage.db import session_scope
 
 
 # --------------------------------------------------------------------------- #
