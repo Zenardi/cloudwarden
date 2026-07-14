@@ -38,3 +38,6 @@ grafana-data/
 .idea/
 .vscode/
 *.swp
+
+# impeccable design skill — machine-local runtime cache & session state
+.impeccable/
