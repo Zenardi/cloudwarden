@@ -42,9 +42,9 @@ logs: ## Tail stack logs
 	$(COMPOSE) logs -f
 
 initdb: ## Create/upgrade the database schema (in-container)
-	$(COMPOSE) run --rm backend python -m cloudwarden.cli initdb
+	$(COMPOSE) run --rm backend initdb
 
 seed: ## Run one mock pipeline inside the backend container
-	$(COMPOSE) run --rm backend python -m cloudwarden.cli run --mock
+	$(COMPOSE) run --rm backend run --mock
 
 .PHONY: help install install-dev lint fmt test coverage run-mock up up-core up-all down logs initdb seed
