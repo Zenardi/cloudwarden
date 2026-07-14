@@ -36,8 +36,8 @@ def test_registry_returns_azure_provider() -> None:
 def test_registry_unknown_provider_errors() -> None:
     # Act / Assert — an unregistered cloud fails loudly (not a silent azure default).
     with pytest.raises(registry.UnknownProviderError) as excinfo:
-        registry.get("gcp")
-    assert "gcp" in str(excinfo.value)
+        registry.get("oracle")
+    assert "oracle" in str(excinfo.value)
 
 
 def test_registry_names_lists_azure() -> None:

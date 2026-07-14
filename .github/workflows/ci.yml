@@ -1130,7 +1130,7 @@ jobs:
           azure = registry.get("azure")
           assert azure.name == "azure" and isinstance(azure, base.CloudProvider)
           try:
-              registry.get("gcp")
+              registry.get("oracle")
               raise AssertionError("expected UnknownProviderError")
           except registry.UnknownProviderError:
               pass
@@ -1204,6 +1204,48 @@ jobs:
               assert rows and all(row["provider"] == "aws" for row in rows), rows
           app.dependency_overrides.clear()
           print("aws OK: onboard(provider=aws) bad-cred=400 dryrun=matches ingest=assetdb(provider=aws)")
+          PY
+
+      - name: Smoke-test GCP onboarding & execution (M12.3)
+        run: |
+          set -euo pipefail
+          # In the deployed image, against the real DB: onboard a GCP project with an
+          # INJECTED Resource Manager client (no live GCP), verify it is stored
+          # provider='gcp', a bad credential is rejected 400, a c7n gcp policy dry-run
+          # matches fixture instances, and ingestion writes AssetDB rows provider='gcp'.
+          docker compose exec -T backend python - <<'PY'
+          from fastapi.testclient import TestClient
+
+          from azure_finops.api.main import app, get_gcp_client
+
+          class _Rm:
+              def __init__(self, project): self.project = project
+              def get_project(self, project_id):
+                  return {"projectId": self.project, "projectNumber": "418570161861",
+                          "lifecycleState": "ACTIVE"}
+
+          class _Boom:
+              def get_project(self, project_id): raise RuntimeError("invalid_grant")
+
+          PROJ = "ci-gcp-project-42"
+          app.dependency_overrides[get_gcp_client] = lambda: _Rm(PROJ)
+          with TestClient(app) as c:
+              r = c.post("/api/gcp/projects", json={"project_id": PROJ, "display_name": "CI GCP"})
+              assert r.status_code == 201, r.text
+              assert r.json()["account"]["provider"] == "gcp", r.text
+              app.dependency_overrides[get_gcp_client] = lambda: _Boom()
+              bad = c.post("/api/gcp/projects", json={"project_id": PROJ, "display_name": "x"})
+              assert bad.status_code == 400, bad.text
+              dry = c.post("/api/gcp/policies/dryrun", json={"project_id": PROJ,
+                    "spec": {"policies": [{"name": "vms", "resource": "gcp.instance"}]}}).json()
+              assert dry["matched"] > 0 and all(x["type"] == "gcp.instance" for x in dry["resources"]), dry
+              ing = c.post(f"/api/gcp/projects/{PROJ}/ingest").json()
+              assert ing["provider"] == "gcp" and ing["assets"] > 0, ing
+              rows = c.post("/api/assets/query",
+                            json={"filters": [{"column": "provider", "op": "eq", "value": "gcp"}]}).json()
+              assert rows and all(row["provider"] == "gcp" for row in rows), rows
+          app.dependency_overrides.clear()
+          print("gcp OK: onboard(provider=gcp) bad-cred=400 dryrun=matches ingest=assetdb(provider=gcp)")
           PY
 
       - name: Assert UI routes render (assets M4.5 + account groups M5.1 + bindings M5.4 + events M6.4, mock mode)

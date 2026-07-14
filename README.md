@@ -77,7 +77,8 @@ OpenAI-compatible/local model). It runs fully offline with recorded fixtures
 | M11.3 | SSO / OIDC authentication — verified bearer token (or first-party session) becomes the RBAC principal; login/callback flow; a login-gated UI | ✅ done |
 | M11.4 | Audit log — append-only trail of every mutating action (actor, action, target, before/after); `GET /api/audit` + a UI viewer | ✅ done |
 | M12.1 | Cloud provider abstraction — a `CloudProvider` interface + registry with Azure behind it; `SubscriptionContext` generalized to `AccountContext`; accounts carry a `provider` (multi-cloud foundation) | ✅ done |
-| M12.2 | AWS onboarding & execution — onboard AWS accounts (STS-validated), dry-run c7n aws policies, ingest AWS resources into AssetDB tagged `provider='aws'`; injectable boto clients (no live AWS in tests) | 🚧 in review |
+| M12.2 | AWS onboarding & execution — onboard AWS accounts (STS-validated), dry-run c7n aws policies, ingest AWS resources into AssetDB tagged `provider='aws'`; injectable boto clients (no live AWS in tests) | ✅ done |
+| M12.3 | GCP onboarding & execution — onboard GCP projects (Resource-Manager-validated), dry-run c7n gcp policies, ingest GCP resources into AssetDB tagged `provider='gcp'`; injectable clients (no live GCP in tests) | 🚧 in review |
 
 Both tracks run fully offline with recorded fixtures (`FINOPS_MOCK=1`) — no Azure
 subscription required to see the pipeline, policies and dashboards working.
@@ -438,6 +439,20 @@ tagged **`provider='aws'`** (the `assets`/`resources` tables gained a `provider`
 `server_default='azure'`, filterable via the asset query API), and
 `POST /api/aws/policies/dryrun` returns the fixture resources a policy matches. Everything
 is exercised with injected clients / offline fixtures — **no live AWS call** in tests.
+
+**GCP onboarding & execution (M12.3).** The third cloud behind the M12.1 seam:
+`providers.registry.get("gcp")` returns a `GcpProvider` that onboards projects, dry-runs
+Cloud Custodian **gcp** policies, and ingests GCP resources into AssetDB tagged
+`provider='gcp'` (reusing the `provider` column from M12.2 — no schema change). Onboarding
+(`POST /api/gcp/projects`) validates credentials via Resource Manager `get_project` through
+an **injectable** client seam (a bad/expired credential or a project mismatch → `400`), then
+stores the project with `provider='gcp'`; `POST /api/gcp/projects/{id}/ingest` and
+`POST /api/gcp/policies/dryrun` mirror the AWS surface. Unlike AWS (native to c7n core), GCP
+lives in the separate **`c7n-gcp`** package, which pulls the heavy `google-*` client tree —
+so it is an **optional live-only extra** (not installed by default, to keep the image and its
+Trivy surface minimal); the live paths lazily import it. Onboarding, dry-runs and ingestion
+all work fully offline via injected clients / the `gcp_assets` fixture — **no live GCP call**
+in tests.
 
 **AssetDB (M4.1).** Every pipeline run also populates a queryable, near-real-time
 asset inventory (à la Stacklet's AssetDB). The `assets` table is a richer superset

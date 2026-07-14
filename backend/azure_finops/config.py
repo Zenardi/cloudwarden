@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
 
+    # --- GCP project (M12.3 multi-cloud) ---
+    # Onboarding validates credentials via Resource Manager get_project (injectable
+    # in tests). `gcp_service_account_json` is a path to (or the inline body of) a
+    # service-account key; the live path falls back to Application Default Credentials.
+    gcp_project_id: str = ""
+    gcp_default_region: str = "us-central1"
+    gcp_service_account_json: str | None = None
+
     # --- Memory metrics (optional) ---
     log_analytics_workspace_id: str | None = None
 

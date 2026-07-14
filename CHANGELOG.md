@@ -6,6 +6,20 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **GCP onboarding & execution — the third cloud (M12.3).** New
+  `azure_finops.providers.gcp.GcpProvider` (registered as `providers.registry.get("gcp")`)
+  onboards GCP projects, runs Cloud Custodian **gcp** policy dry-runs, and ingests GCP
+  resources into AssetDB tagged **`provider='gcp'`**. Onboarding validates credentials via
+  Resource Manager `get_project` through an **injectable** client seam
+  (`POST /api/gcp/projects`; a bad/expired credential or a project mismatch → `400`), then
+  persists the project with `provider='gcp'`. `POST /api/gcp/projects/{id}/ingest` loads the
+  `gcp_assets` fixture into AssetDB (idempotent), and `POST /api/gcp/policies/dryrun` returns
+  the fixture resources matching a policy's `resource` type — reusing the `provider` column
+  added in M12.2 (no schema change). Unlike AWS (native to c7n core), GCP lives in the separate
+  `c7n-gcp` package, which pulls the heavy `google-*` tree; to keep the image and its Trivy
+  surface minimal, that is an **optional live-only extra** (not installed by default) — the
+  live paths lazily import it (`# pragma: no cover`). Every test uses injected clients / offline
+  fixtures — **no live GCP call**.
 - **AWS onboarding & execution — the second cloud (M12.2).** New
   `azure_finops.providers.aws.AwsProvider` (registered as `providers.registry.get("aws")`)
   onboards AWS accounts, runs Cloud Custodian **aws** policy dry-runs, and ingests AWS

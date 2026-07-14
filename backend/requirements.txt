@@ -33,6 +33,15 @@ c7n-azure==0.7.50
 # STS `get_caller_identity`), so `pip install` stays deterministic and the
 # container image gains no new package (Trivy surface unchanged).
 boto3==1.43.3  # == c7n 0.9.51's boto3 pin; already present transitively
+# GCP (M12.3) is NOT native to c7n core: it lives in the separate `c7n-gcp`
+# package, which pulls the heavy `google-*` client tree (google-auth,
+# google-api-python-client, google-cloud-*). To keep the runtime image and its
+# Trivy surface minimal, that is an OPTIONAL live-only extra, intentionally not
+# pinned here. GCP onboarding, policy dry-runs and asset ingestion all work fully
+# offline via injected clients + the `gcp_assets` fixture; the live paths lazily
+# import `c7n_gcp` / `google-*` (`# pragma: no cover`). To enable live GCP,
+# install the extra alongside this file:
+#   pip install "c7n-gcp==0.4.50"   # matches c7n 0.9.51
 
 # --- AI ---
 anthropic==0.69.0  # >=0.45 required for the `thinking` param (adaptive thinking); 0.42 rejects it

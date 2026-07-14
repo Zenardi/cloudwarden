@@ -49,6 +49,7 @@ from ..models import (
 from ..notify.dispatch import KNOWN_TRANSPORTS
 from ..packs import registry as packs
 from ..providers import aws as aws_provider
+from ..providers import gcp as gcp_provider
 from ..providers import registry as providers_registry
 from ..remediation import approval as remediation
 from ..resilience import REGISTRY
@@ -179,6 +180,16 @@ def get_aws_sts_client() -> aws_provider.StsClient | None:
     Returns ``None`` so the provider builds a live boto3 STS client from the
     request's credentials. Tests override this with a fake STS client so onboarding
     never reaches AWS.
+    """
+    return None
+
+
+def get_gcp_client() -> gcp_provider.ResourceManagerClient | None:
+    """Injection seam for the GCP Resource Manager client used to validate projects (M12.3).
+
+    Returns ``None`` so the provider builds a live client from the request's
+    service-account credentials. Tests override this with a fake client so
+    onboarding never reaches GCP.
     """
     return None
 
@@ -1442,6 +1453,94 @@ def aws_policy_dryrun(body: AwsDryRunIn) -> dict[str, Any]:
     provider = providers_registry.get("aws")
     return provider.run_policy(
         body.spec, account_id=body.account_id.strip(), region=body.region, dry_run=True
+    )
+
+
+# --------------------------------------------------------------------------- #
+# GCP onboarding & execution (M12.3 — multi-cloud). Credentials are validated
+# via Resource Manager get_project (injectable seam → offline in tests); GCP
+# assets ingest into AssetDB tagged provider='gcp'; policy dry-runs match the
+# fixture. Mirrors the AWS onboarding surface (M12.2).
+# --------------------------------------------------------------------------- #
+class GcpProjectIn(BaseModel):
+    project_id: str
+    display_name: str | None = None
+    region: str | None = None
+    service_account_info: dict[str, Any] | None = None
+
+
+class GcpDryRunIn(BaseModel):
+    project_id: str
+    spec: dict[str, Any]
+    region: str | None = None
+
+
+@app.post(
+    "/api/gcp/projects",
+    status_code=201,
+    dependencies=[Depends(rbac.require_permission("subscription:write"))],
+)
+def onboard_gcp_project(
+    body: GcpProjectIn,
+    client: Annotated[gcp_provider.ResourceManagerClient | None, Depends(get_gcp_client)] = None,
+) -> dict[str, Any]:
+    """Onboard a GCP project: validate its credentials, then persist it (provider='gcp')."""
+    project_id = body.project_id.strip()
+    if not project_id:
+        raise HTTPException(status_code=400, detail="project_id is required")
+    provider = providers_registry.get("gcp")
+    credential = {"region": body.region, "service_account_info": body.service_account_info}
+    try:
+        identity = provider.validate_project(
+            project_id=project_id, credential=credential, client=client
+        )
+    except gcp_provider.InvalidCredentialsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    with session_scope() as session:
+        account = repo.upsert_subscription(
+            session,
+            subscription_id=project_id,
+            display_name=(body.display_name or f"GCP {project_id}").strip(),
+            provider="gcp",
+        )
+    return {"account": account, "identity": identity}
+
+
+@app.post(
+    "/api/gcp/projects/{project_id}/ingest",
+    dependencies=[Depends(rbac.require_permission("subscription:write"))],
+)
+def ingest_gcp_assets(project_id: str) -> dict[str, Any]:
+    """Ingest a GCP project's resources into AssetDB (provider='gcp'); returns counts."""
+    provider = providers_registry.get("gcp")
+    records = provider.collect_assets(project_id=project_id)
+    with session_scope() as session:
+        repo.upsert_resources(session, records)
+        new_ids = repo.upsert_assets(session, records)
+        by_id = {r.resource_id: r for r in records}
+        for rid in new_ids:
+            rec = by_id[rid]
+            repo.append_asset_event(
+                session,
+                resource_id=rid,
+                subscription_id=rec.subscription_id,
+                event_type="created",
+                data=rec.config,
+            )
+    return {
+        "provider": "gcp",
+        "project_id": project_id,
+        "assets": len(records),
+        "new": len(new_ids),
+    }
+
+
+@app.post("/api/gcp/policies/dryrun")
+def gcp_policy_dryrun(body: GcpDryRunIn) -> dict[str, Any]:
+    """Dry-run a c7n gcp policy against a project; returns matched fixture resources."""
+    provider = providers_registry.get("gcp")
+    return provider.run_policy(
+        body.spec, project_id=body.project_id.strip(), region=body.region, dry_run=True
     )
 
 

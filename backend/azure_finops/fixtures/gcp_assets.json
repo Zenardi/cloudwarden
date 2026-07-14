@@ -1,0 +1,75 @@
+{
+  "project_id": "example-project-123456",
+  "resources": [
+    {
+      "resource_id": "//compute.googleapis.com/projects/example-project-123456/zones/us-central1-a/instances/web-01",
+      "name": "web-01",
+      "type": "gcp.instance",
+      "region": "us-central1",
+      "state": "RUNNING",
+      "tags": {"env": "prod", "team": "web"},
+      "config": {
+        "id": "5820379900857393000",
+        "machineType": "e2-standard-4",
+        "status": "RUNNING",
+        "zone": "us-central1-a"
+      }
+    },
+    {
+      "resource_id": "//compute.googleapis.com/projects/example-project-123456/zones/us-central1-b/instances/batch-idle-01",
+      "name": "batch-idle-01",
+      "type": "gcp.instance",
+      "region": "us-central1",
+      "state": "TERMINATED",
+      "tags": {"env": "dev"},
+      "config": {
+        "id": "3310298811777421000",
+        "machineType": "e2-medium",
+        "status": "TERMINATED",
+        "zone": "us-central1-b"
+      }
+    },
+    {
+      "resource_id": "//storage.googleapis.com/projects/example-project-123456/buckets/finops-artifacts-example-project-123456",
+      "name": "finops-artifacts-example-project-123456",
+      "type": "gcp.bucket",
+      "region": "US",
+      "state": "active",
+      "tags": {"env": "prod", "data-class": "internal"},
+      "config": {
+        "name": "finops-artifacts-example-project-123456",
+        "storageClass": "STANDARD",
+        "location": "US",
+        "iamConfiguration": {"publicAccessPrevention": "enforced"}
+      }
+    },
+    {
+      "resource_id": "//compute.googleapis.com/projects/example-project-123456/zones/us-central1-a/disks/data-01",
+      "name": "data-01",
+      "type": "gcp.disk",
+      "region": "us-central1",
+      "state": "READY",
+      "tags": {"env": "dev"},
+      "config": {
+        "sizeGb": "200",
+        "type": "pd-ssd",
+        "status": "READY",
+        "zone": "us-central1-a"
+      }
+    },
+    {
+      "resource_id": "//sqladmin.googleapis.com/projects/example-project-123456/instances/finops-orders",
+      "name": "finops-orders",
+      "type": "gcp.sql-instance",
+      "region": "us-central1",
+      "state": "RUNNABLE",
+      "tags": {"env": "prod", "team": "orders"},
+      "config": {
+        "databaseVersion": "POSTGRES_15",
+        "tier": "db-custom-4-16384",
+        "state": "RUNNABLE",
+        "region": "us-central1"
+      }
+    }
+  ]
+}

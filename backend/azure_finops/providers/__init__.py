@@ -10,8 +10,10 @@ from __future__ import annotations
 from . import base, registry
 from .aws import AwsProvider
 from .azure import AzureProvider
+from .gcp import GcpProvider
 
 registry.register(AzureProvider())
 registry.register(AwsProvider())
+registry.register(GcpProvider())
 
-__all__ = ["AwsProvider", "AzureProvider", "base", "registry"]
+__all__ = ["AwsProvider", "AzureProvider", "GcpProvider", "base", "registry"]
