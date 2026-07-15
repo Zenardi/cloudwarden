@@ -116,6 +116,13 @@ def costs_by_resource(limit: int = 50) -> list[dict[str, Any]]:
         return repo.cost_by_resource(session, limit=limit)
 
 
+@app.get("/api/costs/trend")
+def costs_trend(days: int = 30) -> dict[str, Any]:
+    days = max(1, min(days, 365))
+    with session_scope() as session:
+        return repo.cost_trend(session, days=days)
+
+
 @app.get("/api/recommendations")
 def recommendations() -> list[dict[str, Any]]:
     with session_scope() as session:

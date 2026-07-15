@@ -1991,6 +1991,58 @@ def total_cost(session: Session) -> float:
     return float(rows[0]["total"]) if rows else 0.0
 
 
+def cost_trend(session: Session, days: int = 30) -> dict[str, Any]:
+    """Amortized cost for the current ``days``-day window vs the immediately
+    prior window of the same length, plus a daily series across the current
+    window.
+
+    ``days`` is bound as a parameter (injection-safe). Numeric costs are cast to
+    float for JSON. ``delta_pct`` is ``None`` when the prior window is empty
+    (a division-by-zero guard, so a first-ever period never reports a bogus %).
+    """
+    series_rows = _rows(
+        session,
+        "SELECT usage_date, SUM(cost) AS cost FROM cost_snapshots "
+        "WHERE cost_type = 'Amortized' "
+        "AND usage_date >= CURRENT_DATE - make_interval(days => :days) "
+        "GROUP BY usage_date ORDER BY usage_date",
+        days=days,
+    )
+    series = [{"date": r["usage_date"].isoformat(), "cost": float(r["cost"])} for r in series_rows]
+    total = round(sum(item["cost"] for item in series), 6)
+
+    prior_rows = _rows(
+        session,
+        "SELECT COALESCE(SUM(cost), 0) AS total FROM cost_snapshots "
+        "WHERE cost_type = 'Amortized' "
+        "AND usage_date >= CURRENT_DATE - make_interval(days => :prior_days) "
+        "AND usage_date < CURRENT_DATE - make_interval(days => :days)",
+        days=days,
+        prior_days=days * 2,
+    )
+    prior_total = float(prior_rows[0]["total"]) if prior_rows else 0.0
+
+    currency_rows = _rows(
+        session,
+        "SELECT currency FROM cost_snapshots WHERE cost_type = 'Amortized' "
+        "ORDER BY usage_date DESC LIMIT 1",
+    )
+    currency = currency_rows[0]["currency"] if currency_rows else "USD"
+
+    delta = round(total - prior_total, 6)
+    delta_pct = round(delta / prior_total * 100, 2) if prior_total else None
+
+    return {
+        "days": days,
+        "currency": currency,
+        "total": total,
+        "prior_total": prior_total,
+        "delta": delta,
+        "delta_pct": delta_pct,
+        "series": series,
+    }
+
+
 def latest_recommendations(session: Session, limit: int = 200) -> list[dict[str, Any]]:
     return _rows(
         session,

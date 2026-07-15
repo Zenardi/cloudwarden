@@ -806,7 +806,9 @@ Then open:
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend) and
   **FinOps — Policy Health & Compliance** (per-policy success rate, matches over
   time, and per-subscription compliance).
-- **API docs** → http://localhost:8000/docs (`/api/costs/summary`, `/api/recommendations`,
+- **API docs** → http://localhost:8000/docs (`/api/costs/summary`,
+  `/api/costs/trend` (Δ vs the prior period + a daily Amortized series;
+  `?days=` clamped 1–365), `/api/recommendations`,
   `/api/policies` CRUD, `/api/policies/validate`, `/api/custodian/schema`,
   `/api/policies/{id}/dryrun`, `/api/policies/{id}/versions`,
   `/api/policies/sync`, `/api/collections`, `/api/policy-executions`,
