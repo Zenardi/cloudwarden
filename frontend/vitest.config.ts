@@ -18,6 +18,7 @@ export default defineConfig({
         "app/components/Sparkline.tsx",
         "app/components/CostTrend.tsx",
         "app/components/RangeControl.tsx",
+        "app/components/RefreshStatus.tsx",
       ],
       thresholds: { lines: 95, functions: 95, statements: 95, branches: 90 },
     },

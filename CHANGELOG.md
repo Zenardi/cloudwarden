@@ -5,6 +5,18 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **Overview a11y — single refresh announcement + 44px touch targets (#115).**
+  Two P2 accessibility fixes. (1) The KPI trio and the AI-summary carried
+  `aria-live="polite"` on their containers, so a screen reader re-read the whole
+  block on every refresh / `r`. They now delegate to one dedicated
+  visually-hidden `role="status"` region that announces a single concise message
+  ("Data refreshed, as of …"); the containers keep `aria-busy` but no longer
+  re-read wholesale. (2) Secondary links (`.panel-link` / `.card-link`) get a
+  **≥44×44px** hit area on coarse pointers via an invisible centered overlay —
+  visual size unchanged (WCAG 2.5.5 / 2.5.8). New `RefreshStatus` component;
+  RTL regression guards keep the amortization caveat screen-reader reachable.
+
 ### Added
 - **Overview cost-KPI trend — Δ badge, sparkline, 7/30/90d control (#114).** The
   Cost KPI now consumes `/api/costs/trend` (#113) to answer *"what changed?"*:

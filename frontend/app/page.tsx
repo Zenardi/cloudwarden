@@ -8,6 +8,7 @@ import type { AISummary, CostTrend as CostTrendData, Posture, Recommendation } f
 import type { Loadable } from "./lib/loadable";
 import { CostTrend } from "./components/CostTrend";
 import { RangeControl, type RangeDays } from "./components/RangeControl";
+import { RefreshStatus } from "./components/RefreshStatus";
 
 /** Latest governance/FinOps run — the subset the Overview surfaces (see backend `runs`). */
 interface RunLatest {
@@ -217,6 +218,10 @@ export default function Overview() {
   const [posture, setPosture] = useState<Loadable<Posture>>(LOADING);
   const [trend, setTrend] = useState<Loadable<CostTrendData>>(LOADING);
   const [days, setDays] = useState<RangeDays>(30);
+  // One concise message for the dedicated status live region (a11y, #115) — set
+  // when the run resolves, so a refresh announces *once* instead of the KPI trio
+  // and the whole summary being re-read by the container `aria-live`s it replaces.
+  const [status, setStatus] = useState("");
 
   const refresh = useCallback(() => {
     setSummary(LOADING);
@@ -227,7 +232,15 @@ export default function Overview() {
     // Each request settles independently: a partial outage still shows what loaded.
     load<AISummary | null>("/api/summary").then(setSummary);
     load<CostSummary>("/api/costs/summary").then(setCost);
-    load<RunLatest | null>("/api/runs/latest").then(setRun);
+    load<RunLatest | null>("/api/runs/latest").then((r) => {
+      setRun(r);
+      if (r.state === "ok") {
+        const ago = timeAgo(r.data?.finished_at);
+        setStatus(ago ? `Data refreshed, as of ${ago}.` : "Data refreshed.");
+      } else {
+        setStatus("Couldn’t refresh data.");
+      }
+    });
     load<Recommendation[]>("/api/recommendations").then(setRecs);
     load<Posture>("/api/governance/posture").then(setPosture);
   }, []);
@@ -305,6 +318,7 @@ export default function Overview() {
 
   return (
     <>
+      <RefreshStatus message={status} />
       <header className="page-head">
         <div>
           <h1>Overview</h1>
@@ -351,7 +365,7 @@ export default function Overview() {
         </div>
       )}
 
-      <div className="cards kpis" aria-live="polite" aria-busy={loading}>
+      <div className="cards kpis" aria-busy={loading}>
         <Link className="card kpi" href="/costs" aria-describedby="cost-amortized-caveat">
           <div
             className="label"
@@ -616,7 +630,7 @@ export default function Overview() {
       </div>
 
       <h2>AI executive summary</h2>
-      <div aria-live="polite">
+      <div>
         {summary.state === "loading" ? (
         <div className="summary" aria-busy="true">
           <div className="skeleton skeleton-line" aria-hidden />
