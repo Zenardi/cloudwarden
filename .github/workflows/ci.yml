@@ -37,20 +37,24 @@ jobs:
       - name: Tests + coverage (unit + integration; fails under 95%)
         run: pytest backend/tests --cov=cloudwarden --cov-report=term-missing
 
-  # --- Build the Next.js app (tsc typecheck via next build) ---------------- #
+  # --- Build the Next.js app (tsc typecheck via next build) + unit tests --- #
   frontend:
-    name: Frontend (next build)
+    name: Frontend (build + tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: "20"
+      - name: Install deps
+        working-directory: frontend
+        run: npm ci
+      - name: Unit tests + coverage (Vitest)
+        working-directory: frontend
+        run: npm run test:cov
       - name: Build Next.js app
         working-directory: frontend
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
 
   # --- Build the whole solution as container images ------------------------ #
   build:

@@ -333,7 +333,7 @@ tr.clickable:hover td { background: var(--panel2); }
   gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-5);
 }
 .page-head .sub { margin-bottom: 0; }
-.page-head-meta { display: flex; align-items: center; gap: var(--space-3); flex-shrink: 0; }
+.page-head-meta { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-3); flex-shrink: 0; }
 .as-of { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .btn-refresh { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 .btn-refresh .spin-ico { width: 15px; height: 15px; flex: 0 0 auto; }
@@ -405,7 +405,40 @@ a.action-row:hover .action-name { text-decoration: underline; }
 .skeleton-row { height: 34px; margin-top: var(--space-2); }
 .skeleton-row:first-child { margin-top: 0; }
 
+/* Cost KPI trend — delta badge + inline sparkline (#114). Direction is carried
+   by the arrow glyph + sign in the label; colour only reinforces it (WCAG 1.4.1).
+   For spend, up = worse (red), down = better (green). */
+.cost-trend { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
+.delta {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+  white-space: nowrap; color: var(--muted);
+}
+.delta-arrow { font-size: 11px; line-height: 1; }
+.cost-trend.dir-up .delta { color: var(--red); }
+.cost-trend.dir-down .delta { color: var(--green); }
+.cost-trend.dir-flat .delta,
+.cost-trend.dir-na .delta { color: var(--muted); }
+.sparkline { flex: 1 1 auto; min-width: 40px; max-width: 120px; height: 22px; color: var(--accent); opacity: .85; }
+
+/* 7 / 30 / 90d segmented control for the trend window */
+.range-control {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+}
+.range-opt {
+  border: 0; border-left: 1px solid var(--border); border-radius: 0;
+  background: transparent; color: var(--muted);
+  padding: 5px 10px; font-size: 12.5px; font-variant-numeric: tabular-nums;
+  transition: background-color .15s ease, color .15s ease;
+}
+.range-opt:first-child { border-left: 0; }
+.range-opt:hover:not(:disabled) { background: var(--panel2); color: var(--text); border-color: var(--border); }
+.range-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--text); }
+.range-opt:disabled { opacity: .55; cursor: default; }
+
 @media (prefers-reduced-motion: reduce) {
   .bar-fill { transition: none; }
   .btn-refresh[data-busy="true"] .spin-ico { animation: none; }
+  .range-opt { transition: none; }
 }
