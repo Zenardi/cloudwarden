@@ -6,6 +6,16 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Cost-trend endpoint — Δ vs the prior period + a daily series (#113).** New
+  read-only **`GET /api/costs/trend?days=30`** returns
+  `{ days, currency, total, prior_total, delta, delta_pct, series[] }`: the
+  Amortized cost for the current `days`-day window, the immediately prior window
+  of equal length, their delta, and a daily ISO `series` across the current
+  window. `delta_pct` is `null` when the prior window is empty (no bogus % on a
+  first-ever period); `days` is clamped **1–365** and bound as a query parameter
+  (injection-safe). Pure read-side SQL over the existing daily `cost_snapshots`
+  granularity — no new collection or migration. Backs the Overview's
+  *"what changed?"* KPI (#114). New `repo.cost_trend(session, days)`.
 - **Cross-cloud AssetDB & dashboards — the single multi-cloud pane (M12.4).** The `provider`
   dimension now unifies Azure/AWS/GCP across AssetDB and the governance surface. Asset queries
   already filter by the allow-listed **`provider`** column (`POST /api/assets/query` with a
