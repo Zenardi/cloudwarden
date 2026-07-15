@@ -203,7 +203,7 @@ button.approve { border-color: var(--green); color: var(--green); }
 button.reject { border-color: var(--red); color: var(--red); }
 button:disabled { opacity: .45; cursor: default; }
 .row-actions { display: flex; gap: 6px; }
-.err { color: var(--red); background: rgba(226,88,90,.1); border: 1px solid var(--red); border-radius: 8px; padding: var(--space-3); margin-bottom: var(--space-4); }
+.err { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border: 1px solid var(--red); border-radius: 8px; padding: var(--space-3); margin-bottom: var(--space-4); }
 .muted { color: var(--muted); }
 /* Prose panel — capped to a readable measure (~72ch); full-container width ran ~138ch. */
 .summary { background: color-mix(in srgb, var(--accent) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border)); border-radius: 10px; padding: var(--space-4); text-wrap: pretty; max-width: 72ch; }
@@ -289,8 +289,8 @@ input[type="checkbox"] { width: auto; }
 .policy-editor:focus { outline: none; border-color: var(--accent); }
 .field.wide { grid-column: 1 / -1; }
 .validation { border-radius: 8px; padding: 10px 12px; margin-top: 6px; font-size: 13px; }
-.validation.ok { color: var(--green); background: rgba(63,185,104,.1); border: 1px solid var(--green); }
-.validation.bad { color: var(--red); background: rgba(226,88,90,.1); border: 1px solid var(--red); }
+.validation.ok { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid var(--green); }
+.validation.bad { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border: 1px solid var(--red); }
 .validation ul { margin: 6px 0 0; padding-left: 18px; }
 .validation li { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; }
 .badge.valid { color: var(--green); border-color: var(--green); }
@@ -361,6 +361,33 @@ tr.clickable:hover td { background: var(--panel2); }
 .panel-link { font-size: 12px; font-weight: 500; color: var(--accent); flex: 0 0 auto; }
 .panel-empty { color: var(--muted); font-size: 13px; padding: var(--space-3) 0; }
 
+/* Scope marker — the savings KPI, recommendations, and AI summary aren't
+   provider-scoped, so under an active cloud filter they still span every cloud.
+   This tag states that plainly instead of letting mixed-scope numbers read as
+   filtered. `cursor: help` signals the explanatory tooltip. */
+.scope-tag {
+  display: inline-flex; align-items: center; flex: 0 0 auto;
+  padding: 1px 7px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--panel2); color: var(--muted);
+  font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  white-space: nowrap; cursor: help;
+}
+/* Header rows that pair a label/title with the scope tag on one baseline. */
+.label-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.panel-head-titles { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; flex-wrap: wrap; }
+
+/* Overview section headings ("AI executive summary", "Dashboards") — one shared
+   treatment, deliberately distinct from the dense uppercase .panel-title labels.
+   Sentence case at a quiet 15px so these read as narrative sections (a tier above
+   the panel micro-labels, well below the 26px hero KPI value) instead of joining
+   one uniform uppercase band that competes with the numbers. Overrides global h2. */
+.section-head {
+  display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+  margin: var(--space-6) 0 var(--space-3);
+  font-size: 15px; font-weight: 600; color: var(--text);
+  letter-spacing: -0.01em; text-transform: none; text-wrap: balance;
+}
+
 /* Recommended actions — the scannable ranked object (real recs, not parsed prose) */
 .action-row {
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3);
@@ -420,6 +447,16 @@ a.action-row:hover .action-name { text-decoration: underline; }
 .cost-trend.dir-flat .delta,
 .cost-trend.dir-na .delta { color: var(--muted); }
 .sparkline { flex: 1 1 auto; min-width: 40px; max-width: 120px; height: 22px; color: var(--accent); opacity: .85; }
+
+/* Labeled control group — a visible caption ("Cloud" / "Range") sits beside a
+   segmented control so two otherwise-identical pill groups are distinguishable
+   at a glance. The caption is also the group's accessible name (aria-labelledby),
+   so the visible label and the screen-reader name are the same string. */
+.control-group { display: inline-flex; align-items: center; gap: var(--space-2); }
+.control-label {
+  color: var(--muted); font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+}
 
 /* 7 / 30 / 90d segmented control for the trend window */
 .range-control {

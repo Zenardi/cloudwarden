@@ -9,18 +9,28 @@ describe("RangeControl", () => {
     render(<RangeControl value={30} onChange={onChange} />);
 
     // The active option reflects the current window.
-    expect(screen.getByRole("button", { name: "30d" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "7d" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("radio", { name: "30d" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "7d" })).toHaveAttribute("aria-checked", "false");
 
     // Choosing another window calls back with that day count (the page wires this to a refetch).
-    fireEvent.click(screen.getByRole("button", { name: "90d" }));
+    fireEvent.click(screen.getByRole("radio", { name: "90d" }));
     expect(onChange).toHaveBeenCalledWith(90);
+  });
+
+  it("moves selection with arrow keys and ignores other keys (roving radiogroup)", () => {
+    const onChange = vi.fn();
+    render(<RangeControl value={30} onChange={onChange} />);
+    fireEvent.keyDown(screen.getByRole("radio", { name: "30d" }), { key: "ArrowLeft" });
+    expect(onChange).toHaveBeenCalledWith(7);
+    onChange.mockClear();
+    fireEvent.keyDown(screen.getByRole("radio", { name: "30d" }), { key: "x" });
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("disables every option while a trend fetch is in flight", () => {
     render(<RangeControl value={7} onChange={() => {}} disabled />);
     for (const label of ["7d", "30d", "90d"]) {
-      expect(screen.getByRole("button", { name: label })).toBeDisabled();
+      expect(screen.getByRole("radio", { name: label })).toBeDisabled();
     }
   });
 });

@@ -6,19 +6,35 @@ import Overview from "../page";
 import { ScopeControls } from "./ScopeControls";
 
 describe("ScopeControls", () => {
-  it("renders the cloud options and marks the active one", () => {
+  it("renders the cloud options as radios and marks the active one", () => {
     const onChange = vi.fn();
     render(<ScopeControls value="all" onChange={onChange} />);
-    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Azure" })).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(screen.getByRole("button", { name: "AWS" }));
+    expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Azure" })).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(screen.getByRole("radio", { name: "AWS" }));
     expect(onChange).toHaveBeenCalledWith("aws");
+  });
+
+  it("moves selection with arrow keys and ignores other keys (roving radiogroup)", () => {
+    const onChange = vi.fn();
+    render(<ScopeControls value="all" onChange={onChange} />);
+    fireEvent.keyDown(screen.getByRole("radio", { name: "All" }), { key: "ArrowRight" });
+    expect(onChange).toHaveBeenCalledWith("azure");
+    onChange.mockClear();
+    fireEvent.keyDown(screen.getByRole("radio", { name: "All" }), { key: "a" });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps only the selected radio in the tab order (roving tabindex)", () => {
+    render(<ScopeControls value="azure" onChange={() => {}} />);
+    expect(screen.getByRole("radio", { name: "Azure" })).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("tabindex", "-1");
   });
 
   it("disables every option while a fetch is in flight", () => {
     render(<ScopeControls value="all" onChange={() => {}} disabled />);
     for (const label of ["All", "Azure", "AWS", "GCP"]) {
-      expect(screen.getByRole("button", { name: label })).toBeDisabled();
+      expect(screen.getByRole("radio", { name: label })).toBeDisabled();
     }
   });
 });
@@ -55,6 +71,7 @@ function mockFetch() {
 describe("Overview scoping", () => {
   let fetchMock: ReturnType<typeof mockFetch>;
   beforeEach(() => {
+    window.history.replaceState(null, "", "/"); // start each run from a clean URL
     fetchMock = mockFetch();
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -71,7 +88,7 @@ describe("Overview scoping", () => {
     expect(initial.some((u) => u.includes("/api/costs/summary") && u.includes("days=30"))).toBe(true);
 
     fetchMock.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: "Azure" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Azure" }));
 
     // Switching cloud re-pulls the scoped panels with the provider param.
     await waitFor(() => {
@@ -79,5 +96,8 @@ describe("Overview scoping", () => {
       expect(urls.some((u) => u.includes("/api/costs/summary") && u.includes("provider=azure"))).toBe(true);
       expect(urls.some((u) => u.includes("/api/governance/posture") && u.includes("provider=azure"))).toBe(true);
     });
+
+    // …and the cloud scope is now persisted in the URL for reload / sharing.
+    expect(window.location.search).toContain("provider=azure");
   });
 });

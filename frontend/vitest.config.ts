@@ -15,6 +15,9 @@ export default defineConfig({
       reporter: ["text", "text-summary"],
       include: [
         "app/lib/trend.ts",
+        "app/lib/savings.ts",
+        "app/lib/scope.ts",
+        "app/lib/roving.ts",
         "app/components/Sparkline.tsx",
         "app/components/CostTrend.tsx",
         "app/components/RangeControl.tsx",
