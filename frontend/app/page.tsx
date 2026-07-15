@@ -3,12 +3,21 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { apiGet, API_BASE, GRAFANA_BASE, getCostTrend, money, shortId } from "./lib/api";
+import {
+  apiGet,
+  API_BASE,
+  costScopeQuery,
+  GRAFANA_BASE,
+  getCostTrend,
+  money,
+  shortId,
+} from "./lib/api";
 import type { AISummary, CostTrend as CostTrendData, Posture, Recommendation } from "./lib/api";
 import type { Loadable } from "./lib/loadable";
 import { CostTrend } from "./components/CostTrend";
 import { RangeControl, type RangeDays } from "./components/RangeControl";
 import { RefreshStatus } from "./components/RefreshStatus";
+import { ScopeControls, type ProviderScope } from "./components/ScopeControls";
 
 /** Latest governance/FinOps run — the subset the Overview surfaces (see backend `runs`). */
 interface RunLatest {
@@ -218,20 +227,19 @@ export default function Overview() {
   const [posture, setPosture] = useState<Loadable<Posture>>(LOADING);
   const [trend, setTrend] = useState<Loadable<CostTrendData>>(LOADING);
   const [days, setDays] = useState<RangeDays>(30);
+  const [provider, setProvider] = useState<ProviderScope>("all");
   // One concise message for the dedicated status live region (a11y, #115) — set
   // when the run resolves, so a refresh announces *once* instead of the KPI trio
   // and the whole summary being re-read by the container `aria-live`s it replaces.
   const [status, setStatus] = useState("");
 
+  // Base fetches — not day/cloud scoped (AI summary, latest run, recommendations).
   const refresh = useCallback(() => {
     setSummary(LOADING);
-    setCost(LOADING);
     setRun(LOADING);
     setRecs(LOADING);
-    setPosture(LOADING);
     // Each request settles independently: a partial outage still shows what loaded.
     load<AISummary | null>("/api/summary").then(setSummary);
-    load<CostSummary>("/api/costs/summary").then(setCost);
     load<RunLatest | null>("/api/runs/latest").then((r) => {
       setRun(r);
       if (r.state === "ok") {
@@ -242,32 +250,38 @@ export default function Overview() {
       }
     });
     load<Recommendation[]>("/api/recommendations").then(setRecs);
-    load<Posture>("/api/governance/posture").then(setPosture);
   }, []);
 
-  // The trend is fetched apart from the five above so the 7/30/90d control can
-  // re-pull just this window without refetching the whole page.
-  const loadTrend = useCallback((d: number) => {
+  // Day/cloud-scoped fetches — re-pulled when the range or cloud filter changes
+  // so every scoped panel (cost KPI, cost drivers, posture, trend) stays
+  // consistent. The trend endpoint is day-scoped only (#113); the provider
+  // filter applies to the cost rollups and the governance posture.
+  const loadScoped = useCallback((d: number, p: ProviderScope) => {
+    setCost(LOADING);
+    setPosture(LOADING);
     setTrend(LOADING);
+    const providerQs = p === "all" ? "" : `?provider=${p}`;
+    load<CostSummary>(`/api/costs/summary${costScopeQuery(d, p)}`).then(setCost);
+    load<Posture>(`/api/governance/posture${providerQs}`).then(setPosture);
     getCostTrend(d)
       .then((data) => setTrend({ state: "ok", data }))
       .catch((e) => setTrend({ state: "error", message: e instanceof Error ? e.message : String(e) }));
   }, []);
 
-  // User-initiated "reload everything" (button / `r` / retry) — trend included.
+  // User-initiated "reload everything" (button / `r` / retry).
   const refreshAll = useCallback(() => {
     refresh();
-    loadTrend(days);
-  }, [refresh, loadTrend, days]);
+    loadScoped(days, provider);
+  }, [refresh, loadScoped, days, provider]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // Load the trend on mount and whenever the window changes (only this fetch).
+  // (Re)load the scoped panels on mount and whenever the range/cloud changes.
   useEffect(() => {
-    loadTrend(days);
-  }, [days, loadTrend]);
+    loadScoped(days, provider);
+  }, [days, provider, loadScoped]);
 
   // `r` re-pulls the page — the power-user path that avoids a full reload. Ignored
   // while typing in a field or when a modifier is held (leaves browser shortcuts alone).
@@ -325,6 +339,11 @@ export default function Overview() {
           <p className="sub">Cost, savings, and the latest governance run across your clouds.</p>
         </div>
         <div className="page-head-meta">
+          <ScopeControls
+            value={provider}
+            onChange={setProvider}
+            disabled={cost.state === "loading"}
+          />
           <RangeControl value={days} onChange={setDays} disabled={trend.state === "loading"} />
           {asOf && (
             <span className="as-of" title={asOfAbs ? `Last run finished ${asOfAbs}` : undefined}>
@@ -369,14 +388,14 @@ export default function Overview() {
         <Link className="card kpi" href="/costs" aria-describedby="cost-amortized-caveat">
           <div
             className="label"
-            title="Amortized: upfront reservation & commitment costs are spread evenly across the 30 days, not charged in a lump on the purchase date. Figures are estimates — Cost Management data lags ~8–24h and isn’t final until invoiced."
+            title={`Amortized: upfront reservation & commitment costs are spread evenly across the ${days} days, not charged in a lump on the purchase date. Figures are estimates — Cost Management data lags ~8–24h and isn’t final until invoiced.`}
           >
-            Cost (30d, amortized)
+            Cost ({days}d, amortized)
           </div>
           <span id="cost-amortized-caveat" className="sr-only">
-            Amortized: upfront reservation and commitment costs are spread evenly across the 30 days.
-            Figures are estimates — Cost Management data lags about 8 to 24 hours and isn’t final until
-            invoiced.
+            Amortized: upfront reservation and commitment costs are spread evenly across the {days}{" "}
+            days. Figures are estimates — Cost Management data lags about 8 to 24 hours and isn’t final
+            until invoiced.
           </span>
           <CardValue
             loadable={cost}
@@ -418,7 +437,7 @@ export default function Overview() {
               <div className="value green">{money(savings.amount, savings.currency)}</div>
               {spendForRatio != null && (
                 <div className="card-note">
-                  ≈{Math.round((savings.amount / spendForRatio) * 100)}% of 30-day spend
+                  ≈{Math.round((savings.amount / spendForRatio) * 100)}% of {days}-day spend
                 </div>
               )}
             </>

@@ -19,6 +19,7 @@ export default defineConfig({
         "app/components/CostTrend.tsx",
         "app/components/RangeControl.tsx",
         "app/components/RefreshStatus.tsx",
+        "app/components/ScopeControls.tsx",
       ],
       thresholds: { lines: 95, functions: 95, statements: 95, branches: 90 },
     },

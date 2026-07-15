@@ -5,6 +5,21 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Overview scoping — multi-cloud filter + date-range across every panel (#116).**
+  Resolves the [P1]: the Overview no longer hardcodes a 30-day, all-cloud view.
+  A **cloud filter** (All / Azure / AWS / GCP) and the 7/30/90d range control now
+  scope **all** cost + governance panels consistently — the cost KPI, cost
+  drivers, governance posture, and trend. `GET /api/costs/summary|by-type|
+  by-region` accept **`?days=`** (1–365, default 30) and **`?provider=`**
+  (`azure|aws|gcp|all`), both bound parameters (injection-safe); the day window
+  reuses #113's `make_interval`, and the provider maps through
+  `subscriptions.provider`. `days` is clamped 1–365 and an unknown `provider`
+  is rejected with **400**. The trend endpoint remains day-scoped (#113); the
+  provider filter applies to costs + posture (which already accepted it). New
+  `ScopeControls` component + `costScopeQuery` helper; repo `total_cost` /
+  `cost_by_type` / `cost_by_region` gain `days`/`provider` params.
+
 ### Fixed
 - **Overview a11y — single refresh announcement + 44px touch targets (#115).**
   Two P2 accessibility fixes. (1) The KPI trio and the AI-summary carried

@@ -264,6 +264,17 @@ export interface CostTrend {
 export const getCostTrend = (days = 30): Promise<CostTrend> =>
   apiGet<CostTrend>(`/api/costs/trend?days=${days}`);
 
+/**
+ * Query string for the day/cloud-scoped cost endpoints (`/api/costs/summary`,
+ * `by-type`, `by-region` — #116). Always sends `days`; omits `provider` for the
+ * "all clouds" scope. Values go through URLSearchParams (encoded, injection-safe).
+ */
+export function costScopeQuery(days: number, provider: string): string {
+  const qs = new URLSearchParams({ days: String(days) });
+  if (provider && provider !== "all") qs.set("provider", provider);
+  return `?${qs.toString()}`;
+}
+
 export function money(v: number | null | undefined, currency = "USD"): string {
   const n = typeof v === "number" ? v : 0;
   return new Intl.NumberFormat("en-US", {

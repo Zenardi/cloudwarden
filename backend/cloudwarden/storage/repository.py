@@ -1970,12 +1970,49 @@ def latest_run(session: Session) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
-def cost_by_type(session: Session) -> list[dict[str, Any]]:
-    return _rows(session, "SELECT * FROM v_cost_by_type ORDER BY cost DESC")
+def _cost_scope(days: int, provider: str | None) -> tuple[str, dict[str, Any]]:
+    """WHERE fragment + bound params scoping ``cost_snapshots`` to a day window
+    and (optionally) one cloud (#116). The window uses ``make_interval`` (as in
+    #113); the provider filter maps through ``subscriptions.provider``. Both are
+    bound parameters — injection-safe. ``provider`` None/"" means all clouds."""
+    sql = (
+        " WHERE cost_type = 'Amortized' "
+        "AND usage_date >= CURRENT_DATE - make_interval(days => :days)"
+    )
+    params: dict[str, Any] = {"days": days}
+    if provider:
+        sql += (
+            " AND subscription_id IN "
+            "(SELECT subscription_id FROM subscriptions WHERE provider = :provider)"
+        )
+        params["provider"] = provider
+    return sql, params
 
 
-def cost_by_region(session: Session) -> list[dict[str, Any]]:
-    return _rows(session, "SELECT * FROM v_cost_by_region ORDER BY cost DESC")
+def cost_by_type(
+    session: Session, days: int = 30, provider: str | None = None
+) -> list[dict[str, Any]]:
+    where, params = _cost_scope(days, provider)
+    return _rows(
+        session,
+        "SELECT resource_type, SUM(cost) AS cost, currency FROM cost_snapshots"
+        + where
+        + " GROUP BY resource_type, currency ORDER BY cost DESC",
+        **params,
+    )
+
+
+def cost_by_region(
+    session: Session, days: int = 30, provider: str | None = None
+) -> list[dict[str, Any]]:
+    where, params = _cost_scope(days, provider)
+    return _rows(
+        session,
+        "SELECT location, SUM(cost) AS cost, currency FROM cost_snapshots"
+        + where
+        + " GROUP BY location, currency ORDER BY cost DESC",
+        **params,
+    )
 
 
 def cost_by_resource(session: Session, limit: int = 50) -> list[dict[str, Any]]:
@@ -1986,8 +2023,13 @@ def cost_by_resource(session: Session, limit: int = 50) -> list[dict[str, Any]]:
     )
 
 
-def total_cost(session: Session) -> float:
-    rows = _rows(session, "SELECT COALESCE(SUM(cost), 0) AS total FROM v_cost_by_type")
+def total_cost(session: Session, days: int = 30, provider: str | None = None) -> float:
+    where, params = _cost_scope(days, provider)
+    rows = _rows(
+        session,
+        "SELECT COALESCE(SUM(cost), 0) AS total FROM cost_snapshots" + where,
+        **params,
+    )
     return float(rows[0]["total"]) if rows else 0.0
 
 

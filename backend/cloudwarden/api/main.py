@@ -88,26 +88,45 @@ def health() -> dict[str, Any]:
     return {"status": "ok", "sources": REGISTRY.snapshot()}
 
 
+_COST_PROVIDERS = {"azure", "aws", "gcp"}
+
+
+def _cost_scope(days: int, provider: str) -> tuple[int, str | None]:
+    """Clamp ``days`` to 1..365 and normalize/validate ``provider`` for cost
+    scoping (#116). Empty/"all" → None (all clouds); an unknown provider → 400."""
+    normalized = (provider or "all").strip().lower()
+    if normalized in ("", "all"):
+        prov: str | None = None
+    elif normalized in _COST_PROVIDERS:
+        prov = normalized
+    else:
+        raise HTTPException(status_code=400, detail=f"invalid provider: {provider}")
+    return max(1, min(days, 365)), prov
+
+
 @app.get("/api/costs/summary")
-def costs_summary() -> dict[str, Any]:
+def costs_summary(days: int = 30, provider: str = "all") -> dict[str, Any]:
+    days, prov = _cost_scope(days, provider)
     with session_scope() as session:
         return {
-            "total": repo.total_cost(session),
-            "by_type": repo.cost_by_type(session),
-            "by_region": repo.cost_by_region(session),
+            "total": repo.total_cost(session, days=days, provider=prov),
+            "by_type": repo.cost_by_type(session, days=days, provider=prov),
+            "by_region": repo.cost_by_region(session, days=days, provider=prov),
         }
 
 
 @app.get("/api/costs/by-type")
-def costs_by_type() -> list[dict[str, Any]]:
+def costs_by_type(days: int = 30, provider: str = "all") -> list[dict[str, Any]]:
+    days, prov = _cost_scope(days, provider)
     with session_scope() as session:
-        return repo.cost_by_type(session)
+        return repo.cost_by_type(session, days=days, provider=prov)
 
 
 @app.get("/api/costs/by-region")
-def costs_by_region() -> list[dict[str, Any]]:
+def costs_by_region(days: int = 30, provider: str = "all") -> list[dict[str, Any]]:
+    days, prov = _cost_scope(days, provider)
     with session_scope() as session:
-        return repo.cost_by_region(session)
+        return repo.cost_by_region(session, days=days, provider=prov)
 
 
 @app.get("/api/costs/by-resource")

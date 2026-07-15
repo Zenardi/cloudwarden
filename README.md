@@ -806,7 +806,9 @@ Then open:
   → **FinOps — Cost Overview** (cost by type / region / resource + daily trend) and
   **FinOps — Policy Health & Compliance** (per-policy success rate, matches over
   time, and per-subscription compliance).
-- **API docs** → http://localhost:8000/docs (`/api/costs/summary`,
+- **API docs** → http://localhost:8000/docs (`/api/costs/summary` |
+  `/api/costs/by-type` | `/api/costs/by-region` (each accepts `?days=` (1–365,
+  default 30) and `?provider=azure|aws|gcp|all` — parameterized, injection-safe),
   `/api/costs/trend` (Δ vs the prior period + a daily Amortized series;
   `?days=` clamped 1–365), `/api/recommendations`,
   `/api/policies` CRUD, `/api/policies/validate`, `/api/custodian/schema`,
