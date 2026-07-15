@@ -5,6 +5,27 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **Overview design-critique remediation — trust, accessibility, and shareable
+  scope.** Resolves the P1–P3 findings from an `/impeccable critique` of the
+  Overview. **Honest cloud filter:** the savings-vs-spend ratio is now suppressed
+  under an active cloud filter (it had divided an all-cloud savings numerator by a
+  provider-scoped spend denominator, yielding an inflated figure), and the three
+  panels the filter does *not* re-scope — savings KPI, recommendations, AI
+  summary — carry an **"All clouds"** tag so mixed scope never reads as filtered.
+  The savings KPI gained a **basis label** ("estimate · from AI summary" /
+  "summed from N recommendations"). **Shareable scope:** the cloud + range persist
+  to the URL (`?days=&provider=`, validated), so a reload or a shared link
+  restores the filtered view (the page stays statically prerendered). **A11y:**
+  the cloud and range selectors are now proper `radiogroup`/`radio` controls
+  (roving tabindex + arrow keys) with visible **"Cloud" / "Range"** captions
+  serving as their accessible names. **Typography:** the standalone section
+  headings unify into one sentence-case treatment, distinct from the dense
+  uppercase panel labels. Error/validation surfaces use `color-mix` tokens rather
+  than a stale `--red` literal. New unit-tested helpers `deriveSavings`,
+  `parseScope`/`scopeToQuery`, and `nextRadioIndex` (frontend suite 23 → 49 tests,
+  100% coverage on the gated modules).
+
 ### Added
 - **Overview scoping — multi-cloud filter + date-range across every panel (#116).**
   Resolves the [P1]: the Overview no longer hardcodes a 30-day, all-cloud view.

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   apiGet,
@@ -14,6 +14,8 @@ import {
 } from "./lib/api";
 import type { AISummary, CostTrend as CostTrendData, Posture, Recommendation } from "./lib/api";
 import type { Loadable } from "./lib/loadable";
+import { deriveSavings } from "./lib/savings";
+import { DEFAULT_DAYS, DEFAULT_PROVIDER, parseScope, scopeToQuery } from "./lib/scope";
 import { CostTrend } from "./components/CostTrend";
 import { RangeControl, type RangeDays } from "./components/RangeControl";
 import { RefreshStatus } from "./components/RefreshStatus";
@@ -164,6 +166,23 @@ function RefreshIcon() {
 }
 
 /**
+ * Marks a panel the cloud filter does NOT re-scope. `/api/summary` and
+ * `/api/recommendations` aren't provider-scoped, so when an operator filters to
+ * one cloud these figures still span every connected cloud. The tag makes that
+ * explicit instead of silently presenting mixed-scope numbers as if filtered.
+ */
+function ScopeTag() {
+  return (
+    <span
+      className="scope-tag"
+      title="Not filtered by cloud — this figure covers all connected clouds."
+    >
+      All clouds
+    </span>
+  );
+}
+
+/**
  * Renders a card's value across all three states. `renderOk` only runs once the
  * fetch has genuinely succeeded, so callers never have to defend against a
  * fabricated fallback — loading shows a skeleton, failure shows an em-dash.
@@ -226,8 +245,8 @@ export default function Overview() {
   const [recs, setRecs] = useState<Loadable<Recommendation[]>>(LOADING);
   const [posture, setPosture] = useState<Loadable<Posture>>(LOADING);
   const [trend, setTrend] = useState<Loadable<CostTrendData>>(LOADING);
-  const [days, setDays] = useState<RangeDays>(30);
-  const [provider, setProvider] = useState<ProviderScope>("all");
+  const [days, setDays] = useState<RangeDays>(DEFAULT_DAYS);
+  const [provider, setProvider] = useState<ProviderScope>(DEFAULT_PROVIDER);
   // One concise message for the dedicated status live region (a11y, #115) — set
   // when the run resolves, so a refresh announces *once* instead of the KPI trio
   // and the whole summary being re-read by the container `aria-live`s it replaces.
@@ -283,6 +302,27 @@ export default function Overview() {
     loadScoped(days, provider);
   }, [days, provider, loadScoped]);
 
+  // Restore scope (cloud + range) from the URL on mount so a reload or a shared
+  // link lands on the same filtered view (validated in parseScope). Setting a value
+  // equal to the current default is a no-op, so the plain `/` case doesn't refetch.
+  useEffect(() => {
+    const s = parseScope(window.location.search);
+    setDays(s.days);
+    setProvider(s.provider);
+  }, []);
+
+  // Mirror the scope back into the URL as a shareable, bookmarkable query string —
+  // `replaceState` keeps it out of the history stack. The first run is skipped so an
+  // incoming link isn't clobbered before the restore effect above has applied it.
+  const scopeSynced = useRef(false);
+  useEffect(() => {
+    if (!scopeSynced.current) {
+      scopeSynced.current = true;
+      return;
+    }
+    window.history.replaceState(null, "", scopeToQuery(days, provider) || window.location.pathname);
+  }, [days, provider]);
+
   // `r` re-pulls the page — the power-user path that avoids a full reload. Ignored
   // while typing in a field or when a modifier is held (leaves browser shortcuts alone).
   useEffect(() => {
@@ -314,21 +354,16 @@ export default function Overview() {
   const asOf = run.state === "ok" ? timeAgo(run.data?.finished_at) : null;
   const asOfAbs = run.state === "ok" ? fmtAbs(run.data?.finished_at) : null;
 
-  // Savings figure, decoupled from the AI summary fetch: prefer the AI-reconciled
-  // total, but fall back to summing the loaded recommendations so a `/api/summary`
-  // outage no longer blanks the savings KPI alongside the summary prose.
-  const savings: { amount: number; currency?: string } | null =
-    summary.state === "ok" &&
-    summary.data &&
-    typeof summary.data.total_potential_savings === "number"
-      ? { amount: summary.data.total_potential_savings, currency: summary.data.currency }
-      : recs.state === "ok" && recs.data.length > 0
-        ? {
-            amount: recs.data.reduce((s, r) => s + (r.est_monthly_savings || 0), 0),
-            currency: recs.data[0]?.currency,
-          }
-        : null;
+  // Savings figure + its provenance, decoupled from the AI summary fetch (see
+  // deriveSavings). NOTE: this total spans all clouds — neither source endpoint is
+  // provider-scoped — so it's tagged "All clouds" whenever a cloud filter is active.
+  const savings = deriveSavings(summary, recs);
   const savingsPending = savings === null && (summary.state === "loading" || recs.state === "loading");
+
+  // A specific cloud is selected → the unscoped panels (savings, recs, AI summary)
+  // announce they still cover all clouds, and the savings-vs-spend ratio (an
+  // all-cloud numerator over a scoped denominator) is suppressed as ill-defined.
+  const scoped = provider !== "all";
 
   return (
     <>
@@ -431,11 +466,15 @@ export default function Overview() {
         </Link>
 
         <Link className="card kpi" href="/recommendations">
-          <div className="label">Potential monthly savings</div>
+          <div className="label label-row">
+            <span>Potential monthly savings</span>
+            {scoped && <ScopeTag />}
+          </div>
           {savings ? (
             <>
               <div className="value green">{money(savings.amount, savings.currency)}</div>
-              {spendForRatio != null && (
+              <div className="card-note">estimate · {savings.basis}</div>
+              {!scoped && spendForRatio != null && (
                 <div className="card-note">
                   ≈{Math.round((savings.amount / spendForRatio) * 100)}% of {days}-day spend
                 </div>
@@ -491,9 +530,12 @@ export default function Overview() {
       <div className="overview-grid">
         <section className="panel" aria-labelledby="recs-h">
           <div className="panel-head">
-            <h2 className="panel-title" id="recs-h">
-              Recommended actions
-            </h2>
+            <div className="panel-head-titles">
+              <h2 className="panel-title" id="recs-h">
+                Recommended actions
+              </h2>
+              {scoped && <ScopeTag />}
+            </div>
             <Link className="panel-link" href="/recommendations">
               {recs.state === "ok" && recs.data.length > 0 ? (
                 <>
@@ -648,7 +690,10 @@ export default function Overview() {
         </div>
       </div>
 
-      <h2>AI executive summary</h2>
+      <h2 className="section-head">
+        AI executive summary
+        {scoped && <ScopeTag />}
+      </h2>
       <div>
         {summary.state === "loading" ? (
         <div className="summary" aria-busy="true">
@@ -674,7 +719,7 @@ export default function Overview() {
         )}
       </div>
 
-      <h2>Dashboards</h2>
+      <h2 className="section-head">Dashboards</h2>
       <div className="links">
         <a
           href={`${GRAFANA_BASE}/d/finops-cost`}
