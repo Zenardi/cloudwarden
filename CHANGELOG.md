@@ -6,6 +6,21 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Overview cost-KPI trend — Δ badge, sparkline, 7/30/90d control (#114).** The
+  Cost KPI now consumes `/api/costs/trend` (#113) to answer *"what changed?"*:
+  a direction-carrying **delta badge** (arrow + sign + text — never colour alone,
+  WCAG 1.4.1), an inline **SVG sparkline** of the daily series (decorative,
+  `aria-hidden`; degrades to a flat baseline for empty/single-point/flat data),
+  and a **7 / 30 / 90d segmented control** in the header that re-pulls just the
+  trend window. `delta_pct === null` (empty prior window) shows *"vs prior Nd —
+  n/a"* instead of a bogus percentage, and a loading/failed trend fetch renders
+  no delta at all (never a fabricated figure). New `getCostTrend(days)` +
+  `CostTrend` types in `lib/api.ts`; new `lib/trend.ts` helpers (`formatDelta`,
+  `sparklinePath`) and `Sparkline` / `CostTrend` / `RangeControl` components.
+- **Frontend test harness — Vitest + React Testing Library.** Introduces the
+  project's first JS test runner (jsdom, `@vitest/coverage-v8`) with `npm test`
+  and `npm run test:cov`. New frontend modules are held to **≥95% line coverage**
+  (the #114 modules land at 100%).
 - **Cost-trend endpoint — Δ vs the prior period + a daily series (#113).** New
   read-only **`GET /api/costs/trend?days=30`** returns
   `{ days, currency, total, prior_total, delta, delta_pct, series[] }`: the

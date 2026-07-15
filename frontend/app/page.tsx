@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { apiGet, API_BASE, GRAFANA_BASE, money, shortId } from "./lib/api";
-import type { AISummary, Posture, Recommendation } from "./lib/api";
+import { apiGet, API_BASE, GRAFANA_BASE, getCostTrend, money, shortId } from "./lib/api";
+import type { AISummary, CostTrend as CostTrendData, Posture, Recommendation } from "./lib/api";
+import type { Loadable } from "./lib/loadable";
+import { CostTrend } from "./components/CostTrend";
+import { RangeControl, type RangeDays } from "./components/RangeControl";
 
 /** Latest governance/FinOps run — the subset the Overview surfaces (see backend `runs`). */
 interface RunLatest {
@@ -30,17 +33,6 @@ interface CostSummary {
   by_region?: CostSlice[];
   by_type?: CostSlice[];
 }
-
-/**
- * A fetch that is still in flight, succeeded with data, or failed. Modelling the
- * failure explicitly is the whole point: the previous `.catch(() => fallback)`
- * pattern made every error look like real (empty) data, so a down backend showed
- * a fabricated $0.00 and the error banner was dead code.
- */
-type Loadable<T> =
-  | { state: "loading" }
-  | { state: "ok"; data: T }
-  | { state: "error"; message: string };
 
 const LOADING = { state: "loading" } as const;
 
@@ -223,6 +215,8 @@ export default function Overview() {
   const [run, setRun] = useState<Loadable<RunLatest | null>>(LOADING);
   const [recs, setRecs] = useState<Loadable<Recommendation[]>>(LOADING);
   const [posture, setPosture] = useState<Loadable<Posture>>(LOADING);
+  const [trend, setTrend] = useState<Loadable<CostTrendData>>(LOADING);
+  const [days, setDays] = useState<RangeDays>(30);
 
   const refresh = useCallback(() => {
     setSummary(LOADING);
@@ -238,9 +232,29 @@ export default function Overview() {
     load<Posture>("/api/governance/posture").then(setPosture);
   }, []);
 
+  // The trend is fetched apart from the five above so the 7/30/90d control can
+  // re-pull just this window without refetching the whole page.
+  const loadTrend = useCallback((d: number) => {
+    setTrend(LOADING);
+    getCostTrend(d)
+      .then((data) => setTrend({ state: "ok", data }))
+      .catch((e) => setTrend({ state: "error", message: e instanceof Error ? e.message : String(e) }));
+  }, []);
+
+  // User-initiated "reload everything" (button / `r` / retry) — trend included.
+  const refreshAll = useCallback(() => {
+    refresh();
+    loadTrend(days);
+  }, [refresh, loadTrend, days]);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Load the trend on mount and whenever the window changes (only this fetch).
+  useEffect(() => {
+    loadTrend(days);
+  }, [days, loadTrend]);
 
   // `r` re-pulls the page — the power-user path that avoids a full reload. Ignored
   // while typing in a field or when a modifier is held (leaves browser shortcuts alone).
@@ -251,15 +265,16 @@ export default function Overview() {
       const tag = el?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable) return;
       e.preventDefault();
-      refresh();
+      refreshAll();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [refresh]);
+  }, [refreshAll]);
 
   const states = [summary, cost, run, recs, posture];
   const failed = states.filter((s) => s.state === "error").length;
   const loading = states.some((s) => s.state === "loading");
+  const busy = loading || trend.state === "loading";
   const allFailed = failed === states.length;
 
   // Real denominator for the savings ratio: only when the cost total actually loaded.
@@ -296,6 +311,7 @@ export default function Overview() {
           <p className="sub">Cost, savings, and the latest governance run across your clouds.</p>
         </div>
         <div className="page-head-meta">
+          <RangeControl value={days} onChange={setDays} disabled={trend.state === "loading"} />
           {asOf && (
             <span className="as-of" title={asOfAbs ? `Last run finished ${asOfAbs}` : undefined}>
               Data as of {asOf}
@@ -304,8 +320,8 @@ export default function Overview() {
           <button
             type="button"
             className="btn-refresh"
-            data-busy={loading}
-            onClick={refresh}
+            data-busy={busy}
+            onClick={refreshAll}
             aria-label="Refresh data (shortcut: r)"
             title="Refresh (r)"
           >
@@ -329,7 +345,7 @@ export default function Overview() {
                 : `${failed} of ${states.length} requests failed — showing what loaded.`}
             </div>
           </div>
-          <button type="button" className="retry" onClick={refresh}>
+          <button type="button" className="retry" onClick={refreshAll}>
             Retry
           </button>
         </div>
@@ -375,6 +391,7 @@ export default function Overview() {
               );
             }}
           />
+          <CostTrend trend={trend} />
           <span className="card-link">
             Cost breakdown <span aria-hidden="true">→</span>
           </span>

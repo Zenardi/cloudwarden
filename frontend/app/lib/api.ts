@@ -239,6 +239,31 @@ export interface AISummary {
   model?: string;
 }
 
+/** One day of the cost-trend series (`/api/costs/trend`, #113). */
+export interface CostTrendPoint {
+  date: string; // ISO YYYY-MM-DD
+  cost: number;
+}
+
+/**
+ * Amortized cost for the current window vs the immediately prior window of equal
+ * length, plus a daily series. `delta_pct` is `null` when the prior window is
+ * empty (no bogus % on a first-ever period). Mirrors the backend response (#113).
+ */
+export interface CostTrend {
+  days: number;
+  currency: string;
+  total: number;
+  prior_total: number;
+  delta: number;
+  delta_pct: number | null;
+  series: CostTrendPoint[];
+}
+
+/** Fetch the cost trend for the last `days` days (clamped 1–365 server-side). */
+export const getCostTrend = (days = 30): Promise<CostTrend> =>
+  apiGet<CostTrend>(`/api/costs/trend?days=${days}`);
+
 export function money(v: number | null | undefined, currency = "USD"): string {
   const n = typeof v === "number" ? v : 0;
   return new Intl.NumberFormat("en-US", {
