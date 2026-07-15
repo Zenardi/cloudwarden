@@ -66,6 +66,7 @@ export interface Recommendation {
   risk: string;
   confidence: number;
   est_monthly_savings: number;
+  currency?: string;
   source: string;
   priority: number;
   rationale?: string | null;
