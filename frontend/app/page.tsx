@@ -15,8 +15,10 @@ import {
 import type { AISummary, CostTrend as CostTrendData, Posture, Recommendation } from "./lib/api";
 import type { Loadable } from "./lib/loadable";
 import { deriveSavings } from "./lib/savings";
+import { prettyType } from "./lib/format";
 import { DEFAULT_DAYS, DEFAULT_PROVIDER, parseScope, scopeToQuery } from "./lib/scope";
 import { CostTrend } from "./components/CostTrend";
+import { MonthlyCostChart } from "./components/MonthlyCostChart";
 import { RangeControl, type RangeDays } from "./components/RangeControl";
 import { RefreshStatus } from "./components/RefreshStatus";
 import { ScopeControls, type ProviderScope } from "./components/ScopeControls";
@@ -107,27 +109,6 @@ function runBadgeClass(status?: string | null): string {
   return "badge";
 }
 
-/**
- * Azure resource-type id → a label an operator reads at a glance
- * ("microsoft.compute/virtualmachines" → "Virtual machines"). Falls back to a
- * title-cased tail so an unmapped type is still legible, never a raw slug.
- */
-const TYPE_LABELS: Record<string, string> = {
-  "microsoft.compute/virtualmachines": "Virtual machines",
-  "microsoft.compute/disks": "Managed disks",
-  "microsoft.web/serverfarms": "App Service plans",
-  "microsoft.storage/storageaccounts": "Storage accounts",
-  "microsoft.network/publicipaddresses": "Public IPs",
-  "microsoft.sql/servers": "SQL servers",
-  "microsoft.containerservice/managedclusters": "AKS clusters",
-};
-function prettyType(t?: string | null): string {
-  if (!t) return "Other";
-  const key = t.toLowerCase();
-  if (TYPE_LABELS[key]) return TYPE_LABELS[key];
-  const tail = key.split("/").pop() ?? key;
-  return tail.charAt(0).toUpperCase() + tail.slice(1);
-}
 
 /**
  * Humanize a snake_case backend enum for the reading line — "delete_public_ip" →
@@ -420,7 +401,7 @@ export default function Overview() {
       )}
 
       <div className="cards kpis" aria-busy={loading}>
-        <Link className="card kpi" href="/costs" aria-describedby="cost-amortized-caveat">
+        <Link className="card kpi kpi--cost" href="/costs" aria-describedby="cost-amortized-caveat">
           <div
             className="label"
             title={`Amortized: upfront reservation & commitment costs are spread evenly across the ${days} days, not charged in a lump on the purchase date. Figures are estimates — Cost Management data lags ~8–24h and isn’t final until invoiced.`}
@@ -465,7 +446,7 @@ export default function Overview() {
           </span>
         </Link>
 
-        <Link className="card kpi" href="/recommendations">
+        <Link className="card kpi kpi--save" href="/recommendations">
           <div className="label label-row">
             <span>Potential monthly savings</span>
             {scoped && <ScopeTag />}
@@ -493,7 +474,7 @@ export default function Overview() {
           </span>
         </Link>
 
-        <Link className="card kpi" href="/runs" title={runId ? `Run ${runId}` : undefined}>
+        <Link className="card kpi kpi--run" href="/runs" title={runId ? `Run ${runId}` : undefined}>
           <div className="label">Last run</div>
           <CardValue
             loadable={run}
@@ -527,8 +508,9 @@ export default function Overview() {
         </Link>
       </div>
 
-      <div className="overview-grid">
-        <section className="panel" aria-labelledby="recs-h">
+      <MonthlyCostChart provider={provider} />
+
+        <section className="panel overview-actions" aria-labelledby="recs-h">
           <div className="panel-head">
             <div className="panel-head-titles">
               <h2 className="panel-title" id="recs-h">
@@ -552,7 +534,7 @@ export default function Overview() {
             <PanelBody
               loadable={recs}
               isEmpty={(d) => d.length === 0}
-              empty="No recommendations yet — trigger a run from the Runs page."
+              empty="No recommendations — the latest run found no right-sizing candidates (running VMs with utilization data) or Azure Advisor findings."
             >
               {(d) =>
                 d.slice(0, 5).map((r) => (
@@ -585,7 +567,7 @@ export default function Overview() {
           )}
         </section>
 
-        <div className="overview-aside">
+        <div className="overview-grid">
           <section className="panel" aria-labelledby="drivers-h">
             <div className="panel-head">
               <h2 className="panel-title" id="drivers-h">
@@ -688,7 +670,6 @@ export default function Overview() {
             </PanelBody>
           </section>
         </div>
-      </div>
 
       <h2 className="section-head">
         AI executive summary
@@ -720,7 +701,7 @@ export default function Overview() {
       </div>
 
       <h2 className="section-head">Dashboards</h2>
-      <div className="links">
+      <div className="links dash-links">
         <a
           href={`${GRAFANA_BASE}/d/finops-cost`}
           target="_blank"

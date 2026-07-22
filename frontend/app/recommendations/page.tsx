@@ -116,7 +116,9 @@ export default function Recommendations() {
           {recs.length === 0 && !err && (
             <tr>
               <td colSpan={10} className="muted">
-                No recommendations yet — trigger a run from the Runs page.
+                No recommendations. These come from right-sizing VMs with utilization
+                metrics (idle/over-provisioned) and from Azure Advisor — the latest run
+                found none. Trigger a run from the Runs page if you haven’t yet.
               </td>
             </tr>
           )}

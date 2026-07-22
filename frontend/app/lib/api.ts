@@ -365,8 +365,8 @@ export function buildAssetQuery(opts: AssetQueryInputs): AssetQuery {
   const filters: AssetFilter[] = [];
   if (opts.provider && opts.provider !== "all")
     filters.push({ column: "provider", op: "eq", value: opts.provider });
-  if (opts.type) filters.push({ column: "type", op: "eq", value: opts.type });
-  if (opts.location) filters.push({ column: "location", op: "eq", value: opts.location });
+  if (opts.type) filters.push({ column: "type", op: "contains", value: opts.type });
+  if (opts.location) filters.push({ column: "location", op: "contains", value: opts.location });
   if (opts.contains) filters.push({ column: "resource_id", op: "contains", value: opts.contains });
   const tags: Record<string, string> = {};
   if (opts.tagKey && opts.tagValue) tags[opts.tagKey] = opts.tagValue;

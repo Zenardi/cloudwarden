@@ -109,7 +109,7 @@ export default function Subscriptions() {
 
   const run = (s: Subscription) =>
     act(`run:${s.subscription_id}`, () =>
-      apiPost(`/api/runs?mock=true&subscription_id=${encodeURIComponent(s.subscription_id)}`)
+      apiPost(`/api/runs?subscription_id=${encodeURIComponent(s.subscription_id)}`)
     );
 
   async function test(s: Subscription) {

@@ -119,8 +119,8 @@ export default function AssetDetail() {
         {asset.resource_id}
       </p>
 
-      <div className="cards">
-        <div className="card">
+      <div className="cards asset-facts">
+        <div className="card asset-fact-wide">
           <div className="label">Type</div>
           <div className="value" style={{ fontSize: 15 }}>
             {asset.type ?? "—"}

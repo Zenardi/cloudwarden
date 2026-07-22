@@ -326,6 +326,11 @@ tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: var(--panel2); }
 .exec-detail { background: var(--bg); padding: 10px 12px; }
 .exec-detail table { margin-bottom: 0; }
+/* Runs table: keep the error cell from stretching the row; the full text is in
+   the row's title tooltip and its expanded detail panel. */
+.err-cell { color: var(--red); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-error { white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: auto; margin: 0;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 
 /* ===== Overview: page header (title zone + as-of / refresh) ===== */
 .page-head {
@@ -341,13 +346,16 @@ tr.clickable:hover td { background: var(--panel2); }
 .btn-refresh[data-busy="true"] .spin-ico { animation: cw-spin .8s linear infinite; }
 @keyframes cw-spin { to { transform: rotate(360deg); } }
 
-/* ===== Overview: dense work area — asymmetric 2-col that stacks ===== */
+/* ===== Overview: dense work area — full-width actions band, then an even
+   2-col (cost drivers | posture) row. Even columns + a full-width primary panel
+   avoid the L-shaped void a short/empty panel leaves in an asymmetric grid. ===== */
+.overview-actions { margin-top: var(--space-4); }
 .overview-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-4);
   align-items: start;
-  margin-top: var(--space-6);
+  margin-top: var(--space-4);
 }
 .overview-aside { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
 @media (max-width: 900px) { .overview-grid { grid-template-columns: 1fr; } }
@@ -409,6 +417,7 @@ a.action-row:hover .action-name { text-decoration: underline; }
 .bars { display: flex; flex-direction: column; gap: var(--space-3); }
 .bar-row { display: grid; grid-template-columns: 1fr auto; column-gap: var(--space-3); align-items: baseline; }
 .bar-label { font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-sub { color: var(--muted); }
 .bar-val { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
 .bar-track { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--panel2); overflow: hidden; margin-top: 5px; }
 /* Grow via transform, not width — GPU-composited, no layout thrash. `--fill` is the
@@ -427,6 +436,107 @@ a.action-row:hover .action-name { text-decoration: underline; }
 .posture-num.ok { color: var(--green); }
 .posture-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .posture-note { margin-top: var(--space-3); font-size: 12px; color: var(--muted); }
+
+/* ============================================================================
+   Overview rework — command-center polish. Additive + Overview-scoped so the
+   shared .card / .panel / .links used on other pages are untouched. Honours the
+   existing dark token set and prefers-reduced-motion.
+   ============================================================================ */
+
+/* KPI cards: make the hero numbers land harder. A left accent rail colour-codes
+   each metric for instant grouping; hover lifts the card (not just a recolour). */
+.kpis .kpi {
+  position: relative; overflow: hidden;
+  padding-left: calc(var(--space-4) + 3px);
+  transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease, background .16s ease;
+}
+.kpis .kpi::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
+  background: var(--accent); opacity: .85;
+}
+.kpi--save::before { background: var(--green); }
+.kpi--run::before { background: var(--muted); }
+.kpis .kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px -10px rgba(0, 0, 0, .55);
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+}
+.kpis .kpi .value { font-variant-numeric: tabular-nums; font-size: 28px; }
+
+/* Governance posture: render the three totals as status tiles so compliant /
+   violations read at a glance — the tinted background backs up the colour rather
+   than relying on colour alone (WCAG 1.4.1). */
+.posture { gap: var(--space-3); }
+.posture-stat {
+  flex: 1; min-width: 0; padding: var(--space-3);
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel2);
+}
+.posture-stat:has(.ok) {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--border));
+  background: color-mix(in srgb, var(--green) 9%, var(--panel2));
+}
+.posture-stat:has(.viol) {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  background: color-mix(in srgb, var(--red) 9%, var(--panel2));
+}
+
+/* Dashboards: promote the bare text links to bordered tiles with a clear
+   affordance. Scoped via .dash-links so the generic .links elsewhere is untouched. */
+.dash-links { gap: var(--space-3); }
+.dash-links a {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  font-size: 13px; font-weight: 500; color: var(--text);
+  transition: border-color .16s ease, background .16s ease, transform .16s ease;
+}
+.dash-links a:hover {
+  border-color: var(--accent); transform: translateY(-1px); text-decoration: none;
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+}
+
+/* Entrance: a gentle fade-up stagger on the KPI row (the design-tool "Stagger
+   List (Standard)"). `backwards` fill mode reverts to the element's own style
+   after running, so the :hover transform above still works. Reduced-motion off. */
+@media (prefers-reduced-motion: no-preference) {
+  .kpis .kpi { animation: cw-rise .4s backwards cubic-bezier(.22, 1, .36, 1); }
+  .kpis .kpi:nth-child(2) { animation-delay: .06s; }
+  .kpis .kpi:nth-child(3) { animation-delay: .12s; }
+}
+@keyframes cw-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ===== Cost explorer: 2-col chart grid (breakdowns side by side) + donut ===== */
+.costs-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 820px) { .costs-grid { grid-template-columns: 1fr; } }
+
+.pie { display: flex; align-items: center; gap: var(--space-5); flex-wrap: wrap; margin-top: var(--space-2); }
+.pie-donut { position: relative; width: 148px; height: 148px; flex: 0 0 auto; }
+.pie-svg { width: 100%; height: 100%; display: block; }
+.pie-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; pointer-events: none;
+}
+.pie-center-val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.pie-center-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.pie-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; flex: 1 1 160px; min-width: 0; }
+.pie-legend-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); font-size: 12.5px; }
+.pie-swatch { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.pie-legend-label { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pie-legend-val { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+/* ===== Asset detail facts — long unbroken values (resource type / id) must wrap
+   inside their card instead of overflowing/clipping; Type gets a full-width row so
+   the long provider path has room to breathe. ===== */
+.asset-facts .value { overflow-wrap: anywhere; word-break: break-word; line-height: 1.4; }
+.asset-fact-wide { grid-column: 1 / -1; }
 
 /* Skeleton rows for the new panels */
 .skeleton-row { height: 34px; margin-top: var(--space-2); }
@@ -471,13 +581,29 @@ a.action-row:hover .action-name { text-decoration: underline; }
 }
 .range-opt:first-child { border-left: 0; }
 .range-opt:hover:not(:disabled) { background: var(--panel2); color: var(--text); border-color: var(--border); }
-.range-opt[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--text); }
+.range-opt[aria-pressed="true"],
+.range-opt[aria-checked="true"] { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--text); }
 .range-opt:disabled { opacity: .55; cursor: default; }
+
+/* Monthly cost chart (Overview) — vertical bars scaled to the peak month. */
+.mcc-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.mcc-chart { display: flex; align-items: stretch; gap: var(--space-2); height: 200px; margin-top: var(--space-4); }
+.mcc-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.mcc-plot { flex: 1 1 auto; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.mcc-bar {
+  width: 62%; max-width: 46px; min-height: 3px; border-radius: 5px 5px 0 0;
+  height: calc(var(--h, 0) * 100%); background: var(--accent);
+  transition: height .45s cubic-bezier(.22, 1, .36, 1);
+}
+.mcc-col:hover .mcc-bar { background: color-mix(in srgb, var(--accent) 80%, var(--text)); }
+.mcc-val { font-size: 11.5px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mcc-xlabel { font-size: 11px; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {
   .bar-fill { transition: none; }
   .btn-refresh[data-busy="true"] .spin-ico { animation: none; }
   .range-opt { transition: none; }
+  .mcc-bar { transition: none; }
 }
 
 /* Secondary links ("All 5 →", "Breakdown →", "Compliance →") are 12px inline —

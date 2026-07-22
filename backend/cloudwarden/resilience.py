@@ -77,15 +77,32 @@ def _is_conn_error(exc: Exception) -> bool:
 
 
 def _retry_after_seconds(exc: Exception) -> float | None:
+    """Largest back-off hint (in seconds) the response advertises.
+
+    Reads the standard ``Retry-After`` *and* Azure's service-specific
+    ``x-ms-ratelimit-*-retry-after`` headers (e.g.
+    ``x-ms-ratelimit-microsoft.costmanagement-entity-retry-after``). Cost Management
+    429s frequently signal the wait *only* via the latter, so honouring just
+    ``Retry-After`` made the retry fall back to a too-short exponential delay and give
+    up long before the throttle window cleared. Take the max so we wait long enough.
+    """
     resp = getattr(exc, "response", None)
     headers = getattr(resp, "headers", None) or getattr(exc, "headers", None)
     if not headers:
         return None
     try:
-        raw = headers.get("Retry-After") or headers.get("retry-after")
-        return float(raw) if raw is not None else None
-    except (TypeError, ValueError):
+        items = list(headers.items())
+    except AttributeError:
         return None
+    hints: list[float] = []
+    for name, value in items:
+        if "retry-after" not in str(name).lower():
+            continue
+        try:
+            hints.append(float(value))
+        except (TypeError, ValueError):
+            continue  # HTTP-date form or junk — ignore, fall back to backoff
+    return max(hints) if hints else None
 
 
 def with_retry(

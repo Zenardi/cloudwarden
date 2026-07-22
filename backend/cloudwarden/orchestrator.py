@@ -203,6 +203,41 @@ def run_one_subscription(subscription_id: str, mock: bool | None = None) -> dict
     return run_pipeline(subscription=ctx)
 
 
+def _sync_display_names() -> None:
+    """Backfill placeholder subscription names with the real cloud name (Azure only).
+
+    Best-effort and self-limiting: only rows still carrying the seed placeholder
+    trigger a connectivity call, and a failure never aborts the collection run.
+    The (blocking) ARM connectivity checks run OUTSIDE any DB transaction — we read
+    the candidate rows into plain tuples first, then persist each resolved name in
+    its own short transaction — so a slow/unreachable ARM never holds Postgres
+    locks open.
+    """
+    from .azure.connectivity import check_connection
+
+    with session_scope() as session:
+        candidates = [
+            (r.subscription_id, r.tenant_id, r.client_id, r.client_secret)
+            for r in repo.enabled_subscriptions(session)
+            if (getattr(r, "provider", None) or "azure") == "azure" and repo.is_auto_display_name(r)
+        ]
+
+    for sub_id, tenant_id, client_id, client_secret in candidates:
+        credential = None
+        if client_id and client_secret:
+            from .auth import credential_for
+
+            credential = credential_for(tenant_id, client_id, client_secret)
+        try:
+            result = check_connection(sub_id, credential=credential)
+        except Exception:  # noqa: BLE001 - name sync must never break a run
+            logger.warning("display-name sync failed for %s", sub_id, exc_info=True)
+            continue
+        if result.get("ok") and result.get("subscription_name"):
+            with session_scope() as session:
+                repo.backfill_display_name(session, sub_id, result["subscription_name"])
+
+
 def run_all_subscriptions(mock: bool | None = None) -> dict[str, Any]:
     """Run the pipeline once per enabled subscription.
 
@@ -216,6 +251,11 @@ def run_all_subscriptions(mock: bool | None = None) -> dict[str, Any]:
     init_db()
     with session_scope() as session:
         repo.ensure_default_subscription(session, settings)
+    # Resolve real subscription names before loading the run contexts (network I/O
+    # runs outside the transaction above; see _sync_display_names).
+    if not settings.finops_mock:
+        _sync_display_names()
+    with session_scope() as session:
         records = [
             _context_from_record(r, settings.finops_mock)
             for r in repo.enabled_subscriptions(session)

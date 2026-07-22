@@ -142,6 +142,15 @@ def costs_trend(days: int = 30) -> dict[str, Any]:
         return repo.cost_trend(session, days=days)
 
 
+@app.get("/api/costs/monthly")
+def costs_monthly(months: int = 6, provider: str = "all") -> dict[str, Any]:
+    """Amortized spend bucketed by calendar month (for the Overview monthly chart)."""
+    months = max(1, min(months, 24))
+    prov = None if provider in ("", "all") else provider
+    with session_scope() as session:
+        return repo.cost_monthly(session, months=months, provider=prov)
+
+
 @app.get("/api/recommendations")
 def recommendations() -> list[dict[str, Any]]:
     with session_scope() as session:
@@ -1396,7 +1405,13 @@ def test_subscription(subscription_id: str) -> dict[str, Any]:
         from ..auth import credential_for
 
         credential = credential_for(rec.tenant_id, rec.client_id, rec.client_secret)
-    return check_connection(rec.subscription_id, credential=credential)
+    result = check_connection(rec.subscription_id, credential=credential)
+    # Sync the real Azure subscription name into the stored display name (only while
+    # it is still the auto-generated placeholder — never overwrite a user's name).
+    if result.get("ok") and result.get("subscription_name"):
+        with session_scope() as session:
+            repo.backfill_display_name(session, rec.subscription_id, result["subscription_name"])
+    return result
 
 
 # --------------------------------------------------------------------------- #

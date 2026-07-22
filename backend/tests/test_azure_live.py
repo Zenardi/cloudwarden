@@ -60,6 +60,63 @@ def test_inventory_live(monkeypatch) -> None:
     get_settings.cache_clear()
 
 
+class _FormatAwareRG:
+    """Fake that mirrors Resource Graph's *real* format behavior: it returns the
+    ``{columns, rows}`` table dict by default and the list-of-dicts shape only when
+    ``result_format=object_array`` is requested.
+
+    Regression guard for the live-inventory crash: the query must set
+    ``ResultFormat.OBJECT_ARRAY``. Without it the service returns table format,
+    ``list(response.data)`` yields the dict's string keys, and ``_to_records``
+    raises ``TypeError: string indices must be integers``. The plain ``_FakeRG``
+    above can't catch this because it hands back the correct shape unconditionally.
+    """
+
+    _ROW = {
+        "id": "/subscriptions/s/resourceGroups/RG/providers/Microsoft.Compute/virtualMachines/VM",
+        "name": "VM",
+        "type": "Microsoft.Compute/virtualMachines",
+        "location": "eastus",
+        "resourceGroup": "RG",
+        "subscriptionId": "s",
+        "sku": "Standard_D4s_v5",
+        "tags": {"env": "prod"},
+        "powerState": "PowerState/running",
+        "diskState": None,
+        "ipConfig": None,
+        "numberOfSites": None,
+    }
+
+    def __init__(self) -> None:
+        self.requested_format = None
+
+    def resources(self, request):
+        from azure.mgmt.resourcegraph.models import ResultFormat
+
+        self.requested_format = request.options.result_format
+        if request.options.result_format == ResultFormat.OBJECT_ARRAY:
+            return _RGResp([dict(self._ROW)])
+        # Default service behavior: a {columns, rows} table dict, not a list.
+        cols = list(self._ROW)
+        return _RGResp(
+            {"columns": [{"name": c} for c in cols], "rows": [[self._ROW[c] for c in cols]]}
+        )
+
+
+def test_inventory_live_requests_object_array(monkeypatch) -> None:
+    """The live query must request object_array so Resource Graph returns rows as
+    dicts; otherwise it returns table format and _to_records crashes."""
+    from azure.mgmt.resourcegraph.models import ResultFormat
+
+    monkeypatch.setenv("FINOPS_MOCK", "0")
+    get_settings.cache_clear()
+    rg = _FormatAwareRG()
+    records = inventory.collect_inventory(client=rg)
+    assert rg.requested_format == ResultFormat.OBJECT_ARRAY
+    assert len(records) == 1 and records[0].resource_id == _VM_RID
+    get_settings.cache_clear()
+
+
 # --- metrics ---
 class _Point:
     def __init__(self, ts, avg, mx):
@@ -195,7 +252,37 @@ def test_cost_live(monkeypatch) -> None:
     assert rows and rows[0].cost == 5.0
     assert rows[0].usage_date == dt.date(2026, 7, 12)
     assert {r.cost_type for r in rows} == {"Amortized", "Actual"}
+    # Every live row must carry the queried subscription — the Overview cloud filter
+    # joins cost → subscriptions.provider on it; unset, an Azure filter returns €0.
+    assert rows and all(r.subscription_id for r in rows)
     get_settings.cache_clear()
+
+
+def test_parse_response_stamps_subscription_id() -> None:
+    """Regression: live cost rows must be stamped with the subscription queried, or
+    the provider filter (subscription_id → subscriptions.provider) matches nothing."""
+    payload = {
+        "properties": {
+            "columns": [{"name": "Cost"}, {"name": "UsageDate"}, {"name": "ResourceId"}],
+            "rows": [[5.0, 20260712, _VM_RID.upper()]],
+        }
+    }
+    rows = cost._parse_response(payload, "Amortized", "sub-xyz")
+    assert rows and all(r.subscription_id == "sub-xyz" for r in rows)
+
+
+def test_query_body_clamps_lookback_to_api_limit() -> None:
+    """A large COST_LOOKBACK_DAYS must be clamped so the Cost Management daily
+    query never exceeds the ~1-year cap (which returns a bare 400)."""
+    from cloudwarden.azure.cost import _MAX_DAILY_LOOKBACK_DAYS, _query_body
+
+    body = _query_body(1000, "Amortized")
+    start = dt.date.fromisoformat(body["timePeriod"]["from"][:10])
+    assert (dt.date.today() - start).days == _MAX_DAILY_LOOKBACK_DAYS  # clamped, not 1000
+    # A normal lookback passes through unchanged.
+    body30 = _query_body(30, "Actual")
+    start30 = dt.date.fromisoformat(body30["timePeriod"]["from"][:10])
+    assert (dt.date.today() - start30).days == 30
 
 
 # --- logs (memory) ---

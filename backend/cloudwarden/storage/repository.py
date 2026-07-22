@@ -19,6 +19,18 @@ from sqlalchemy.orm import Session
 from .. import models as m
 from . import schema
 
+# PostgreSQL binds at most 65535 parameters per statement. A single
+# ``INSERT ... VALUES`` with a wide payload (many columns × many rows) trips this
+# hard limit and the whole statement fails — which silently broke cost collection
+# once the lookback window grew large. Bulk upserts chunk their rows to stay under
+# it, sized per-caller from the row's column count.
+_PG_MAX_BIND_PARAMS = 65535
+
+
+def _rows_per_statement(columns: int) -> int:
+    """Max rows per INSERT so ``columns × rows`` stays under Postgres's bind cap."""
+    return max(1, _PG_MAX_BIND_PARAMS // max(columns, 1))
+
 
 # --------------------------------------------------------------------------- #
 # Run lifecycle
@@ -304,6 +316,11 @@ def set_default_subscription(session: Session, subscription_id: str) -> bool:
     return True
 
 
+def _auto_display_name(sub_id: str) -> str:
+    """The placeholder name the seed assigns before the real cloud name is known."""
+    return f"Default ({sub_id[:8]}…)" if len(sub_id) > 8 else sub_id
+
+
 def ensure_default_subscription(session: Session, settings: Any) -> None:
     """Seed the subscriptions table from the env subscription if it is empty."""
     if session.query(schema.Subscription).count() > 0:
@@ -312,7 +329,7 @@ def ensure_default_subscription(session: Session, settings: Any) -> None:
     session.add(
         schema.Subscription(
             subscription_id=sub_id,
-            display_name=f"Default ({sub_id[:8]}…)" if len(sub_id) > 8 else sub_id,
+            display_name=_auto_display_name(sub_id),
             provider="azure",
             tenant_id=settings.azure_tenant_id,
             enabled=True,
@@ -320,6 +337,25 @@ def ensure_default_subscription(session: Session, settings: Any) -> None:
         )
     )
     session.flush()
+
+
+def is_auto_display_name(rec: schema.Subscription) -> bool:
+    """True while the row still carries the seed placeholder (real name not yet synced)."""
+    return rec.display_name == _auto_display_name(rec.subscription_id)
+
+
+def backfill_display_name(session: Session, subscription_id: str, real_name: str | None) -> bool:
+    """Set the display name to the cloud-resolved name, but only while it is still
+    the auto-generated placeholder — so a name the user chose is never clobbered.
+    Returns True when a change was persisted."""
+    if not real_name or not real_name.strip():
+        return False
+    rec = session.get(schema.Subscription, subscription_id)
+    if rec is None or rec.display_name != _auto_display_name(subscription_id):
+        return False
+    rec.display_name = real_name.strip()
+    session.flush()
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -1816,20 +1852,23 @@ def upsert_cost_snapshots(session: Session, rows: list[m.CostRow]) -> int:
         }
         for c in dedup.values()
     ]
-    stmt = pg_insert(schema.CostSnapshot).values(payload)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["usage_date", "resource_id", "meter_category", "cost_type"],
-        set_={
-            "cost": stmt.excluded.cost,
-            "currency": stmt.excluded.currency,
-            "subscription_id": stmt.excluded.subscription_id,
-            "resource_type": stmt.excluded.resource_type,
-            "resource_group": stmt.excluded.resource_group,
-            "location": stmt.excluded.location,
-            "service_name": stmt.excluded.service_name,
-        },
-    )
-    session.execute(stmt)
+    step = _rows_per_statement(columns=11)  # cost_snapshots row = 11 bound params
+    for start in range(0, len(payload), step):
+        chunk = payload[start : start + step]
+        stmt = pg_insert(schema.CostSnapshot).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["usage_date", "resource_id", "meter_category", "cost_type"],
+            set_={
+                "cost": stmt.excluded.cost,
+                "currency": stmt.excluded.currency,
+                "subscription_id": stmt.excluded.subscription_id,
+                "resource_type": stmt.excluded.resource_type,
+                "resource_group": stmt.excluded.resource_group,
+                "location": stmt.excluded.location,
+                "service_name": stmt.excluded.service_name,
+            },
+        )
+        session.execute(stmt)
     return len(payload)
 
 
@@ -1853,18 +1892,21 @@ def insert_metric_samples(session: Session, samples: list[m.MetricSample]) -> in
         }
         for s in dedup.values()
     ]
-    stmt = pg_insert(schema.UtilizationSample).values(payload)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["ts", "resource_id", "metric_name"],
-        set_={
-            "avg": stmt.excluded.avg,
-            "min": stmt.excluded.min,
-            "max": stmt.excluded.max,
-            "unit": stmt.excluded.unit,
-            "granularity": stmt.excluded.granularity,
-        },
-    )
-    session.execute(stmt)
+    step = _rows_per_statement(columns=8)  # utilization_samples row = 8 bound params
+    for start in range(0, len(payload), step):
+        chunk = payload[start : start + step]
+        stmt = pg_insert(schema.UtilizationSample).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["ts", "resource_id", "metric_name"],
+            set_={
+                "avg": stmt.excluded.avg,
+                "min": stmt.excluded.min,
+                "max": stmt.excluded.max,
+                "unit": stmt.excluded.unit,
+                "granularity": stmt.excluded.granularity,
+            },
+        )
+        session.execute(stmt)
     return len(payload)
 
 
@@ -1873,14 +1915,17 @@ def upsert_rollups(session: Session, rollups: list[m.UtilizationRollup]) -> int:
         return 0
     dedup: dict[tuple, m.UtilizationRollup] = {(r.resource_id, r.window_end): r for r in rollups}
     payload = [r.model_dump() for r in dedup.values()]
-    stmt = pg_insert(schema.UtilizationRollup).values(payload)
-    update_cols = {
-        c: getattr(stmt.excluded, c) for c in payload[0] if c not in {"resource_id", "window_end"}
-    }
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["resource_id", "window_end"], set_=update_cols
-    )
-    session.execute(stmt)
+    step = _rows_per_statement(columns=len(payload[0]))
+    for start in range(0, len(payload), step):
+        chunk = payload[start : start + step]
+        stmt = pg_insert(schema.UtilizationRollup).values(chunk)
+        update_cols = {
+            c: getattr(stmt.excluded, c) for c in chunk[0] if c not in {"resource_id", "window_end"}
+        }
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["resource_id", "window_end"], set_=update_cols
+        )
+        session.execute(stmt)
     return len(payload)
 
 
@@ -2083,6 +2128,38 @@ def cost_trend(session: Session, days: int = 30) -> dict[str, Any]:
         "delta_pct": delta_pct,
         "series": series,
     }
+
+
+def cost_monthly(session: Session, months: int = 6, provider: str | None = None) -> dict[str, Any]:
+    """Amortized spend bucketed by calendar month over the last ``months`` months
+    (including the current, partial one). Only months that actually have data are
+    returned. The provider filter mirrors ``_cost_scope``; ``months`` is clamped to
+    1..24 and every value is a bound parameter (injection-safe)."""
+    months = min(max(months, 1), 24)
+    where = (
+        " WHERE cost_type = 'Amortized' "
+        "AND usage_date >= date_trunc('month', CURRENT_DATE) - make_interval(months => :back)"
+    )
+    params: dict[str, Any] = {"back": months - 1}
+    if provider:
+        where += (
+            " AND subscription_id IN "
+            "(SELECT subscription_id FROM subscriptions WHERE provider = :provider)"
+        )
+        params["provider"] = provider
+    rows = _rows(
+        session,
+        "SELECT to_char(date_trunc('month', usage_date), 'YYYY-MM') AS month, "
+        "SUM(cost) AS cost, MAX(currency) AS currency FROM cost_snapshots"
+        + where
+        + " GROUP BY date_trunc('month', usage_date) ORDER BY date_trunc('month', usage_date)",
+        **params,
+    )
+    series = [
+        {"month": r["month"], "cost": float(r["cost"]), "currency": r["currency"]} for r in rows
+    ]
+    currency = series[-1]["currency"] if series else "USD"
+    return {"months": months, "currency": currency, "series": series}
 
 
 def latest_recommendations(session: Session, limit: int = 200) -> list[dict[str, Any]]:

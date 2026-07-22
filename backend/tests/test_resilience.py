@@ -48,6 +48,26 @@ def test_retry_after_seconds() -> None:
     assert R._retry_after_seconds(_HttpErr(429, {"Retry-After": "bad"})) is None
 
 
+def test_retry_after_reads_azure_costmanagement_header() -> None:
+    """Cost Management 429s signal the wait via x-ms-ratelimit-*-retry-after, not the
+    standard Retry-After — the retry must honour it or it gives up far too early."""
+    hdr = "x-ms-ratelimit-microsoft.costmanagement-entity-retry-after"
+    assert R._retry_after_seconds(_HttpErr(429, {hdr: "57"})) == 57.0
+
+
+def test_retry_after_takes_max_across_headers() -> None:
+    """With several hints present (standard + service-specific), wait for the longest."""
+    exc = _HttpErr(
+        429,
+        {
+            "Retry-After": "5",
+            "x-ms-ratelimit-microsoft.costmanagement-client-retry-after": "60",
+            "x-ms-ratelimit-remaining-subscription-reads": "0",  # not a retry-after → ignored
+        },
+    )
+    assert R._retry_after_seconds(exc) == 60.0
+
+
 def test_with_retry_succeeds_after_failures() -> None:
     calls = {"n": 0}
     sleeps: list[float] = []
