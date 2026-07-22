@@ -7,16 +7,40 @@ the resource.
 
 from __future__ import annotations
 
+import re
+
 from ..models import ActivitySignal, Recommendation, ResourceRecord
+
+# DevCenter dev-box definition SKUs encode the VM size, e.g.
+# "general_i_16c64gb512ssd_v2" → 16 vCPU / 64 GB. Pools whose definition is a large
+# size are right-sizing candidates. 16 vCPU is the largest common dev-box tier.
+_DEVBOX_VCPU_RE = re.compile(r"_(\d+)c\d+gb")
+_OVERSIZED_DEVBOX_VCPU = 16
+
+
+def _devbox_vcpu(sku: str | None) -> int | None:
+    """Parse the vCPU count out of a dev-box definition SKU name (None if unknown)."""
+    if not sku:
+        return None
+    m = _DEVBOX_VCPU_RE.search(sku)
+    return int(m.group(1)) if m else None
 
 
 def detect_idle(
     resources: list[ResourceRecord], monthly_cost: dict[str, float]
 ) -> list[Recommendation]:
     recs: list[Recommendation] = []
+    # Map dev-box definition name -> SKU so a pool (which references its definition by
+    # name) can be assessed for right-sizing without a second lookup pass.
+    devbox_skus = {
+        r.name: ((r.config or {}).get("sku") or {}).get("name")
+        for r in resources
+        if r.type == "microsoft.devcenter/devcenters/devboxdefinitions"
+    }
     for r in resources:
         monthly = round(monthly_cost.get(r.resource_id, 0.0), 2)
         extra = r.extra or {}
+        cfg = r.config or {}
         if r.type == "microsoft.compute/disks" and extra.get("diskState") == "Unattached":
             recs.append(
                 Recommendation(
@@ -125,6 +149,90 @@ def detect_idle(
                     evidence={"power_state": r.power_state},
                 )
             )
+        elif r.type == "microsoft.devcenter/projects/pools":
+            # A DevCenter project pool bills for the dev boxes it hosts. Zero dev boxes
+            # = a pool paying for nothing; otherwise, a large dev-box definition is a
+            # right-sizing candidate (dev boxes are the dominant DevCenter cost).
+            count = int(cfg.get("devBoxCount") or 0)
+            if count == 0:
+                recs.append(
+                    Recommendation(
+                        resource_id=r.resource_id,
+                        category="idle_pool",
+                        action="review_idle_resource",
+                        current_sku=r.sku,
+                        risk="medium",
+                        confidence=0.6,
+                        est_monthly_savings=monthly,
+                        source="heuristic",
+                        rationale=(
+                            "DevCenter project pool hosts 0 dev boxes but still bills for "
+                            "its configuration. If it is unused, delete it."
+                        ),
+                        caveats=["confirm no planned dev-box assignments before deleting"],
+                        evidence={"devBoxCount": 0},
+                    )
+                )
+            else:
+                sku = devbox_skus.get(cfg.get("devBoxDefinitionName"))
+                vcpu = _devbox_vcpu(sku)
+                if vcpu and vcpu >= _OVERSIZED_DEVBOX_VCPU:
+                    # One dev-box size down roughly halves the per-vCPU compute rate, but
+                    # storage/licensing don't shrink — so estimate conservatively (~35%)
+                    # and keep it advisory (low confidence, heavy caveats).
+                    est = round(monthly * 0.35, 2)
+                    recs.append(
+                        Recommendation(
+                            resource_id=r.resource_id,
+                            category="oversized_pool",
+                            action="review_rightsizing",
+                            current_sku=sku,
+                            risk="low",
+                            confidence=0.4,
+                            est_monthly_savings=est,
+                            source="heuristic",
+                            rationale=(
+                                f"Dev boxes in this pool use a large {vcpu}-vCPU definition "
+                                f"({sku}). If the workload doesn't need it, a smaller size cuts "
+                                f"the hourly rate across all {count} dev boxes."
+                            ),
+                            caveats=[
+                                "estimate — validate against Dev Box pricing for the target size",
+                                "confirm developers don't rely on the larger size",
+                            ],
+                            evidence={"devBoxCount": count, "definitionSku": sku, "vcpu": vcpu},
+                        )
+                    )
+        elif r.type == "microsoft.documentdb/mongoclusters":
+            # Make Mongo (Cosmos DB for MongoDB vCore) clusters accountable. Free-tier
+            # clusters cost nothing to optimize, so only flag paid tiers for review;
+            # quantified idle detection (by connections/ops) is metric-based (Phase 3).
+            skus = [
+                s.get("sku")
+                for s in (cfg.get("nodeGroupSpecs") or [])
+                if isinstance(s, dict)
+            ]
+            paid = [s for s in skus if s and str(s).lower() != "free"]
+            if paid and monthly >= 1.0:
+                recs.append(
+                    Recommendation(
+                        resource_id=r.resource_id,
+                        category="mongo_cluster",
+                        action="review_idle_resource",
+                        current_sku=str(paid[0]),
+                        risk="medium",
+                        confidence=0.4,
+                        est_monthly_savings=0.0,
+                        source="heuristic",
+                        rationale=(
+                            f"Paid Cosmos DB for MongoDB cluster (tier {paid[0]}). Review it "
+                            f"for right-sizing or idle usage — a lower tier, disabling HA, or "
+                            f"pausing may cut cost."
+                        ),
+                        caveats=["advisory — confirm workload before changing tier or deleting"],
+                        evidence={"skus": skus},
+                    )
+                )
     return recs
 
 
