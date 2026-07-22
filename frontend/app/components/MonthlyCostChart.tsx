@@ -64,7 +64,7 @@ export function MonthlyCostChart({ provider = "all" }: { provider?: string }) {
   const currency = data?.currency;
 
   return (
-    <section className="panel" aria-labelledby="mcc-h">
+    <section className="panel overview-chart" aria-labelledby="mcc-h">
       <div className="mcc-head">
         <h2 className="panel-title" id="mcc-h">
           Monthly cost
@@ -104,9 +104,11 @@ export function MonthlyCostChart({ provider = "all" }: { provider?: string }) {
 
       {err && <div className="err">{err}</div>}
       {loading ? (
-        <div className="skeleton-row" style={{ height: 180 }} />
+        // Reserve the rendered chart's full footprint so data arriving doesn't
+        // shift the panels below it (CLS). Matches .mcc-chart height + top margin.
+        <div className="mcc-chart-reserve skeleton-row" aria-hidden />
       ) : series.length === 0 ? (
-        <p className="muted">
+        <p className="muted mcc-chart-reserve mcc-empty">
           No monthly data yet — collected cost history spans less than a month. More months
           appear here as cost data accumulates over time.
         </p>

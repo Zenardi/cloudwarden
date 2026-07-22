@@ -16,11 +16,12 @@ from typing import Any
 
 from .ai import factory as ai_factory
 from .ai.prompt import build_payload
-from .analysis.idle import detect_idle
+from .analysis.idle import detect_idle, detect_idle_by_activity
 from .analysis.rollup import build_rollups
 from .analysis.rules import evaluate_vms, prioritize
-from .analysis.savings import monthly_cost_map
+from .analysis.savings import monthly_cost_map, reclaim_factor
 from .azure._fixtures import retarget
+from .azure.activity_metrics import collect_activity_metrics
 from .azure.activitylog import collect_activity_log
 from .azure.advisor import collect_advisor
 from .azure.context import AccountContext
@@ -107,6 +108,10 @@ def run_pipeline(
         if not settings.finops_mock and settings.log_analytics_workspace_id:
             metric_samples += collect_memory(resources)
         advisor_recs = collect_advisor(subscription=subscription)
+        # Platform-metric activity signal (Phase 2b): always-on Azure Monitor
+        # metrics (Bastion sessions, storage transactions, ACR pulls) surface
+        # resources that bill but nobody uses — the pivot from the empty LA layer.
+        activity = collect_activity_metrics(resources, subscription=subscription)
         # AssetDB change history (M4.4): who/how/when each asset changed.
         activity_events = collect_activity_log(subscription=subscription)
 
@@ -121,10 +126,39 @@ def run_pipeline(
         recommendations = prioritize(
             evaluate_vms(resources, rollup_by_id, monthly, advisor_ids, settings)
             + detect_idle(resources, monthly)
+            + detect_idle_by_activity(
+                resources, activity, monthly, window_days=settings.metric_lookback_days
+            )
         )
 
         # --- recommend (AI reconciliation + executive summary) ---
         currency = next((c.currency for c in cost_rows if c.cost_type == "Amortized"), "USD")
+        # Environment-weighted potential savings (subscription "kind"): the reclaim
+        # factor discounts idle/waste savings by how safely they can be cut — a
+        # sandbox resource is delete-on-sight (x1.0), production idle needs review
+        # first (x0.5). Unclassified subs keep full value. Applied BEFORE the AI
+        # payload so the executive summary total reflects the weighted figure.
+        environment = None
+        with session_scope() as session:
+            sub_rec = repo.get_subscription(session, sub_id)
+            if sub_rec is not None:
+                environment = sub_rec.environment
+        factor = reclaim_factor(environment)
+        # Heuristic/advisor recs default to USD (model default) but their savings are
+        # all derived from this run's cost rows, so stamp them with the actual billing
+        # currency — otherwise the UI mislabels e.g. EUR savings as USD.
+        for rec in recommendations:
+            rec.currency = currency
+            if factor != 1.0 and rec.est_monthly_savings:
+                rec.est_monthly_savings = round(rec.est_monthly_savings * factor, 2)
+            if environment:
+                # Attribution: carry the environment + factor so the UI can group
+                # potential savings by subscription kind and show the discount.
+                rec.evidence = {
+                    **rec.evidence,
+                    "environment": environment,
+                    "reclaim_factor": factor,
+                }
         payload = build_payload(
             recommendations,
             cost_rows,

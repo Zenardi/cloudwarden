@@ -91,9 +91,27 @@ class UtilizationRollup(BaseModel):
     data_completeness: float = 0.0
 
 
+class ActivitySignal(BaseModel):
+    """Total of a resource's primary Azure Monitor *platform* metric over the
+    analysis window (e.g. Bastion ``sessions``, storage ``Transactions``).
+
+    Platform metrics are always-on and need no diagnostic settings, so this works
+    for resource types that emit no guest metrics. ``datapoints == 0`` means the
+    query returned nothing (unknown state) — which the idle detector treats as
+    "cannot conclude", distinct from ``total == 0`` *with* datapoints (a resource
+    that was observed and genuinely had no activity)."""
+
+    resource_id: str
+    metric_name: str
+    total: float = 0.0
+    datapoints: int = 0
+
+
 class Recommendation(BaseModel):
     resource_id: str
-    category: str  # shutdown | downsize | delete_orphan | idle_ip | empty_asp
+    # shutdown|downsize|delete_orphan|idle_disk|idle_ip|empty_asp|
+    # stopped_vm|idle_by_activity|investigate
+    category: str
     action: str
     current_sku: str | None = None
     recommended_sku: str | None = None

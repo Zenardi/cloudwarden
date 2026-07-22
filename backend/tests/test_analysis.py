@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import datetime as dt
 
-from cloudwarden.analysis.idle import detect_idle
+from cloudwarden.analysis.idle import detect_idle, detect_idle_by_activity
 from cloudwarden.analysis.rollup import build_rollup
 from cloudwarden.analysis.rules import evaluate_vms, prioritize
 from cloudwarden.analysis.savings import monthly_cost_map
 from cloudwarden.config import Settings
 from cloudwarden.metricnames import CPU, MEM_USED_PCT, NET_IN, NET_OUT
 from cloudwarden.models import (
+    ActivitySignal,
     CostRow,
     MetricSample,
     Recommendation,
@@ -137,6 +138,128 @@ def test_idle_detectors() -> None:
     )
     recs = detect_idle([disk, ip, asp], {"/x/disk": 10.0, "/x/ip": 3.0, "/x/asp": 70.0})
     assert {r.category for r in recs} == {"delete_orphan", "idle_ip", "empty_asp"}
+
+
+def test_idle_reserved_disk_from_deallocated_vm() -> None:
+    """A Reserved disk (attached to a deallocated VM) is flagged as idle_disk with
+    an advisory, non-auto-executable action and the disk's own monthly cost."""
+    disk = ResourceRecord(
+        resource_id="/x/osdisk",
+        name="rw-vm-test-1_OsDisk",
+        type="microsoft.compute/disks",
+        location="eastus",
+        resource_group="rg",
+        subscription_id="s",
+        extra={"diskState": "Reserved"},
+    )
+    recs = detect_idle([disk], {"/x/osdisk": 4.87})
+    assert len(recs) == 1
+    rec = recs[0]
+    assert rec.category == "idle_disk"
+    assert rec.action == "review_stopped_vm"
+    assert rec.est_monthly_savings == 4.87
+    assert rec.evidence == {"diskState": "Reserved"}
+    # Advisory only — must NOT map to an auto-executable remediation action.
+    from cloudwarden.remediation.executor import SUPPORTED
+
+    assert rec.action not in SUPPORTED
+
+
+def test_stopped_vm_detected() -> None:
+    """A deallocated VM is surfaced (stopped_vm) even though it has no rollup."""
+    vm = ResourceRecord(
+        resource_id="/x/vm",
+        name="rw-vm-test-1",
+        type="microsoft.compute/virtualmachines",
+        location="eastus",
+        resource_group="rg",
+        subscription_id="s",
+        power_state="PowerState/deallocated",
+    )
+    running = vm.model_copy(update={"resource_id": "/x/vm2", "power_state": "PowerState/running"})
+    recs = detect_idle([vm, running], {"/x/vm": 1.51})
+    assert [r.category for r in recs] == ["stopped_vm"]
+    # Advisory only: savings are 0 (the disk is quantified separately), not the VM's
+    # projected historical compute cost — a stopped VM no longer bills for compute.
+    assert recs[0].action == "review_stopped_vm" and recs[0].est_monthly_savings == 0.0
+
+
+def test_attached_disk_is_not_flagged() -> None:
+    """A disk attached to a *running* VM (diskState 'Attached') is not waste."""
+    disk = ResourceRecord(
+        resource_id="/x/osdisk",
+        name="d",
+        type="microsoft.compute/disks",
+        location="eastus",
+        resource_group="rg",
+        subscription_id="s",
+        extra={"diskState": "Attached"},
+    )
+    assert detect_idle([disk], {"/x/osdisk": 4.87}) == []
+
+
+def _bastion(rid: str = "/x/bastion") -> ResourceRecord:
+    return ResourceRecord(
+        resource_id=rid,
+        name="b",
+        type="microsoft.network/bastionhosts",
+        location="eastus",
+        resource_group="rg",
+        subscription_id="s",
+    )
+
+
+def test_idle_by_activity_flags_zero_activity_billing_resource() -> None:
+    """A Bastion that billed all window but logged 0 sessions is flagged advisory."""
+    bastion = _bastion()
+    activity = {
+        "/x/bastion": ActivitySignal(
+            resource_id="/x/bastion", metric_name="sessions", total=0.0, datapoints=4032
+        )
+    }
+    recs = detect_idle_by_activity([bastion], activity, {"/x/bastion": 215.21})
+    assert len(recs) == 1
+    rec = recs[0]
+    assert rec.category == "idle_by_activity"
+    assert rec.est_monthly_savings == 215.21
+    assert rec.evidence["metric"] == "sessions" and rec.evidence["datapoints"] == 4032
+    # Advisory only — must NOT map to an auto-executable remediation action.
+    from cloudwarden.remediation.executor import SUPPORTED
+
+    assert rec.action not in SUPPORTED
+
+
+def test_idle_by_activity_ignores_resource_with_activity() -> None:
+    """Any activity above the threshold means the resource is in use — not idle."""
+    activity = {
+        "/x/bastion": ActivitySignal(
+            resource_id="/x/bastion", metric_name="sessions", total=12.0, datapoints=4032
+        )
+    }
+    assert detect_idle_by_activity([_bastion()], activity, {"/x/bastion": 215.21}) == []
+
+
+def test_idle_by_activity_needs_observed_data() -> None:
+    """No signal (absent, or 0 datapoints) is 'unknown', never flagged as idle."""
+    # Absent from the activity map entirely.
+    assert detect_idle_by_activity([_bastion()], {}, {"/x/bastion": 215.21}) == []
+    # Present but with no observed datapoints.
+    empty = {
+        "/x/bastion": ActivitySignal(
+            resource_id="/x/bastion", metric_name="sessions", total=0.0, datapoints=0
+        )
+    }
+    assert detect_idle_by_activity([_bastion()], empty, {"/x/bastion": 215.21}) == []
+
+
+def test_idle_by_activity_skips_trivially_cheap() -> None:
+    """A resource under the monthly-cost floor is not worth surfacing."""
+    activity = {
+        "/x/bastion": ActivitySignal(
+            resource_id="/x/bastion", metric_name="sessions", total=0.0, datapoints=4032
+        )
+    }
+    assert detect_idle_by_activity([_bastion()], activity, {"/x/bastion": 0.40}) == []
 
 
 def test_monthly_cost_map() -> None:

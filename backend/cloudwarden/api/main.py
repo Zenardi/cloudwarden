@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from .. import reporting
+from ..analysis.savings import ENVIRONMENT_RECLAIM_FACTORS
 from ..authz import audit, oidc, rbac, teams
 from ..config import get_settings
 from ..custodian import engine as custodian
@@ -1326,10 +1327,17 @@ def asset_history(resource_id: str) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------- #
 # Subscriptions (multi-subscription management)
 # --------------------------------------------------------------------------- #
+# Valid subscription "kind" values (lifecycle classification). Sourced from the
+# savings module so the API validation and the reclaim-factor weighting that
+# consumes it can never drift apart.
+SUBSCRIPTION_ENVIRONMENTS = tuple(ENVIRONMENT_RECLAIM_FACTORS)
+
+
 class SubscriptionIn(BaseModel):
     subscription_id: str
     display_name: str
     provider: str = "azure"  # owning cloud (M12.1); defaults to Azure
+    environment: str | None = None  # Development | QA | Prod | Sandbox | None (unclassified)
     tenant_id: str | None = None
     client_id: str | None = None
     client_secret: str | None = None  # None keeps existing, "" clears, else sets
@@ -1349,12 +1357,19 @@ def upsert_subscription(body: SubscriptionIn) -> dict[str, Any]:
     sub_id = body.subscription_id.strip()
     if not sub_id or not body.display_name.strip():
         raise HTTPException(status_code=400, detail="subscription_id and display_name are required")
+    environment = (body.environment or "").strip() or None
+    if environment is not None and environment not in SUBSCRIPTION_ENVIRONMENTS:
+        allowed = ", ".join(SUBSCRIPTION_ENVIRONMENTS)
+        raise HTTPException(
+            status_code=400, detail=f"environment must be one of {allowed} (or blank)"
+        )
     with session_scope() as session:
         return repo.upsert_subscription(
             session,
             subscription_id=sub_id,
             display_name=body.display_name.strip(),
             provider=(body.provider or "azure").strip(),
+            environment=environment,
             tenant_id=body.tenant_id,
             client_id=body.client_id,
             client_secret=body.client_secret,

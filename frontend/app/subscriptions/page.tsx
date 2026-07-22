@@ -1,16 +1,146 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { apiDelete, apiGet, apiPost, Subscription } from "../lib/api";
 
 const EMPTY = {
   subscription_id: "",
   display_name: "",
+  environment: "",
   tenant_id: "",
   client_id: "",
   client_secret: "",
   enabled: true,
 };
+
+// Subscription "kind" — lifecycle classification. Optional (blank = unclassified).
+// Kept in sync with the backend's ENVIRONMENT_RECLAIM_FACTORS: it weights how much
+// of a resource's idle/waste savings counts as potential savings.
+const ENVIRONMENTS = ["Development", "QA", "Prod", "Sandbox"] as const;
+
+type MenuItem = {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+};
+
+/**
+ * Row "more actions" overflow menu — collapses the per-row action buttons into a
+ * single kebab trigger plus a dropdown. The dropdown is `position: fixed`, anchored
+ * to the trigger's rect, so it escapes the table's `overflow: hidden` (which rounds
+ * the table corners and would otherwise clip an absolutely-positioned child). It
+ * closes on outside click, Escape, and scroll/resize — a fixed menu would otherwise
+ * detach from its trigger as the page moves under it.
+ */
+function RowActionsMenu({
+  label,
+  items,
+  open,
+  onToggle,
+  onClose,
+}: {
+  label: string;
+  items: MenuItem[];
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+
+  // Anchor the fixed menu to the trigger; flip above when it would overflow below.
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const MENU_W = 184;
+    const estH = items.length * 38 + 12;
+    const left = Math.max(8, r.right - MENU_W);
+    const openUp = r.bottom + estH + 8 > window.innerHeight;
+    setPos(
+      openUp
+        ? { left, bottom: window.innerHeight - r.top + 4 }
+        : { left, top: r.bottom + 4 },
+    );
+  }, [open, items.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (menuRef.current?.contains(t) || btnRef.current?.contains(t)) return;
+      onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        btnRef.current?.focus();
+      }
+    };
+    const dismiss = () => onClose();
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [open, onClose]);
+
+  // Move focus into the menu once positioned, so it's operable by keyboard.
+  useEffect(() => {
+    if (open && pos) {
+      menuRef.current?.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus();
+    }
+  }, [open, pos]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        className="kebab-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={onToggle}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="5" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="12" cy="19" r="1.7" />
+        </svg>
+      </button>
+      {open && pos && (
+        <div
+          ref={menuRef}
+          className="menu"
+          role="menu"
+          aria-label={label}
+          style={{ left: pos.left, top: pos.top, bottom: pos.bottom }}
+        >
+          {items.map((it, i) => (
+            <button
+              key={i}
+              role="menuitem"
+              className={it.danger ? "danger" : undefined}
+              disabled={it.disabled}
+              onClick={() => {
+                it.onClick();
+                onClose();
+              }}
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function Subscriptions() {
   const [subs, setSubs] = useState<Subscription[]>([]);
@@ -21,6 +151,9 @@ export default function Subscriptions() {
   const [tests, setTests] = useState<
     Record<string, { ok: boolean; message: string; mock?: boolean; subscription_name?: string }>
   >({});
+  // Which row's action menu is open (only one at a time). Keyed by subscription_id.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const closeMenu = useCallback(() => setMenuFor(null), []);
 
   const load = useCallback(async () => {
     try {
@@ -64,6 +197,7 @@ export default function Subscriptions() {
     setForm({
       subscription_id: s.subscription_id,
       display_name: s.display_name,
+      environment: s.environment || "",
       tenant_id: s.tenant_id || "",
       client_id: s.client_id || "",
       client_secret: "",
@@ -92,6 +226,7 @@ export default function Subscriptions() {
       apiPost("/api/subscriptions", {
         subscription_id: s.subscription_id,
         display_name: s.display_name,
+        environment: s.environment,
         tenant_id: s.tenant_id,
         client_id: s.client_id,
         client_secret: null,
@@ -157,6 +292,23 @@ export default function Subscriptions() {
             />
           </div>
           <div className="field">
+            <label>Kind</label>
+            <select
+              value={form.environment}
+              onChange={(e) => setForm({ ...form, environment: e.target.value })}
+            >
+              <option value="">Unclassified</option>
+              {ENVIRONMENTS.map((env) => (
+                <option key={env} value={env}>
+                  {env}
+                </option>
+              ))}
+            </select>
+            <span className="hint">
+              Weights potential savings — non-prod idle waste is safer to reclaim.
+            </span>
+          </div>
+          <div className="field">
             <label>Tenant ID</label>
             <input
               value={form.tenant_id}
@@ -210,6 +362,7 @@ export default function Subscriptions() {
         <thead>
           <tr>
             <th>Name</th>
+            <th>Kind</th>
             <th>Subscription ID</th>
             <th>Auth</th>
             <th>State</th>
@@ -225,6 +378,15 @@ export default function Subscriptions() {
                 <td>
                   {s.display_name}{" "}
                   {s.is_default && <span className="badge default">default</span>}
+                </td>
+                <td>
+                  {s.environment ? (
+                    <span className={`badge env env-${s.environment.toLowerCase()}`}>
+                      {s.environment}
+                    </span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
                 </td>
                 <td className="muted">{s.subscription_id}</td>
                 <td>{s.has_credentials ? "Dedicated SP" : "Shared env SP"}</td>
@@ -256,33 +418,54 @@ export default function Subscriptions() {
                   )}
                 </td>
                 <td>
-                  <div className="row-actions">
-                    <button onClick={() => test(s)} disabled={b("test")}>
-                      {b("test") ? "…" : "Test"}
-                    </button>
-                    <button onClick={() => run(s)} disabled={b("run")}>
-                      {b("run") ? "…" : "Run"}
-                    </button>
-                    <button onClick={() => edit(s)}>Edit</button>
-                    <button onClick={() => toggle(s)} disabled={b("toggle")}>
-                      {s.enabled ? "Disable" : "Enable"}
-                    </button>
-                    {!s.is_default && (
-                      <button onClick={() => makeDefault(s)} disabled={b("default")}>
-                        Set default
-                      </button>
-                    )}
-                    <button className="reject" onClick={() => remove(s)} disabled={b("del")}>
-                      Delete
-                    </button>
-                  </div>
+                  <RowActionsMenu
+                    label={`Actions for ${s.display_name}`}
+                    open={menuFor === s.subscription_id}
+                    onToggle={() =>
+                      setMenuFor(menuFor === s.subscription_id ? null : s.subscription_id)
+                    }
+                    onClose={closeMenu}
+                    items={[
+                      {
+                        label: b("test") ? "Testing…" : "Test connection",
+                        onClick: () => test(s),
+                        disabled: b("test"),
+                      },
+                      {
+                        label: b("run") ? "Running…" : "Run analysis",
+                        onClick: () => run(s),
+                        disabled: b("run"),
+                      },
+                      { label: "Edit", onClick: () => edit(s) },
+                      {
+                        label: s.enabled ? "Disable" : "Enable",
+                        onClick: () => toggle(s),
+                        disabled: b("toggle"),
+                      },
+                      ...(!s.is_default
+                        ? [
+                            {
+                              label: "Set as default",
+                              onClick: () => makeDefault(s),
+                              disabled: b("default"),
+                            },
+                          ]
+                        : []),
+                      {
+                        label: "Delete",
+                        onClick: () => remove(s),
+                        danger: true,
+                        disabled: b("del"),
+                      },
+                    ]}
+                  />
                 </td>
               </tr>
             );
           })}
           {subs.length === 0 && !err && (
             <tr>
-              <td colSpan={6} className="muted">
+              <td colSpan={7} className="muted">
                 No subscriptions yet. Add one above.
               </td>
             </tr>

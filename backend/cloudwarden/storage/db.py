@@ -263,10 +263,20 @@ def _try_exec(engine: Engine, sql: str) -> None:
         logger.info("optional DDL skipped (%s...): %s", sql[:48].replace("\n", " "), exc)
 
 
+# Idempotent column back-fills for tables that predate a column. ``create_all``
+# only creates missing *tables*, never missing columns on existing ones, so a new
+# field on a long-lived table (e.g. subscriptions) needs an explicit, safe ALTER.
+_COLUMN_ADDITIONS = [
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS environment VARCHAR(32)",
+]
+
+
 def init_db() -> None:
     engine = get_engine()
     _try_exec(engine, "CREATE EXTENSION IF NOT EXISTS timescaledb")
     Base.metadata.create_all(engine)
+    for stmt in _COLUMN_ADDITIONS:
+        _try_exec(engine, stmt)
     for table, column in HYPERTABLES:
         _try_exec(
             engine,

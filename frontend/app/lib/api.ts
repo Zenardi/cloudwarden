@@ -49,6 +49,7 @@ export const apiDelete = <T = any>(path: string): Promise<T> => request<T>("DELE
 export interface Subscription {
   subscription_id: string;
   display_name: string;
+  environment?: string | null; // Development | QA | Prod | Sandbox | null (unclassified)
   tenant_id?: string | null;
   client_id?: string | null;
   has_credentials: boolean;

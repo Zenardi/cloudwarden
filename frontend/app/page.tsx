@@ -15,7 +15,7 @@ import {
 import type { AISummary, CostTrend as CostTrendData, Posture, Recommendation } from "./lib/api";
 import type { Loadable } from "./lib/loadable";
 import { deriveSavings } from "./lib/savings";
-import { prettyType } from "./lib/format";
+import { prettyType, resourceTypeFromId } from "./lib/format";
 import { DEFAULT_DAYS, DEFAULT_PROVIDER, parseScope, scopeToQuery } from "./lib/scope";
 import { CostTrend } from "./components/CostTrend";
 import { MonthlyCostChart } from "./components/MonthlyCostChart";
@@ -123,6 +123,76 @@ function humanizeToken(s?: string | null): string {
     .replace(/\bip\b/gi, "IP")
     .replace(/\bvm\b/gi, "VM");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
+ * The figures an operator scans an executive summary for: currency amounts
+ * (`€3,260.22`, `€121.16/mo`) and percentages (`~4%`). We wrap these in <mark> so
+ * the money jumps out of the prose — see `highlightFigures`.
+ */
+const SUMMARY_FIGURE_RE = /[€$£]\s?[\d,]+(?:\.\d+)?(?:\s?\/\s?(?:month|mo))?|~?\d+(?:\.\d+)?\s?%/gi;
+
+/**
+ * Break the AI summary into readable paragraphs. Honour blank-line breaks when the
+ * model emits them; otherwise the summary arrives as one wall of text, so we split
+ * on sentence boundaries and pair the sentences up into a few scannable blocks. The
+ * sentence split is decimal-safe — it only cuts on `. ` before a capital/`(`, so
+ * amounts like "€3,260.22" and ranges like "0.4–0.6" stay intact.
+ */
+function toSummaryParagraphs(text: string): string[] {
+  const byBlank = text
+    .split(/\n{2,}/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (byBlank.length > 1) return byBlank;
+  const sentences = text
+    .split(/(?<=[.!?])\s+(?=[A-Z(])/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const paras: string[] = [];
+  for (let i = 0; i < sentences.length; i += 2) {
+    paras.push(sentences.slice(i, i + 2).join(" "));
+  }
+  return paras.length ? paras : [text];
+}
+
+/** Wrap each money/percent figure in <mark> so it stands out from the surrounding
+ *  prose. Uses a fresh RegExp per call so the global `lastIndex` never leaks. */
+function highlightFigures(text: string, keyPrefix: string): ReactNode[] {
+  const re = new RegExp(SUMMARY_FIGURE_RE.source, "gi");
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  let i = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    nodes.push(
+      <mark className="summary-hl" key={`${keyPrefix}-${i++}`}>
+        {m[0]}
+      </mark>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+/**
+ * The AI executive summary, laid out to fill the two-column width of the page:
+ * paragraphs flow into a balanced multi-column block (each column keeps a readable
+ * ~65ch measure instead of one over-wide line), with the key figures highlighted.
+ */
+function ExecutiveSummary({ summary }: { summary: AISummary }) {
+  const paragraphs = toSummaryParagraphs(summary.executive_summary);
+  return (
+    <div className="summary summary-full">
+      <div className="summary-flow">
+        {paragraphs.map((p, i) => (
+          <p key={i}>{highlightFigures(p, `p${i}`)}</p>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** Circular-arrows glyph for the Refresh control; spins while a fetch is in flight. */
@@ -534,7 +604,7 @@ export default function Overview() {
             <PanelBody
               loadable={recs}
               isEmpty={(d) => d.length === 0}
-              empty="No recommendations — the latest run found no right-sizing candidates (running VMs with utilization data) or Azure Advisor findings."
+              empty="No recommendations — the latest run found no right-sizing candidates (VMs with utilization data), idle/orphaned resources (disks, IPs, Bastion, registries…), or Azure Advisor findings."
             >
               {(d) =>
                 d.slice(0, 5).map((r) => (
@@ -547,6 +617,7 @@ export default function Overview() {
                       </div>
                       <div className="action-sub">
                         <span className={`badge ${r.risk}`}>{r.risk} risk</span>
+                        <span>{resourceTypeFromId(r.resource_id)}</span>
                         <span>{humanizeToken(r.category)}</span>
                         <span>{Math.round((r.confidence || 0) * 100)}% conf</span>
                       </div>
@@ -685,14 +756,7 @@ export default function Overview() {
       ) : summary.state === "error" ? (
         <div className="summary summary-error">Couldn’t load the summary — {summary.message}</div>
       ) : summary.data?.executive_summary ? (
-        <div className="summary">
-          {summary.data.executive_summary}
-          {summary.data.provider && (
-            <div className="muted summary-meta">
-              AI estimate · {summary.data.provider}/{summary.data.model}
-            </div>
-          )}
-        </div>
+        <ExecutiveSummary summary={summary.data} />
       ) : (
         <div className="summary">
           No summary yet. Trigger a run from the <Link href="/runs">Runs</Link> page to generate one.

@@ -26,6 +26,7 @@
   --z-sidebar: 100;
   --z-scrim: 190;
   --z-drawer: 200;
+  --z-menu: 210;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -203,11 +204,33 @@ button.approve { border-color: var(--green); color: var(--green); }
 button.reject { border-color: var(--red); color: var(--red); }
 button:disabled { opacity: .45; cursor: default; }
 .row-actions { display: flex; gap: 6px; }
+/* Row "more actions" overflow menu (e.g. Subscriptions table). A square kebab
+   trigger opens a position:fixed dropdown — fixed so it escapes the table's
+   `overflow: hidden` corner-clip rather than being cut off inside the cell. */
+.kebab-btn { width: 36px; height: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.kebab-btn:hover, .kebab-btn[aria-expanded="true"] { color: var(--text); border-color: var(--accent); }
+.menu { position: fixed; z-index: var(--z-menu); min-width: 184px; padding: 6px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); display: flex; flex-direction: column; gap: 2px; }
+.menu button { width: 100%; text-align: left; border: 0; background: transparent; color: var(--text); font: inherit; padding: 8px 10px; border-radius: 7px; cursor: pointer; }
+.menu button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.menu button:disabled { opacity: .45; cursor: default; }
+.menu button.danger { color: var(--red); }
+.menu button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--red) 14%, transparent); }
 .err { color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border: 1px solid var(--red); border-radius: 8px; padding: var(--space-3); margin-bottom: var(--space-4); }
 .muted { color: var(--muted); }
 /* Prose panel — capped to a readable measure (~72ch); full-container width ran ~138ch. */
 .summary { background: color-mix(in srgb, var(--accent) 8%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border)); border-radius: 10px; padding: var(--space-4); text-wrap: pretty; max-width: 72ch; }
-.summary-meta { margin-top: var(--space-2); }
+/* The AI executive summary fills the page's two-column width: its paragraphs flow
+   into a balanced multi-column block. `columns: 22rem 2` caps it at two columns and
+   collapses to one below ~44rem, so each column keeps a readable ~55-65ch measure
+   rather than the ~138ch single line a full-width block would produce. */
+.summary-full { max-width: none; }
+.summary-flow { columns: 22rem 2; column-gap: var(--space-6); }
+.summary-flow p { margin: 0 0 var(--space-3); line-height: 1.7; break-inside: avoid; text-align: justify; hyphens: auto; }
+.summary-flow p:last-child { margin-bottom: 0; }
+/* Highlighted figures (currency + %): weight and a faint accent wash make the money
+   scannable; text colour is unchanged so contrast stays AA. nowrap keeps
+   "€121.16/mo" from breaking across a line or column boundary. */
+.summary-hl { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text); font-weight: 700; padding: 0 4px; border-radius: 4px; white-space: nowrap; }
 .summary-error { color: var(--muted); }
 .links { display: flex; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-2); }
 
@@ -269,6 +292,12 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .skeleton { animation: none; }
 }
 .badge.default { color: var(--accent); border-color: var(--accent); }
+/* Subscription "kind" (environment) badges — colour tracks reclaim confidence. */
+.badge.env { text-transform: none; }
+.badge.env-prod { color: var(--accent); border-color: var(--accent); }
+.badge.env-qa { color: var(--amber); border-color: var(--amber); }
+.badge.env-development { color: var(--green); border-color: var(--green); }
+.badge.env-sandbox { color: var(--muted); border-color: var(--border); }
 .panel-form { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 18px; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
@@ -598,6 +627,14 @@ a.action-row:hover .action-name { text-decoration: underline; }
 .mcc-col:hover .mcc-bar { background: color-mix(in srgb, var(--accent) 80%, var(--text)); }
 .mcc-val { font-size: 11.5px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mcc-xlabel { font-size: 11px; color: var(--muted); }
+/* Give the chart its own breathing room in the Overview stack, matching the
+   .overview-actions rhythm below it (previously it sat flush against the KPIs). */
+.overview-chart { margin-top: var(--space-4); }
+/* Loading & empty states reserve the rendered chart's footprint (.mcc-chart is
+   200px tall + the same top margin) so data arriving never shifts the panels
+   below — CLS guard. */
+.mcc-chart-reserve { min-height: 200px; margin-top: var(--space-4); }
+.mcc-empty { display: flex; align-items: center; }
 
 @media (prefers-reduced-motion: reduce) {
   .bar-fill { transition: none; }

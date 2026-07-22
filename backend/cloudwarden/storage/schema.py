@@ -49,6 +49,10 @@ class Subscription(Base):
     provider: Mapped[str] = mapped_column(
         String(32), default="azure", server_default="azure", index=True
     )
+    # Optional lifecycle classification: one of Development / QA / Prod / Sandbox,
+    # or NULL when unclassified. Drives the savings reclaim factor (non-prod idle
+    # waste is safer to cut) — see analysis.savings.ENVIRONMENT_RECLAIM_FACTORS.
+    environment: Mapped[str | None] = mapped_column(String(32), index=True)
     tenant_id: Mapped[str | None] = mapped_column(String(64))
     client_id: Mapped[str | None] = mapped_column(String(128))
     client_secret: Mapped[str | None] = mapped_column(Text)

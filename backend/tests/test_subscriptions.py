@@ -178,6 +178,55 @@ def test_delete_reassigns_default(db) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Subscription "kind" (environment) + savings reclaim factor
+# --------------------------------------------------------------------------- #
+def test_reclaim_factor() -> None:
+    from cloudwarden.analysis.savings import reclaim_factor
+
+    assert reclaim_factor(None) == 1.0  # unclassified keeps full value
+    assert reclaim_factor("") == 1.0
+    assert reclaim_factor("Sandbox") == 1.0
+    assert reclaim_factor("Development") == 0.9
+    assert reclaim_factor("QA") == 0.7
+    assert reclaim_factor("Prod") == 0.5  # production idle is discounted
+    assert reclaim_factor("not-an-env") == 1.0  # unknown falls back to full
+
+
+def test_upsert_persists_and_clears_environment(db) -> None:
+    from cloudwarden.storage import repository as repo
+    from cloudwarden.storage.db import session_scope
+
+    with session_scope() as s:
+        out = repo.upsert_subscription(
+            s, subscription_id=SUB_A, display_name="A", environment="Sandbox"
+        )
+        assert out["environment"] == "Sandbox"
+    # blank/None clears the classification back to unclassified
+    with session_scope() as s:
+        repo.upsert_subscription(s, subscription_id=SUB_A, display_name="A", environment=None)
+        assert repo.get_subscription(s, SUB_A).environment is None
+
+
+def test_subscription_api_validates_environment(db) -> None:
+    from fastapi.testclient import TestClient
+
+    from cloudwarden.api.main import app
+
+    with TestClient(app) as c:
+        created = c.post(
+            "/api/subscriptions",
+            json={"subscription_id": SUB_B, "display_name": "Prod", "environment": "Prod"},
+        ).json()
+        assert created["environment"] == "Prod"
+        # an unknown kind is rejected (not silently stored)
+        bad = c.post(
+            "/api/subscriptions",
+            json={"subscription_id": SUB_A, "display_name": "X", "environment": "Staging"},
+        )
+        assert bad.status_code == 400
+
+
+# --------------------------------------------------------------------------- #
 # Orchestrator fan-out
 # --------------------------------------------------------------------------- #
 def test_context_from_record_live_credential(monkeypatch) -> None:

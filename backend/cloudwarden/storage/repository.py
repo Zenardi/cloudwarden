@@ -222,6 +222,7 @@ def _subscription_public(rec: schema.Subscription) -> dict[str, Any]:
         "subscription_id": rec.subscription_id,
         "display_name": rec.display_name,
         "provider": rec.provider,
+        "environment": rec.environment,
         "tenant_id": rec.tenant_id,
         "client_id": rec.client_id,
         "has_credentials": bool(rec.client_id and rec.client_secret),
@@ -261,6 +262,7 @@ def upsert_subscription(
     subscription_id: str,
     display_name: str,
     provider: str = "azure",
+    environment: str | None = None,
     tenant_id: str | None = None,
     client_id: str | None = None,
     client_secret: str | None = None,
@@ -269,9 +271,10 @@ def upsert_subscription(
     """Create or update a cloud account (subscription).
 
     ``provider`` is set at creation and is intrinsic to the account (an existing
-    account keeps its provider on subsequent upserts). Secret semantics on update:
-    ``client_secret=None`` keeps the existing secret, ``client_secret=""`` clears
-    it, any other value sets it.
+    account keeps its provider on subsequent upserts). ``environment`` is the
+    optional lifecycle classification (Development/QA/Prod/Sandbox, or None to
+    clear). Secret semantics on update: ``client_secret=None`` keeps the existing
+    secret, ``client_secret=""`` clears it, any other value sets it.
     """
     rec = session.get(schema.Subscription, subscription_id)
     make_default = session.query(schema.Subscription).count() == 0
@@ -283,6 +286,7 @@ def upsert_subscription(
         )
         session.add(rec)
     rec.display_name = display_name
+    rec.environment = environment or None
     rec.tenant_id = tenant_id or None
     rec.client_id = client_id or None
     if client_secret is not None:

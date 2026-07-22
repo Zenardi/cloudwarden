@@ -86,11 +86,11 @@ export default function Costs() {
           {loading ? <div className="skeleton-row" /> : <BarList items={typeItems} max={12} />}
         </section>
 
-        <section className="panel" aria-labelledby="cr-h">
-          <h2 className="panel-title" id="cr-h">
-            By region
+        <section className="panel" aria-labelledby="cres-h">
+          <h2 className="panel-title" id="cres-h">
+            Top resources
           </h2>
-          {loading ? <div className="skeleton-row" /> : <BarList items={regionItems} max={12} />}
+          {loading ? <div className="skeleton-row" /> : <BarList items={resItems} max={12} />}
         </section>
 
         <section className="panel" aria-labelledby="cshare-h">
@@ -104,11 +104,11 @@ export default function Costs() {
           )}
         </section>
 
-        <section className="panel" aria-labelledby="cres-h">
-          <h2 className="panel-title" id="cres-h">
-            Top resources
+        <section className="panel" aria-labelledby="cr-h">
+          <h2 className="panel-title" id="cr-h">
+            By region
           </h2>
-          {loading ? <div className="skeleton-row" /> : <BarList items={resItems} max={12} />}
+          {loading ? <div className="skeleton-row" /> : <BarList items={regionItems} max={12} />}
         </section>
       </div>
     </>
