@@ -84,7 +84,11 @@ def _collect_live(
     client: Any, subscription_id: str, credential: Any = None
 ) -> list[ResourceRecord]:
     from azure.mgmt.resourcegraph import ResourceGraphClient
-    from azure.mgmt.resourcegraph.models import QueryRequest, QueryRequestOptions
+    from azure.mgmt.resourcegraph.models import (
+        QueryRequest,
+        QueryRequestOptions,
+        ResultFormat,
+    )
 
     from ..auth import read_credential
 
@@ -92,7 +96,13 @@ def _collect_live(
     rows: list[dict[str, Any]] = []
     skip_token: str | None = None
     while True:
-        options = QueryRequestOptions(top=1000, skip_token=skip_token)
+        # Force object-array format: the Resource Graph default is `table`, which
+        # returns `response.data` as a {columns, rows} dict — iterating that yields
+        # the string keys and blows up in `_to_records`. object_array yields the
+        # list-of-dicts shape the rest of this module expects.
+        options = QueryRequestOptions(
+            top=1000, skip_token=skip_token, result_format=ResultFormat.OBJECT_ARRAY
+        )
         request = QueryRequest(subscriptions=[subscription_id], query=_RG_QUERY, options=options)
         response = graph.resources(request)
         rows.extend(list(response.data))

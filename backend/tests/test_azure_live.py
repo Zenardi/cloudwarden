@@ -60,6 +60,63 @@ def test_inventory_live(monkeypatch) -> None:
     get_settings.cache_clear()
 
 
+class _FormatAwareRG:
+    """Fake that mirrors Resource Graph's *real* format behavior: it returns the
+    ``{columns, rows}`` table dict by default and the list-of-dicts shape only when
+    ``result_format=object_array`` is requested.
+
+    Regression guard for the live-inventory crash: the query must set
+    ``ResultFormat.OBJECT_ARRAY``. Without it the service returns table format,
+    ``list(response.data)`` yields the dict's string keys, and ``_to_records``
+    raises ``TypeError: string indices must be integers``. The plain ``_FakeRG``
+    above can't catch this because it hands back the correct shape unconditionally.
+    """
+
+    _ROW = {
+        "id": "/subscriptions/s/resourceGroups/RG/providers/Microsoft.Compute/virtualMachines/VM",
+        "name": "VM",
+        "type": "Microsoft.Compute/virtualMachines",
+        "location": "eastus",
+        "resourceGroup": "RG",
+        "subscriptionId": "s",
+        "sku": "Standard_D4s_v5",
+        "tags": {"env": "prod"},
+        "powerState": "PowerState/running",
+        "diskState": None,
+        "ipConfig": None,
+        "numberOfSites": None,
+    }
+
+    def __init__(self) -> None:
+        self.requested_format = None
+
+    def resources(self, request):
+        from azure.mgmt.resourcegraph.models import ResultFormat
+
+        self.requested_format = request.options.result_format
+        if request.options.result_format == ResultFormat.OBJECT_ARRAY:
+            return _RGResp([dict(self._ROW)])
+        # Default service behavior: a {columns, rows} table dict, not a list.
+        cols = list(self._ROW)
+        return _RGResp(
+            {"columns": [{"name": c} for c in cols], "rows": [[self._ROW[c] for c in cols]]}
+        )
+
+
+def test_inventory_live_requests_object_array(monkeypatch) -> None:
+    """The live query must request object_array so Resource Graph returns rows as
+    dicts; otherwise it returns table format and _to_records crashes."""
+    from azure.mgmt.resourcegraph.models import ResultFormat
+
+    monkeypatch.setenv("FINOPS_MOCK", "0")
+    get_settings.cache_clear()
+    rg = _FormatAwareRG()
+    records = inventory.collect_inventory(client=rg)
+    assert rg.requested_format == ResultFormat.OBJECT_ARRAY
+    assert len(records) == 1 and records[0].resource_id == _VM_RID
+    get_settings.cache_clear()
+
+
 # --- metrics ---
 class _Point:
     def __init__(self, ts, avg, mx):
