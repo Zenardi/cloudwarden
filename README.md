@@ -949,13 +949,36 @@ pip install -r backend/requirements-dev.txt
 make lint      # ruff
 make test      # offline unit tests (no DB/Azure needed)
 make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcontainers; needs Docker)
+make trivy     # security gate — Trivy fs + config scan, HIGH/CRITICAL (needs Docker)
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 294 tests, **~99% line coverage** (gate at 95%, enforced in CI —
+**Tests:** **~99% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).
+
+### Security scanning (Trivy CVE gate)
+
+CI fails the build on any HIGH/CRITICAL finding via three Trivy scans in the
+`security` job (`.github/workflows/ci.yml`): `trivy fs` (dependencies), `trivy
+image` (the built backend + frontend images) and `trivy config` (IaC /
+Dockerfiles) — all with `--severity HIGH,CRITICAL --exit-code 1` (the vuln scans
+add `--ignore-unfixed` so only *fixable* CVEs block the build). Accepted
+exceptions live in a reviewed [`.trivyignore`](.trivyignore) (currently empty —
+we fix findings rather than suppress them).
+
+**Run the same gate locally before committing** — no Trivy install needed, it
+runs the pinned official image over Docker:
+
+```bash
+make trivy   # trivy fs + config (HIGH/CRITICAL); the pre-commit gate
+
+# Or scan a built image directly (matches CI's `trivy image` step):
+docker build -t cloudwarden-backend ./backend
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.72.0 \
+  image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 cloudwarden-backend
+```
 
 ## License
 

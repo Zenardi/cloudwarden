@@ -1324,15 +1324,20 @@ jobs:
         if: always()
         run: docker compose down -v
 
-  # --- Security: Trivy fs + image scans. Fails on any ACTIONABLE HIGH/CRITICAL #
-  # No baseline / .trivyignore (no specific CVEs are waived). `--ignore-unfixed`
-  # scopes the gate to vulnerabilities that HAVE an available fix: a single fixable
-  # HIGH/CRITICAL blocks the build, while CVEs with no upstream patch (e.g. Debian
-  # Essential packages perl-base / util-linux / ncurses, which can be neither
-  # patched nor removed) don't fail a build nothing can act on. Everything fixable
-  # is actually fixed (see backend/frontend Dockerfiles + requirements.txt).
+  # --- Security: Trivy fs + image + config scans. Fails on HIGH/CRITICAL ------ #
+  # Three gates (issue #51 / M13.1): `trivy fs` (dependencies), `trivy image` (the
+  # built backend + frontend images) and `trivy config` (IaC / Dockerfiles). Each
+  # fails the build on HIGH/CRITICAL (`--severity HIGH,CRITICAL --exit-code 1`).
+  # The vuln scans add `--ignore-unfixed` so only vulnerabilities that HAVE an
+  # available fix can block the build: a single fixable HIGH/CRITICAL fails it,
+  # while CVEs with no upstream patch (e.g. Debian Essential perl-base / util-linux
+  # / ncurses, which can be neither patched nor removed) don't fail a build nothing
+  # can act on. Everything fixable is actually fixed (see backend/frontend
+  # Dockerfiles + requirements.txt; the c7n cryptography/pyjwt CVEs via issue #58).
+  # `.trivyignore` (repo root, auto-loaded) documents accepted exceptions — it is
+  # reviewed and currently carries NO active suppressions.
   security:
-    name: Security (Trivy — fail on any fixable HIGH/CRITICAL)
+    name: Security (Trivy — fail on HIGH/CRITICAL fs + image + config)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -1351,6 +1356,11 @@ jobs:
         run: |
           trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
             --exit-code 1 --no-progress .
+      - name: Trivy config scan (IaC / Dockerfiles)
+        run: |
+          # Misconfiguration scanner: no --ignore-unfixed / --no-progress (vuln-only
+          # flags); -q keeps logs quiet but still prints the findings report.
+          trivy config --severity HIGH,CRITICAL --exit-code 1 -q .
       - name: Trivy image scan (backend)
         run: |
           trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \

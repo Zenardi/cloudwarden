@@ -1,0 +1,23 @@
+# .trivyignore — reviewed CVE / misconfiguration suppressions for CloudWarden's
+# Trivy gate (issue #51 / M13.1). Auto-loaded by Trivy from the repo root.
+#
+# POLICY: we FIX findings rather than suppress them. The CI gate
+# (.github/workflows/ci.yml, `security` job) runs `trivy fs`, `trivy image` and
+# `trivy config` with `--severity HIGH,CRITICAL --exit-code 1`; the vuln scans
+# also pass `--ignore-unfixed`, so only *fixable* HIGH/CRITICAL findings can ever
+# reach this file. Everything fixable is patched at the source (backend/frontend
+# Dockerfiles + requirements*.txt); the c7n-pinned cryptography/pyjwt CVEs are
+# force-patched via a --no-deps override (issue #58).
+#
+# HOW TO ADD A SUPPRESSION (must be peer-reviewed in the PR that adds it):
+#   1. Put a JUSTIFICATION comment on the line immediately ABOVE the id — why the
+#      finding is accepted, the owner, and ideally a re-review/expiry date.
+#   2. Then the vulnerability / misconfiguration id on its own line, e.g.:
+#
+#        # No network exposure in our runtime; upstream fix pending (owner: sec, review 2026-09).
+#        CVE-2026-12345
+#
+# The test backend/tests/test_ci_trivy_config.py enforces that every entry here is
+# justified this way.
+#
+# There are currently NO active suppressions — the gate is clean.

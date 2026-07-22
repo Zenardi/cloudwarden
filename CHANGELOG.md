@@ -27,6 +27,18 @@ All notable changes to this project are documented here. Format loosely follows
   100% coverage on the gated modules).
 
 ### Added
+- **Trivy CVE gate in CI — fs + image + config, fail on HIGH/CRITICAL (#51, M13.1).**
+  The `security` job now runs three Trivy scans that fail the build on any
+  HIGH/CRITICAL finding (`--severity HIGH,CRITICAL --exit-code 1`): `trivy fs`
+  (dependencies), `trivy image` (the built backend + frontend images) and the new
+  `trivy config` (IaC / Dockerfile misconfigurations). The vuln scans keep
+  `--ignore-unfixed` so only *fixable* CVEs block the build. A reviewed root
+  **`.trivyignore`** documents accepted exceptions (currently none — the gate is
+  clean) and its justification convention is enforced by
+  `backend/tests/test_ci_trivy_config.py` (TDD-first: it parses `ci.yml` to assert
+  the fs/image/config steps + severity/exit-code, and that every suppression is
+  justified). Contributors can run the same gate locally with **`make trivy`**
+  (Trivy fs + config over the pinned official Docker image; see README).
 - **Overview scoping — multi-cloud filter + date-range across every panel (#116).**
   Resolves the [P1]: the Overview no longer hardcodes a 30-day, all-cloud view.
   A **cloud filter** (All / Azure / AWS / GCP) and the 7/30/90d range control now
