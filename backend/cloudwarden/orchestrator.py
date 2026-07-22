@@ -28,6 +28,7 @@ from .azure.context import AccountContext
 from .azure.cost import collect_cost
 from .azure.inventory import collect_inventory
 from .azure.logs import collect_memory
+from .azure.ml_compute import collect_ml_computes
 from .azure.metrics import collect_metrics
 from .config import get_settings
 from .custodian import engine as custodian_engine
@@ -102,6 +103,15 @@ def run_pipeline(
     try:
         # --- collect ---
         resources = collect_inventory(subscription=subscription)
+        # ML compute targets (Phase 3): instances/clusters live *under* a workspace
+        # and are absent from Resource Graph, so the generic inventory misses them.
+        # Enumerate them per workspace and fold them into `resources` so they flow
+        # through cost enrichment, AssetDB, and the idle detectors. Non-fatal: a
+        # failure here must not sink an otherwise-good cost run.
+        try:
+            resources += collect_ml_computes(resources, subscription=subscription)
+        except Exception:  # noqa: BLE001 - ML compute discovery is best-effort
+            logger.warning("ml compute collection failed", exc_info=True)
         cost_rows = collect_cost(subscription=subscription)
         _enrich_cost(cost_rows, resources)
         metric_samples = collect_metrics(resources, subscription=subscription)

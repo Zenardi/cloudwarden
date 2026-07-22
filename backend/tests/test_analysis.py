@@ -198,6 +198,120 @@ def test_attached_disk_is_not_flagged() -> None:
     assert detect_idle([disk], {"/x/osdisk": 4.87}) == []
 
 
+def _dc(rid: str, rtype: str, name: str, config: dict) -> ResourceRecord:
+    return ResourceRecord(
+        resource_id=rid,
+        name=name,
+        type=rtype,
+        location="eastus",
+        resource_group="rg",
+        subscription_id="s",
+        config=config,
+    )
+
+
+def test_idle_devcenter_pool() -> None:
+    """DevCenter pools: an empty pool is full-cost reclaim; a pool on a large
+    (>=16 vCPU) dev-box definition is an advisory right-sizing candidate."""
+    definition = _dc(
+        "/x/def",
+        "microsoft.devcenter/devcenters/devboxdefinitions",
+        "win11-def",
+        {"sku": {"name": "general_i_16c64gb512ssd_v2"}},
+    )
+    empty = _dc(
+        "/x/pool-empty",
+        "microsoft.devcenter/projects/pools",
+        "empty-pool",
+        {"devBoxCount": 0},
+    )
+    oversized = _dc(
+        "/x/pool-big",
+        "microsoft.devcenter/projects/pools",
+        "big-pool",
+        {"devBoxCount": 3, "devBoxDefinitionName": "win11-def"},
+    )
+    monthly = {"/x/pool-empty": 35.24, "/x/pool-big": 387.6}
+    recs = {r.category: r for r in detect_idle([definition, empty, oversized], monthly)}
+    assert set(recs) == {"idle_pool", "oversized_pool"}
+    # Empty pool: full observed monthly cost is reclaimable.
+    assert recs["idle_pool"].est_monthly_savings == 35.24
+    # Oversized: conservative 0.35x estimate, advisory (low confidence).
+    assert recs["oversized_pool"].est_monthly_savings == round(387.6 * 0.35, 2)
+    assert recs["oversized_pool"].confidence == 0.4
+    assert recs["oversized_pool"].evidence["vcpu"] == 16
+
+
+def test_idle_mongo_cluster_paid_only() -> None:
+    """Paid Cosmos-DB-for-MongoDB vCore clusters are flagged advisory; Free is skipped."""
+    paid = _dc(
+        "/x/mongo-paid",
+        "microsoft.documentdb/mongoclusters",
+        "paid-mongo",
+        {"nodeGroupSpecs": [{"sku": "M30"}]},
+    )
+    free = _dc(
+        "/x/mongo-free",
+        "microsoft.documentdb/mongoclusters",
+        "free-mongo",
+        {"nodeGroupSpecs": [{"sku": "Free"}]},
+    )
+    recs = detect_idle([paid, free], {"/x/mongo-paid": 180.0, "/x/mongo-free": 0.0})
+    assert [r.category for r in recs] == ["mongo_cluster"]
+    rec = recs[0]
+    assert rec.current_sku == "M30"
+    # Advisory: quantified idle detection is metric-based, so savings stays 0.
+    assert rec.est_monthly_savings == 0.0
+
+
+def _mlc(name: str, config: dict) -> ResourceRecord:
+    return _dc(
+        f"/x/ws/computes/{name}",
+        "microsoft.machinelearningservices/workspaces/computes",
+        name,
+        {**config, "workspace_id": "/x/ws"},
+    )
+
+
+def test_idle_ml_compute() -> None:
+    """ML compute: a running or failed Compute Instance and a warm (min_nodes>0)
+    AmlCompute cluster are flagged advisory; a stopped instance and a scale-to-zero
+    cluster are the correct end state and produce nothing. Cost rolls up to the
+    workspace, so every rec is advisory (savings 0) with workspace cost as context."""
+    running = _mlc(
+        "ci-run",
+        {"compute_type": "ComputeInstance", "state": "Running", "vm_size": "Standard_DS3_v2"},
+    )
+    stopped = _mlc(
+        "ci-stop",
+        {"compute_type": "ComputeInstance", "state": "Stopped", "vm_size": "Standard_DS3_v2"},
+    )
+    failed = _mlc(
+        "ci-fail",
+        {"compute_type": "ComputeInstance", "state": "CreateFailed", "vm_size": "STANDARD_NC4_T4"},
+    )
+    warm = _mlc(
+        "clus-warm",
+        {"compute_type": "AmlCompute", "min_node_count": 2, "vm_size": "Standard_DS3_v2"},
+    )
+    zero = _mlc(
+        "clus-zero",
+        {"compute_type": "AmlCompute", "min_node_count": 0, "vm_size": "Standard_DS3_v2"},
+    )
+    recs = detect_idle([running, stopped, failed, warm, zero], {"/x/ws": 85.81})
+    # Only the wasteful shapes are surfaced; stopped + scale-to-zero are fine.
+    flagged = {r.resource_id.split("/computes/")[1] for r in recs}
+    assert flagged == {"ci-run", "ci-fail", "clus-warm"}
+    assert all(r.category == "idle_ml_compute" for r in recs)
+    assert all(r.est_monthly_savings == 0.0 for r in recs)
+    # Workspace monthly cost is carried as evidence context (not as savings).
+    assert all(r.evidence["workspace_monthly"] == 85.81 for r in recs)
+    # Advisory only — never an auto-executable remediation action.
+    from cloudwarden.remediation.executor import SUPPORTED
+
+    assert all(r.action not in SUPPORTED for r in recs)
+
+
 def _bastion(rid: str = "/x/bastion") -> ResourceRecord:
     return ResourceRecord(
         resource_id=rid,

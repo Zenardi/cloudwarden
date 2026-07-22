@@ -26,6 +26,83 @@ def _devbox_vcpu(sku: str | None) -> int | None:
     return int(m.group(1)) if m else None
 
 
+# ML compute-instance states that mean "not usefully running": a failed provision
+# never became usable but can still leave a residual OS disk behind.
+_ML_FAILED_STATES = {"CreateFailed", "Failed"}
+
+
+def _ml_compute_rec(r: ResourceRecord, ws_monthly: float) -> Recommendation | None:
+    """Advisory rec for one ML compute target, or None if it's in a fine state.
+
+    ML compute bills per its VM size but Cost Management rolls that spend up to the
+    owning *workspace* (there is no per-compute cost row), so we can't isolate a
+    savings figure — every case is advisory (``est_monthly_savings=0``) with the
+    workspace's monthly cost carried as evidence context. Three wasteful shapes:
+    a running Compute Instance (no scale-to-zero — bills continuously), a failed
+    Compute Instance (delete the wreckage), and an AmlCompute cluster pinned to a
+    non-zero minimum node count (idle nodes bill between jobs).
+    """
+    cfg = r.config or {}
+    ctype = cfg.get("compute_type")
+    state = str(cfg.get("state") or "")
+    vm_size = cfg.get("vm_size") or r.sku or "its VM size"
+    evidence = {
+        "compute_type": ctype,
+        "state": state,
+        "vm_size": cfg.get("vm_size"),
+        "workspace_monthly": ws_monthly,
+    }
+    base = dict(
+        resource_id=r.resource_id,
+        category="idle_ml_compute",
+        current_sku=cfg.get("vm_size") or r.sku,
+        risk="medium",
+        est_monthly_savings=0.0,
+        source="heuristic",
+    )
+    if ctype == "ComputeInstance" and state in _ML_FAILED_STATES:
+        return Recommendation(
+            **base,
+            action="review_idle_resource",
+            confidence=0.6,
+            rationale=(
+                f"ML compute instance failed to provision (state {state}). It is not usable; "
+                f"delete it to clear the failed resource and any residual OS disk."
+            ),
+            caveats=["confirm it isn't mid-retry before deleting"],
+            evidence=evidence,
+        )
+    if ctype == "ComputeInstance" and state == "Running":
+        return Recommendation(
+            **base,
+            action="review_idle_resource",
+            confidence=0.4,
+            rationale=(
+                f"ML compute instance is running ({vm_size}) and bills continuously — compute "
+                f"instances do not scale to zero. If it isn't in active use, stop it or enable "
+                f"idle shutdown."
+            ),
+            caveats=["may be in active interactive use — confirm before stopping"],
+            evidence=evidence,
+        )
+    if ctype == "AmlCompute":
+        min_nodes = int(cfg.get("min_node_count") or 0)
+        if min_nodes > 0:
+            return Recommendation(
+                **base,
+                action="review_rightsizing",
+                confidence=0.5,
+                rationale=(
+                    f"ML compute cluster keeps a minimum of {min_nodes} node(s) always allocated "
+                    f"({vm_size}), which bills even when no job is running. Set the minimum node "
+                    f"count to 0 to scale to zero between jobs."
+                ),
+                caveats=["a warm minimum may be intentional to cut job start latency"],
+                evidence={**evidence, "min_node_count": min_nodes},
+            )
+    return None
+
+
 def detect_idle(
     resources: list[ResourceRecord], monthly_cost: dict[str, float]
 ) -> list[Recommendation]:
@@ -207,11 +284,7 @@ def detect_idle(
             # Make Mongo (Cosmos DB for MongoDB vCore) clusters accountable. Free-tier
             # clusters cost nothing to optimize, so only flag paid tiers for review;
             # quantified idle detection (by connections/ops) is metric-based (Phase 3).
-            skus = [
-                s.get("sku")
-                for s in (cfg.get("nodeGroupSpecs") or [])
-                if isinstance(s, dict)
-            ]
+            skus = [s.get("sku") for s in (cfg.get("nodeGroupSpecs") or []) if isinstance(s, dict)]
             paid = [s for s in skus if s and str(s).lower() != "free"]
             if paid and monthly >= 1.0:
                 recs.append(
@@ -233,6 +306,15 @@ def detect_idle(
                         evidence={"skus": skus},
                     )
                 )
+        elif r.type == "microsoft.machinelearningservices/workspaces/computes":
+            # ML compute (instances/clusters) bills per VM size, but cost rolls up to
+            # the owning workspace — so these are advisory. Pass the workspace's
+            # monthly cost as context (savings stays 0; we can't isolate the compute's
+            # share). See _ml_compute_rec for the three wasteful shapes it flags.
+            ws_monthly = round(monthly_cost.get(str(cfg.get("workspace_id") or ""), 0.0), 2)
+            rec = _ml_compute_rec(r, ws_monthly)
+            if rec is not None:
+                recs.append(rec)
     return recs
 
 
