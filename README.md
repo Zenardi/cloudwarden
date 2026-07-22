@@ -141,6 +141,41 @@ Two Azure credentials by design: a **read-only SP** for collection (Reader +
 Cost Management Reader + Monitoring Reader) and a **separate write-scoped SP**
 for remediation.
 
+## FinOps recommendations (idle & right-sizing)
+
+The FinOps pipeline turns each run's inventory, cost and metrics into ranked,
+evidence-backed recommendations across four detector families:
+
+- **Utilization rules** (`analysis/rules.py`) — from CPU / RAM / I-O rollups:
+  **shutdown** (deallocate) a consistently-idle VM, **downsize** an over-provisioned
+  one (memory-aware when Log Analytics is wired in), or **investigate** when metric
+  coverage is too thin to conclude. Azure **Advisor** agreement raises confidence.
+- **Shape-based idle** (`analysis/idle.py`) — orphaned/waste resources keyed off
+  inventory config: unattached & deallocated-VM-reserved **managed disks**,
+  unassociated **public IPs**, empty **App Service plans**, deallocated **VMs**,
+  empty & oversized **DevCenter project pools** (right-sizing a pool's dev-box
+  definition), and paid-tier **Cosmos DB for MongoDB (vCore) clusters**.
+- **Activity-based idle** (`azure/activity_metrics.py`) — always-on Azure Monitor
+  platform metrics surface resources that bill but nobody uses (Bastion sessions,
+  storage transactions, ACR pulls) with **no diagnostic-log dependency**, and only
+  when data was actually observed (never flagged on absence of signal).
+- **ML compute** (`azure/ml_compute.py`) — ML compute instances/clusters live
+  *under* a workspace and are absent from Resource Graph, so a dedicated collector
+  enumerates them per workspace; the detector flags a **running** or **failed**
+  Compute Instance and an AmlCompute **cluster pinned to a non-zero minimum node
+  count**.
+
+**Environment-weighted savings** — a subscription's *kind* (Development / QA / Prod /
+Sandbox) discounts idle/waste savings by how safely they can be reclaimed (a sandbox
+resource is delete-on-sight; production idle needs review first), so the
+potential-savings total reflects risk, not just raw waste. Every recommendation
+carries a category, confidence, rationale, caveats and evidence — and the advisory
+ones (stopped VMs, Mongo, ML compute) deliberately report **0 estimated savings**
+rather than overstate a figure the cost data can't isolate (ML compute spend, for
+instance, rolls up to the owning workspace). Recommendations are reconciled and
+summarized by the pluggable AI layer, persisted to Postgres, and surfaced in the UI
+and Grafana.
+
 ## Governance-as-code (Cloud Custodian)
 
 The governance pillar — author policies, run them **on a schedule across every
@@ -217,14 +252,32 @@ the membership rows). The API is `GET/POST /api/collections`,
 or collection returns `404`); a **Collections** page manages collections and their
 membership in the UI.
 
-Policies can also be managed **GitOps-style** (M2.4): point `GITOPS_REPO_URL`
-(+ `GITOPS_BRANCH` / `GITOPS_POLICY_PATH`) at a Git repo of Custodian policy YAML,
-then `POST /api/policies/sync` clones/pulls it, validates each policy, and
-**upserts by name** with `source='gitops'`. Unparseable or schema-invalid files
-are **skipped and reported** (non-fatal), the sync is **idempotent** (a no-op
-re-sync writes nothing), and a clone/pull failure returns a structured error
-rather than a `500`. The Git client is an injectable seam, so the whole pipeline
-is unit-tested offline against a fixture repo.
+Policies can also be managed **GitOps-style** (M2.4), with **Git as the single
+source of truth**. `custodian/gitops.py::sync_policies` resolves a policy
+directory — point `GITOPS_REPO_URL` (+ `GITOPS_BRANCH` / `GITOPS_POLICY_PATH`) at a
+Git repo of Custodian policy YAML and it **clones/pulls** it; with no repo URL it
+falls back to a **local directory** (`GITOPS_LOCAL_PATH`, defaulting to the bundled
+`cloudwarden/policies/`). It then validates every `*.yml|*.yaml|*.json`, **upserts
+by name** with `source='gitops'`, and — because Git is authoritative — **deletes
+any `gitops` policy no longer present** in the source (hand-authored `custom`
+policies are never touched). New policies are seeded **disabled** (`enabled=False`)
+so nothing acts until an operator turns it on, and a re-sync of an edited definition
+**preserves that toggle** (the update path never rewrites `enabled`). Unparseable or
+schema-invalid files are **skipped and reported** (non-fatal), the sync is
+**idempotent**, and a clone/pull failure returns a structured error rather than a
+`500`. It runs **on every boot** (the FastAPI lifespan hook) and on demand via
+`POST /api/policies/sync`; the Git client is an injectable seam, so the whole
+pipeline is unit-tested offline against a fixture repo.
+
+**Bundled default policies.** The stack ships **10 disabled-by-default
+FinOps/governance policies** as the local GitOps source — `cloudwarden/policies/`:
+`cost.yml` (7: unattached disks, orphaned public IPs, stopped/deallocated VMs, empty
+App Service plans, stale snapshots, idle load balancers, orphaned NICs) and
+`governance.yml` (3: VMs missing an owner tag, public blob storage, Cosmos DB with
+public network access). Each uses portable `value` filters plus a **non-destructive
+`tag` action** (flag, don't delete); the operator enables the ones they want from the
+Policies page. Because Git is the source of truth, the intended workflow is to move
+these into your own repo and manage them there.
 
 Every content change to a policy is captured as an immutable **version** (M2.5) in
 a `policy_versions` table (`ON DELETE CASCADE` with the policy). `create_policy`
@@ -863,7 +916,8 @@ Vault / column-encryption backing is the intended hardening step.
 | `COST_LOOKBACK_DAYS` / `METRIC_LOOKBACK_DAYS` | analysis windows |
 | `REMEDIATION_ENABLED` | `false` = dry-run only |
 | `LOG_ANALYTICS_WORKSPACE_ID` | enables memory-based downsize rules |
-| `GITOPS_REPO_URL` / `GITOPS_BRANCH` / `GITOPS_POLICY_PATH` | GitOps policy sync source (blank URL disables) |
+| `GITOPS_REPO_URL` / `GITOPS_BRANCH` / `GITOPS_POLICY_PATH` | GitOps policy sync source (blank URL → local fallback) |
+| `GITOPS_LOCAL_PATH` | Local policy dir when no repo URL (blank → bundled `cloudwarden/policies/`) |
 
 Full list: `.env.example`.
 
@@ -873,10 +927,12 @@ Full list: `.env.example`.
 backend/cloudwarden/
   config.py auth.py resilience.py models.py orchestrator.py scheduler.py cli.py
   azure/       inventory.py cost.py metrics.py logs.py advisor.py context.py
+               activity_metrics.py activitylog.py ml_compute.py connectivity.py
   analysis/    (rollup/rules/idle/pricing/savings — Phase 2)
   ai/          (base/anthropic/openai/factory/prompt — Phase 3)
   remediation/ (executor/guardrails/approval — Phase 5)
   custodian/   engine.py gitops.py (Cloud Custodian c7n + c7n-azure — engine + GitOps sync)
+  policies/    cost.yml governance.yml (10 bundled, disabled-by-default GitOps defaults)
   storage/     schema.py db.py repository.py (policies, executions, cost, SQL views)
   api/         main.py
   fixtures/    inventory.json cost.json custodian_policy_result.json
@@ -896,7 +952,7 @@ make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcont
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
-**Tests:** 291 tests, **~99% line coverage** (gate at 95%, enforced in CI —
+**Tests:** 294 tests, **~99% line coverage** (gate at 95%, enforced in CI —
 `.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
 clients; the DB/API/orchestrator/remediation flows run against a throwaway
 PostgreSQL (testcontainers).
