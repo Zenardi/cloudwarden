@@ -28,7 +28,7 @@ export default function Runs() {
   async function trigger() {
     setBusy(true);
     try {
-      await apiPost("/api/runs?mock=true");
+      await apiPost("/api/runs");
       await load();
     } catch (e) {
       setErr(String(e));
@@ -43,7 +43,7 @@ export default function Runs() {
       <p className="sub">Pipeline runs (collect → analyze → recommend → store).</p>
       <p>
         <button className="primary" onClick={trigger} disabled={busy}>
-          {busy ? "Running…" : "Trigger run (mock)"}
+          {busy ? "Running…" : "Trigger run"}
         </button>
       </p>
       {err && <div className="err">{err}</div>}
