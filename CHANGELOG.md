@@ -27,6 +27,21 @@ All notable changes to this project are documented here. Format loosely follows
   100% coverage on the gated modules).
 
 ### Added
+- **Coverage & mutation-testing gate (#52, M13.2).** Hardens the quality bar two
+  ways. **Coverage:** the CI backend job now enforces the 95 % floor explicitly
+  (`pytest --cov-fail-under=95`, backing the existing `fail_under = 95` in
+  `pyproject.toml`), so a drop below 95 % fails the build. **Mutation testing:** a
+  new advisory `mutation` CI job runs `mutmut` over the core governance modules
+  (`analysis/`, `custodian/`, `remediation/`) to measure whether tests actually
+  *catch* injected bugs, reporting a **mutation score** against a documented
+  threshold (**≥80 % of tested mutants killed**). It is non-blocking initially
+  (`continue-on-error`) and scheduled to flip to blocking. `mutmut==3.6.0` is
+  pinned in `requirements-dev.txt` (2.x's pony-ORM cache is broken on Python 3.13);
+  config lives in `backend/setup.cfg` `[mutmut]` and runs from `backend/` so mutated
+  paths match the tests' imports. The autouse test `chdir` isolation now yields to
+  mutmut's sandbox (`MUTANT_UNDER_TEST`). New `backend/tests/test_quality_gates.py`
+  (TDD-first) asserts the coverage floor, the CI coverage + mutation steps, the
+  core-module targeting, and the mutmut pin. Run locally with `make mutation`.
 - **Trivy CVE gate in CI — fs + image + config, fail on HIGH/CRITICAL (#51, M13.1).**
   The `security` job now runs three Trivy scans that fail the build on any
   HIGH/CRITICAL finding (`--severity HIGH,CRITICAL --exit-code 1`): `trivy fs`

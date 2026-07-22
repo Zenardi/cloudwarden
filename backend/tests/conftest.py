@@ -76,7 +76,13 @@ def _isolate_settings(monkeypatch, tmp_path):
     override these. chdir to a temp dir so `env_file=".env"` finds nothing."""
     from cloudwarden.config import get_settings
 
-    monkeypatch.chdir(tmp_path)
+    # Work from a temp dir so a real project `.env` is never picked up — EXCEPT when
+    # mutmut drives the suite (`MUTANT_UNDER_TEST` set): mutmut resolves its
+    # `source_paths` relative to the CWD during its stats pass, so chdir'ing away
+    # breaks it. The mutants sandbox has no `.env`, so skipping the chdir is safe
+    # there. See the mutation-testing gate (issue #52 / M13.2).
+    if not os.environ.get("MUTANT_UNDER_TEST"):
+        monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("FINOPS_MOCK", "1")
     for var in (
         "AZURE_TENANT_ID",

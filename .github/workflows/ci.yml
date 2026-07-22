@@ -35,7 +35,7 @@ jobs:
       # spins up a real Postgres — this run covers unit AND DB-backed integration
       # tests. Coverage gate (fail_under=95) is enforced via pyproject.
       - name: Tests + coverage (unit + integration; fails under 95%)
-        run: pytest backend/tests --cov=cloudwarden --cov-report=term-missing
+        run: pytest backend/tests --cov=cloudwarden --cov-report=term-missing --cov-fail-under=95
 
   # --- Build the Next.js app (tsc typecheck via next build) + unit tests --- #
   frontend:
@@ -1369,3 +1369,76 @@ jobs:
         run: |
           trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
             --exit-code 1 --no-progress cloudwarden-frontend
+
+  # --- Mutation testing: test-effectiveness gate on the core governance modules #
+  # Measures whether the tests actually CATCH bugs, not just execute lines. Runs
+  # mutmut over analysis/custodian/remediation (config: backend/setup.cfg [mutmut])
+  # and reports a mutation score against a documented threshold (>=80% killed).
+  # ADVISORY first pass per M13.2 (`continue-on-error`): it surfaces the score
+  # without blocking merges. Flip to blocking later by dropping `continue-on-error`
+  # and failing under the threshold in the score step. Runs from backend/ so mutated
+  # paths (cloudwarden/...) match the tests' imports; testcontainers is intentionally
+  # NOT installed so DB-backed tests skip fast and per-mutant runs stay offline.
+  mutation:
+    name: Mutation testing (mutmut — core modules, advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install dependencies (offline test set + mutmut)
+        run: |
+          python -m pip install --upgrade pip
+          # No testcontainers on purpose → DB-backed tests skip, keeping mutants offline & fast.
+          pip install -r requirements.txt "pytest>=8.3" "mutmut==3.6.0"
+          pip install --no-deps --upgrade -r requirements-overrides-security.txt
+      - name: Run mutation testing (core modules)
+        run: |
+          set +e
+          mutmut run 2>&1 | tee mutmut.log
+          echo "mutmut run exit: ${PIPESTATUS[0]} (advisory)"
+          true
+      - name: Mutation score vs threshold (advisory)
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          THRESHOLD = 80.0  # % of tested mutants that must be killed (documented gate).
+          log = pathlib.Path("mutmut.log")
+          text = log.read_text(errors="replace") if log.exists() else ""
+          ansi = re.compile(r"\x1b\[[0-9;]*m")
+
+          killed = survived = total = None
+          for raw in text.splitlines():
+              line = ansi.sub("", raw)
+              m = re.search(r"(\d+)/(\d+).*?🎉\s*(\d+).*?🙁\s*(\d+)", line)
+              if m:  # keep the LAST (final) progress line
+                  total, killed, survived = int(m.group(2)), int(m.group(3)), int(m.group(4))
+
+          if killed is None:
+              print("::warning::could not parse a mutmut summary line — see mutmut.log")
+              raise SystemExit(0)
+
+          tested = killed + survived
+          score = (killed / tested * 100) if tested else 0.0
+          verdict = "PASS" if score >= THRESHOLD else "FAIL"
+          msg = (
+              f"Mutation score: {score:.1f}% ({killed} killed / {survived} survived / "
+              f"{total} mutants) — threshold {THRESHOLD:.0f}% → {verdict} (advisory)"
+          )
+          print(msg)
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a") as fh:
+                  fh.write(f"### Mutation testing (advisory)\n\n{msg}\n")
+          # Advisory: do NOT fail the build yet — scheduled to enforce (M13.2).
+          PY

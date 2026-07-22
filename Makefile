@@ -29,6 +29,9 @@ trivy: ## Local pre-commit security gate — Trivy fs + config (HIGH/CRITICAL) v
 	docker run --rm -v "$(CURDIR)":/repo -w /repo aquasec/trivy:0.72.0 config \
 		--severity HIGH,CRITICAL --exit-code 1 -q .
 
+mutation: ## Mutation testing on core modules (mutmut; config in backend/setup.cfg)
+	cd backend && mutmut run; mutmut results
+
 run-mock: ## Run the full pipeline against fixtures (no Azure), local
 	cd backend && FINOPS_MOCK=1 DATABASE_URL=$${DATABASE_URL:-postgresql+psycopg://finops:finops@localhost:5432/finops} python -m cloudwarden.cli run --mock
 
@@ -53,4 +56,4 @@ initdb: ## Create/upgrade the database schema (in-container)
 seed: ## Run one mock pipeline inside the backend container
 	$(COMPOSE) run --rm backend run --mock
 
-.PHONY: help install install-dev lint fmt test coverage trivy run-mock up up-core up-all down logs initdb seed
+.PHONY: help install install-dev lint fmt test coverage trivy mutation run-mock up up-core up-all down logs initdb seed

@@ -950,13 +950,29 @@ make lint      # ruff
 make test      # offline unit tests (no DB/Azure needed)
 make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcontainers; needs Docker)
 make trivy     # security gate — Trivy fs + config scan, HIGH/CRITICAL (needs Docker)
+make mutation  # mutation testing on core modules (mutmut, advisory)
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
 **Tests:** **~99% line coverage** (gate at 95%, enforced in CI —
-`.github/workflows/ci.yml`). Live-Azure code paths are covered via injected fake
-clients; the DB/API/orchestrator/remediation flows run against a throwaway
-PostgreSQL (testcontainers).
+`.github/workflows/ci.yml` via `--cov-fail-under=95`, backed by
+`fail_under = 95` in `pyproject.toml`). Live-Azure code paths are covered via
+injected fake clients; the DB/API/orchestrator/remediation flows run against a
+throwaway PostgreSQL (testcontainers).
+
+### Test effectiveness (mutation testing)
+
+Line coverage proves code *ran*, not that a test would *catch a bug*. A CI
+`mutation` job runs [mutmut](https://mutmut.readthedocs.io/) over the core
+governance modules — `analysis/`, `custodian/`, `remediation/` — deliberately
+mutating them and checking the suite fails (kills the mutant). Config lives in
+[`backend/setup.cfg`](backend/setup.cfg) `[mutmut]`; it runs from `backend/` so
+mutated paths (`cloudwarden/...`) match the tests' imports, and scopes each
+mutant to a fast offline test subset. The job reports a **mutation score** and
+compares it to the documented threshold (**≥80 % of tested mutants killed**). It
+is **advisory** for now (`continue-on-error: true` — non-blocking) and flips to
+blocking once the score stabilises above the threshold. Run it locally with
+`make mutation` (needs `mutmut`, installed via `requirements-dev.txt`).
 
 ### Security scanning (Trivy CVE gate)
 
