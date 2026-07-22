@@ -214,15 +214,28 @@ def test_sync_clone_failure_returns_error(db, gitops_env, tmp_path) -> None:
     assert result["added"] == 0
 
 
-def test_sync_not_configured_returns_error(db) -> None:
+def test_sync_no_remote_uses_local_fallback(db, tmp_path, monkeypatch) -> None:
+    """No GITOPS_REPO_URL ⇒ sync falls back to the local (Git-tracked) policy dir
+    rather than erroring — Git is still the source of truth via the bundled defaults.
+    Point GITOPS_LOCAL_PATH at a temp dir with one good policy and confirm it imports
+    from there (source ``local:…``), with no git client involved."""
     from cloudwarden.config import get_settings
 
-    get_settings.cache_clear()  # GITOPS_REPO_URL unset by the isolate-settings fixture
+    local = tmp_path / "bundled"
+    local.mkdir()
+    (local / "a.yml").write_text(GOOD_VM, encoding="utf-8")
+    monkeypatch.delenv("GITOPS_REPO_URL", raising=False)
+    monkeypatch.setenv("GITOPS_LOCAL_PATH", str(local))
+    get_settings.cache_clear()
 
-    result = sync_policies(git_client=FakeGitClient("/nope"), runner=FakeCustodianRunner())
+    result = sync_policies(runner=FakeCustodianRunner())
 
-    assert result["ok"] is False
-    assert "configured" in result["error"].lower()
+    assert result["ok"] is True
+    assert result["error"] is None
+    assert result["source"] == f"local:{local}"
+    assert result["added"] == 1
+    with session_scope() as s:
+        assert {p["name"] for p in repo.list_policies(s)} == {"stopped-vms"}
 
 
 def test_default_git_client_is_live() -> None:
