@@ -5,6 +5,22 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- **Backend image shrunk ~271 MB by pruning the unused Azure SDK (#129, M13.6).**
+  `c7n-azure` hard-pulls ~56 `azure-mgmt-*` provider SDKs (~480 MB) but imports
+  them **lazily**; CloudWarden runs only a handful. The `Dockerfile` builder now
+  deletes every `azure/mgmt/<provider>` not in
+  [`backend/azure_mgmt_keep.txt`](backend/azure_mgmt_keep.txt) (39 providers), cutting
+  the image **~1.13 GB → ~859 MB (−271 MB, ~24%)** with **zero functional change**
+  — full offline suite, all 5 bundled packs (18 policies) validating through the
+  real c7n engine, and remediation paths all stay green. Two guards prevent an
+  over-prune: a **build-time smoke** (re-registers `azure.*` + imports every kept
+  provider — fails the build if one is missing) and a **drift test**
+  (`backend/tests/test_azure_footprint.py`) that fails CI if the keep-list stops
+  covering a needed SDK. `requirements.txt` / `requirements.lock` are unchanged
+  (pruning is post-install), so the hash-pinned lock, `pip --require-hashes` gate,
+  and SBOM stay consistent; `trivy fs` + `image` show no new HIGH/CRITICAL.
+
 ### Fixed
 - **Overview design-critique remediation — trust, accessibility, and shareable
   scope.** Resolves the P1–P3 findings from an `/impeccable critique` of the

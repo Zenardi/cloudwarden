@@ -1,0 +1,51 @@
+# azure-mgmt provider SDKs kept in the backend image (issue #129 / M13.6).
+#
+# c7n-azure==0.7.50 hard-depends on ~56 `azure-mgmt-*` provider SDKs (~480 MB in
+# the venv) but imports each provider LAZILY — only the handful CloudWarden
+# actually runs are ever loaded. The Dockerfile builder deletes every
+# `azure/mgmt/<provider>` directory NOT listed below, trimming ~214 MB (39
+# providers) from the shipped image with zero functional change.
+#
+# SINGLE SOURCE OF TRUTH, shared by:
+#   * backend/Dockerfile                     — prune loop keeps only these dirs
+#   * backend/tests/test_azure_footprint.py  — asserts this list covers every
+#     azure.mgmt SDK our packs/policies + `cloudwarden` source actually need.
+#
+# Rationale per provider:
+#   compute .................. azure.vm / azure.disk / azure.snapshot
+#   cosmosdb ................. azure.cosmosdb
+#   keyvault ................. azure.keyvault
+#   network .................. azure.publicip / networksecuritygroup / networkinterface / loadbalancer
+#   sql ...................... azure.sqlserver / azure.sqldatabase
+#   storage .................. azure.storage
+#   web ...................... azure.webapp / azure.appserviceplan
+#   advisor .................. cloudwarden/azure/advisor.py
+#   machinelearningservices .. cloudwarden/azure/ml_compute.py
+#   monitor .................. cloudwarden/azure/activitylog.py (+ metrics)
+#   resource ................. cloudwarden/remediation/executor.py (ResourceManagementClient)
+#   resourcegraph ............ cloudwarden/azure/inventory.py
+#   core ..................... azure-mgmt-core, shared base for all mgmt clients
+#   costmanagement ........... c7n_azure/session.py (loaded at registration)
+#   eventgrid ................ c7n_azure entry / event-grid mode
+#   applicationinsights ...... safety margin — c7n_azure/utils.py lazy path
+#   managementgroups ......... safety margin — c7n_azure/utils.py lazy path
+#
+# One lowercase provider name per line; `#` comments and blanks ignored; keep
+# alphabetical. Regenerate/verify: pytest backend/tests/test_azure_footprint.py
+advisor
+applicationinsights
+compute
+core
+cosmosdb
+costmanagement
+eventgrid
+keyvault
+machinelearningservices
+managementgroups
+monitor
+network
+resource
+resourcegraph
+sql
+storage
+web

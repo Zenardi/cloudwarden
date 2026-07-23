@@ -1035,6 +1035,26 @@ Three supply-chain / credential gates catch tampering and leaks pre-merge
   is excepted, with justification). Run the identical gate locally before
   committing with `make secrets`.
 
+### Container image footprint (Azure SDK pruning)
+
+`c7n-azure` hard-depends on ~56 `azure-mgmt-*` provider SDKs (~480 MB in the venv),
+but imports each provider **lazily** — CloudWarden only ever runs a handful
+(compute, network, sql, storage, web, cosmosdb, keyvault + resourcegraph / advisor
+/ monitor for collection). The backend `Dockerfile` builder therefore **prunes
+every `azure/mgmt/<provider>` the platform doesn't use** (M13.6, issue #129),
+listed in [`backend/azure_mgmt_keep.txt`](backend/azure_mgmt_keep.txt) — the single
+source of truth shared with the guard test. This trims the image from **~1.13 GB →
+~859 MB (−271 MB, ~24%)** with zero functional change.
+
+Two guards keep it safe: a **build-time smoke** re-registers all `azure.*`
+resources and imports every kept provider (an over-prune **fails the build**), and
+[`backend/tests/test_azure_footprint.py`](backend/tests/test_azure_footprint.py)
+asserts in CI that the keep-list still covers every SDK our packs/policies need —
+so adding a new Azure resource type without keeping its SDK fails the test rather
+than shipping a broken image. `requirements.txt` / `requirements.lock` are
+unchanged (pruning is a post-install step), so the hash-pinned supply-chain gate
+and SBOM stay intact.
+
 ## Observability (metrics, tracing & structured logs)
 
 Operable in production out of the box (M13.4) — zero-config, all always-on:
