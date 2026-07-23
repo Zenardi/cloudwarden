@@ -36,8 +36,25 @@ __all__ = [
     "NotFound",
     "render",
     "build_violation_context",
+    "build_budget_context",
+    "DEFAULT_BUDGET_SUBJECT",
+    "DEFAULT_BUDGET_BODY",
     "notify",
 ]
+
+# The default budget-alert template (M14.2). Used when a budget declares no template
+# of its own — see :func:`cloudwarden.storage.repository.ensure_budget_template`. The
+# variables come from :func:`build_budget_context`; missing ones render empty.
+DEFAULT_BUDGET_SUBJECT = (
+    "[Budget] {{ budget_name }} crossed {{ threshold_pct }}% "
+    "({{ actual_pct }}% of {{ amount }} {{ currency }})"
+)
+DEFAULT_BUDGET_BODY = (
+    "Budget '{{ budget_name }}' ({{ scope_type }} {{ scope_value }}, {{ period }}) for "
+    "{{ period_key }} reached {{ actual_pct }}% of its {{ amount }} {{ currency }} limit "
+    "— {{ spend }} {{ currency }} of {{ basis }} spend — crossing the {{ threshold_pct }}% "
+    "threshold."
+)
 
 # One sandboxed environment shared by every render. ``SandboxedEnvironment`` blocks
 # access to unsafe attributes (dunders, internals) and the default ``Undefined``
@@ -96,6 +113,36 @@ def build_violation_context(
     if extra:
         context.update(extra)
     return context
+
+
+def build_budget_context(
+    *,
+    budget: dict[str, Any],
+    period_key: str,
+    spend: float,
+    actual_pct: float,
+    threshold_pct: float,
+    basis: str,
+) -> dict[str, Any]:
+    """Assemble the template context for a budget threshold crossing (M14.2).
+
+    Exposes the budget's identity + scope, the period, the measured spend and its
+    percent of the limit, and the crossed threshold (with its ``basis`` — ``actual``
+    or ``forecast``). Consumed by :data:`DEFAULT_BUDGET_BODY` and any custom template.
+    """
+    return {
+        "budget_name": budget.get("name"),
+        "scope_type": budget.get("scope_type"),
+        "scope_value": budget.get("scope_value"),
+        "period": budget.get("period"),
+        "period_key": period_key,
+        "amount": budget.get("amount"),
+        "currency": budget.get("currency"),
+        "spend": spend,
+        "actual_pct": actual_pct,
+        "threshold_pct": threshold_pct,
+        "basis": basis,
+    }
 
 
 def notify(

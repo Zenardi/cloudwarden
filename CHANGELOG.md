@@ -6,6 +6,24 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Budgets & threshold alerting (#135, M14.2).** FinOps gains a first-class **budget**
+  concept: a spend limit over a scope (subscription / account / account-group / tag /
+  team) and period (monthly / quarterly) with ordered **threshold rules**
+  (e.g. 80/100% of actual, plus forecast-basis rules once M14.4 lands). A new
+  `analysis/budgets.py` evaluates actual spend vs each budget every pipeline run and
+  scheduler tick; the first time a threshold is newly crossed it fires **exactly one**
+  notification (for the highest newly-crossed threshold — no alert storms) through the
+  **existing** notification transports (no new delivery code path), persists a
+  `BudgetThresholdEvent` deduped on `(budget, period, threshold, basis)`, and never
+  re-fires within the period — resetting on a new period. Budget mutations are
+  RBAC-guarded (`budget:write`) and audited (`budget.create|update|delete`); reads are
+  gated (`budget:read`). New `Budget` + `BudgetThresholdEvent` tables, repository CRUD,
+  `GET/POST/PATCH/DELETE /api/budgets` + `GET /api/budgets/{id}/status`, a **Budgets**
+  web page (create/edit + spend-vs-limit bars), and a *budget-vs-actual* Grafana panel.
+  Azure-first behind the `CloudProvider` abstraction; tag/team scope degrades to a
+  subscription match until the M14.5 tag dimension lands. Best-effort — a budget or
+  alert failure never breaks a run. Toggle with `BUDGET_ALERTS_ENABLED`. Strict TDD,
+  ≥95% coverage on the new modules, ruff clean.
 - **Commitment coverage & RI/Savings-Plan recommendations (#134, M14.1).** Adds the
   single largest untapped FinOps lever: commitment-discount optimization. A new
   collector (`azure/reservations.py`, injectable + mock-fixture backed) gathers

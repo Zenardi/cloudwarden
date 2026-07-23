@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from .ai import factory as ai_factory
 from .ai.prompt import build_payload
+from .analysis.budgets import evaluate_budgets
 from .analysis.commitments import analyze_commitments
 from .analysis.idle import detect_idle, detect_idle_by_activity
 from .analysis.rollup import build_rollups
@@ -265,6 +266,17 @@ def run_pipeline(
             )
             repo.upsert_ai_summary(session, run_id, ai_summary)
             counts["ai_summary"] = 1
+        # Budgets (M14.2): with this run's cost committed, evaluate budgets vs actual
+        # spend and fire threshold-crossing alerts through the existing transports.
+        # Best-effort in its own transaction — a budget/alert failure never fails a run.
+        if settings.budget_alerts_enabled:
+            try:
+                with session_scope() as session:
+                    summary = evaluate_budgets(session, on=date.today(), run_id=run_id)
+                counts["budget_events"] = summary["events_recorded"]
+                counts["budget_alerts"] = summary["notifications_sent"]
+            except Exception:  # noqa: BLE001 - budget evaluation is best-effort
+                logger.warning("budget evaluation failed for run %s", run_id, exc_info=True)
         with session_scope() as session:
             repo.finish_run(session, run_id, status="succeeded")
     except Exception as exc:  # noqa: BLE001 - recorded then re-raised

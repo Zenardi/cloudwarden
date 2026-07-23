@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 type IconName =
-  | "overview" | "costs" | "recommendations" | "policies" | "collections"
+  | "overview" | "costs" | "recommendations" | "budgets" | "policies" | "collections"
   | "bindings" | "compliance" | "remediation" | "runs" | "executions"
   | "events" | "assets" | "subscriptions" | "accountGroups" | "notifications"
   | "audit" | "chevronLeft" | "close" | "menu";
@@ -33,6 +33,13 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M9 18h6" />
       <path d="M10 21h4" />
       <path d="M12 3a6 6 0 00-4 10.5c.7.6 1 1 1 2h6c0-1 .3-1.4 1-2A6 6 0 0012 3z" />
+    </>
+  ),
+  budgets: (
+    <>
+      <path d="M3 7h15a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+      <path d="M3 7V6a2 2 0 012-2h11" />
+      <circle cx="16.5" cy="12.5" r="1.5" />
     </>
   ),
   policies: <path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z" />,
@@ -148,6 +155,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/costs", label: "Costs", icon: "costs" },
       { href: "/recommendations", label: "Recommendations", icon: "recommendations" },
+      { href: "/budgets", label: "Budgets", icon: "budgets" },
     ],
   },
   {

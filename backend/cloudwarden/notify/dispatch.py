@@ -88,3 +88,35 @@ def dispatch_for_binding(
         )
         results.append({"channel_id": cfg["channel_id"], **result})
     return results
+
+
+def dispatch_for_budget(
+    session: Any,
+    *,
+    budget: dict[str, Any],
+    context: dict[str, Any],
+    template_id: int,
+    transport_factory: Callable[[str], Transport] | None = None,
+) -> dict[str, Any] | None:
+    """Render ``template_id`` against ``context`` and send it via the budget's channel.
+
+    Reuses the same transport registry + :func:`service.notify` seam as bindings, so a
+    budget alert adds no new delivery code path (M14.2). Returns ``None`` when the
+    budget has no channel (or the channel was deleted) — the budget then evaluates
+    silently. ``transport_factory`` is the test seam (a spy transport).
+    """
+    channel_id = budget.get("channel_id")
+    if not channel_id:
+        return None
+    channel = repo.get_notification_channel(session, channel_id)
+    if channel is None:
+        return None
+    make = transport_factory or build_transport
+    transport = make(channel["transport"])
+    return service.notify(
+        session,
+        template_id=template_id,
+        channel_id=channel_id,
+        context=context,
+        transport=transport,
+    )

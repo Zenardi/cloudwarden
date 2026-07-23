@@ -5,7 +5,7 @@
   "timezone": "",
   "editable": true,
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "",
   "time": { "from": "now-30d", "to": "now" },
   "templating": { "list": [] },
@@ -127,6 +127,32 @@
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT resource_id, resource_type, location, resource_group, cost FROM v_cost_by_resource ORDER BY cost DESC LIMIT 25"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Budgets — spend vs limit (latest crossing)",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 25 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "amount" }, "properties": [ { "id": "unit", "value": "currencyUSD" } ] },
+          { "matcher": { "id": "byName", "options": "spend" }, "properties": [ { "id": "unit", "value": "currencyUSD" } ] },
+          { "matcher": { "id": "byName", "options": "actual_pct" }, "properties": [ { "id": "unit", "value": "percent" }, { "id": "custom.cellOptions", "value": { "type": "gauge" } } ] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "actual_pct", "desc": true } ] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "finops_pg" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT b.name, b.scope_type, b.scope_value, b.period, b.amount, b.currency, e.period_key, e.threshold_pct AS last_threshold, e.actual_pct, e.amount AS spend, e.created_at FROM budgets b LEFT JOIN LATERAL (SELECT * FROM budget_threshold_events be WHERE be.budget_id = b.id ORDER BY be.created_at DESC LIMIT 1) e ON true WHERE b.enabled ORDER BY e.actual_pct DESC NULLS LAST, b.name"
         }
       ]
     }

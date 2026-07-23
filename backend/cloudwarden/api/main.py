@@ -39,6 +39,8 @@ from ..models import (
     BindingIn,
     BindingNotificationIn,
     BindingUpdate,
+    BudgetCreate,
+    BudgetUpdate,
     CollectionCreate,
     NotificationChannelIn,
     NotificationChannelUpdate,
@@ -250,6 +252,146 @@ def finops_commitments() -> dict[str, Any]:
             r for r in repo.latest_recommendations(session) if r.get("category") == "commitment"
         ]
     return {"coverage": coverage, "commitments": commitments, "recommendations": recs}
+
+
+# --- Budgets & threshold alerting (M14.2) --------------------------------------
+@app.get("/api/budgets", dependencies=[Depends(rbac.require_permission("budget:read"))])
+def list_budgets() -> list[dict[str, Any]]:
+    with session_scope() as session:
+        return repo.list_budgets(session)
+
+
+@app.post(
+    "/api/budgets",
+    status_code=201,
+    dependencies=[Depends(rbac.require_permission("budget:write"))],
+)
+def create_budget(body: BudgetCreate, request: Request) -> dict[str, Any]:
+    principal = rbac.principal_from_request(request)
+    try:
+        with session_scope() as session:
+            created = repo.create_budget(
+                session,
+                name=body.name,
+                amount=body.amount,
+                scope_type=body.scope_type,
+                scope_value=body.scope_value,
+                period=body.period,
+                currency=body.currency,
+                thresholds=body.thresholds,
+                channel_id=body.channel_id,
+                template_id=body.template_id,
+                enabled=body.enabled,
+            )
+            audit.record(
+                session,
+                actor=principal,
+                action="budget.create",
+                target_type="budget",
+                target_id=str(created["id"]),
+                after=created,
+            )
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="budget name already exists") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return created
+
+
+@app.get("/api/budgets/{budget_id}", dependencies=[Depends(rbac.require_permission("budget:read"))])
+def get_budget(budget_id: int) -> dict[str, Any]:
+    with session_scope() as session:
+        budget = repo.get_budget(session, budget_id)
+    if budget is None:
+        raise HTTPException(status_code=404, detail="budget not found")
+    return budget
+
+
+@app.get(
+    "/api/budgets/{budget_id}/status",
+    dependencies=[Depends(rbac.require_permission("budget:read"))],
+)
+def budget_status(budget_id: int) -> dict[str, Any]:
+    """Current spend vs a budget: percent-of-limit, crossed thresholds, recorded events."""
+    from datetime import date
+
+    from ..analysis import budgets as budget_analysis
+
+    with session_scope() as session:
+        budget = repo.get_budget(session, budget_id)
+        if budget is None:
+            raise HTTPException(status_code=404, detail="budget not found")
+        today = date.today()
+        pkey = budget_analysis.period_key(budget["period"], today)
+        start, _end = budget_analysis.period_bounds(budget["period"], today)
+        spend = repo.budget_spend(
+            session,
+            scope_type=budget["scope_type"],
+            scope_value=budget["scope_value"],
+            start=start,
+            end=today,
+        )
+        pct = budget_analysis.actual_pct(spend, float(budget["amount"]))
+        rules = budget_analysis.parse_thresholds(budget["thresholds"])
+        crossed = [r.pct for r in budget_analysis.crossed_rules(rules, actual_pct=pct)]
+        events = repo.budget_events_for_period(session, budget_id, pkey)
+    return {
+        "budget": budget,
+        "period_key": pkey,
+        "spend": spend,
+        "actual_pct": pct,
+        "crossed": crossed,
+        "events": events,
+    }
+
+
+@app.patch(
+    "/api/budgets/{budget_id}", dependencies=[Depends(rbac.require_permission("budget:write"))]
+)
+def update_budget(budget_id: int, body: BudgetUpdate, request: Request) -> dict[str, Any]:
+    principal = rbac.principal_from_request(request)
+    changes = body.model_dump(exclude_unset=True)
+    try:
+        with session_scope() as session:
+            existing = repo.get_budget(session, budget_id)
+            if existing is None:
+                raise HTTPException(status_code=404, detail="budget not found")
+            updated = repo.update_budget(session, budget_id, changes)
+            audit.record(
+                session,
+                actor=principal,
+                action="budget.update",
+                target_type="budget",
+                target_id=str(budget_id),
+                before=existing,
+                after=updated,
+            )
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="budget name already exists") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return updated
+
+
+@app.delete(
+    "/api/budgets/{budget_id}", dependencies=[Depends(rbac.require_permission("budget:write"))]
+)
+def delete_budget(budget_id: int, request: Request) -> dict[str, Any]:
+    principal = rbac.principal_from_request(request)
+    with session_scope() as session:
+        existing = repo.get_budget(session, budget_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="budget not found")
+        repo.delete_budget(session, budget_id)
+        audit.record(
+            session,
+            actor=principal,
+            action="budget.delete",
+            target_type="budget",
+            target_id=str(budget_id),
+            before=existing,
+        )
+    return {"id": budget_id, "deleted": True}
 
 
 # --------------------------------------------------------------------------- #

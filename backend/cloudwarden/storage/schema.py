@@ -830,3 +830,75 @@ class AISummary(Base):
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Budget(Base):
+    """A spend budget over a scope + period, with ordered threshold rules (M14.2).
+
+    ``scope_type``/``scope_value`` name what the budget covers (a subscription,
+    account, account-group, tag value or team); ``period`` is ``monthly`` or
+    ``quarterly``; ``amount`` is the limit in ``currency``. ``thresholds`` (JSONB) is
+    the ordered rule list — each ``{"pct": <float>, "basis": "actual"|"forecast"}`` —
+    normalised on write. A crossing notifies through ``channel_id`` (a
+    ``notification_channels`` row) rendered from ``template_id`` (defaults to the
+    seeded budget template); a budget with no channel evaluates silently.
+    """
+
+    __tablename__ = "budgets"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(256), unique=True)
+    scope_type: Mapped[str] = mapped_column(String(32), default="subscription")
+    scope_value: Mapped[str | None] = mapped_column(String(512), index=True)
+    period: Mapped[str] = mapped_column(String(16), default="monthly")
+    amount: Mapped[float] = mapped_column(Numeric(18, 4), default=0)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    thresholds: Mapped[list] = mapped_column(JSONB, default=list)
+    channel_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("notification_channels.id", ondelete="SET NULL")
+    )
+    template_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("notification_templates.id", ondelete="SET NULL")
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BudgetThresholdEvent(Base):
+    """One recorded threshold crossing for a budget in a period (M14.2).
+
+    The natural key ``(budget_id, period_key, threshold_pct, basis)`` is unique — it
+    is the dedupe marker that makes a crossing fire **exactly once** per period and
+    threshold, even across re-evaluations or a scheduler tick racing a manual run.
+    ``notified`` records whether a notification was actually dispatched for the
+    crossing (the highest newly-crossed threshold), versus recorded only for dedupe.
+    ``run_id`` is the run that detected it (nullable; the row outlives the run).
+    """
+
+    __tablename__ = "budget_threshold_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    budget_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("budgets.id", ondelete="CASCADE"), index=True
+    )
+    period_key: Mapped[str] = mapped_column(String(16), index=True)
+    threshold_pct: Mapped[float] = mapped_column(Numeric(6, 2), default=0)
+    basis: Mapped[str] = mapped_column(String(16), default="actual")
+    amount: Mapped[float] = mapped_column(Numeric(18, 4), default=0)
+    budget_amount: Mapped[float] = mapped_column(Numeric(18, 4), default=0)
+    actual_pct: Mapped[float] = mapped_column(Numeric(8, 2), default=0)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    run_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "budget_id", "period_key", "threshold_pct", "basis", name="uq_budget_threshold_event"
+        ),
+    )

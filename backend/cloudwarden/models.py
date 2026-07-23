@@ -206,6 +206,37 @@ class ValidateResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class BudgetCreate(BaseModel):
+    """Inbound budget definition (M14.2). ``thresholds`` are ordered rules, each
+    ``{"pct": <float>, "basis": "actual"|"forecast"}`` (basis defaults to actual)."""
+
+    name: str
+    amount: float
+    scope_type: str = "subscription"  # subscription | account | account_group | tag | team
+    scope_value: str | None = None
+    period: str = "monthly"  # monthly | quarterly
+    currency: str = "USD"
+    thresholds: list[dict] = Field(default_factory=lambda: [{"pct": 80}, {"pct": 100}])
+    channel_id: int | None = None
+    template_id: int | None = None
+    enabled: bool = True
+
+
+class BudgetUpdate(BaseModel):
+    """Partial budget update — every field optional (M14.2)."""
+
+    name: str | None = None
+    amount: float | None = None
+    scope_type: str | None = None
+    scope_value: str | None = None
+    period: str | None = None
+    currency: str | None = None
+    thresholds: list[dict] | None = None
+    channel_id: int | None = None
+    template_id: int | None = None
+    enabled: bool | None = None
+
+
 class PolicyCreate(BaseModel):
     """Inbound shape for creating a governance policy (API validation)."""
 

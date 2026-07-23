@@ -144,8 +144,17 @@ for remediation.
 ## FinOps recommendations (idle & right-sizing)
 
 The FinOps pipeline turns each run's inventory, cost and metrics into ranked,
-evidence-backed recommendations across five detector families:
+evidence-backed recommendations across five detector families, plus a preventive
+**budget** layer:
 
+- **Budgets & threshold alerting** (`analysis/budgets.py`, M14.2) — preventive, not a
+  detector: a spend limit over a scope (subscription / account-group / tag / team) and
+  period (monthly / quarterly) with ordered threshold rules (e.g. 80/100% of actual).
+  Each run evaluates actual spend and fires **one** notification per newly-crossed
+  threshold through the existing transports — deduped per period, no alert storms.
+  Manage via `GET/POST/PATCH/DELETE /api/budgets` (+ `/status`), the **Budgets** page,
+  and a budget-vs-actual Grafana panel; RBAC-guarded (`budget:write`/`budget:read`) and
+  audited.
 - **Commitment coverage** (`analysis/commitments.py`, M14.1) — Reservation /
   Savings-Plan optimization, the largest untapped lever. Flags **under-utilized**
   commitments (advisory waste = the idle share of committed capacity) and

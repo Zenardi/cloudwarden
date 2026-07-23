@@ -8,7 +8,7 @@ statement), so re-running a collection never creates duplicate rows.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -2114,6 +2114,286 @@ def latest_commitment_coverage(session: Session) -> list[dict[str, Any]]:
         "  ORDER BY r.started_at DESC LIMIT 1"
         ") ORDER BY c.coverage_pct ASC, c.sku_family ASC",
     )
+
+
+# --------------------------------------------------------------------------- #
+# Budgets & threshold alerting (M14.2)
+# --------------------------------------------------------------------------- #
+_BUDGET_TEMPLATE_NAME = "budget-alert"
+
+
+def _normalize_thresholds(raw: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Validate + normalise threshold rules: float pct, valid basis, sorted ascending."""
+    rules: list[dict[str, Any]] = []
+    for item in raw or []:
+        basis = str(item.get("basis", "actual")).lower()
+        if basis not in ("actual", "forecast"):
+            raise ValueError(f"invalid threshold basis: {basis!r}")
+        rules.append({"pct": float(item["pct"]), "basis": basis})
+    rules.sort(key=lambda r: r["pct"])
+    return rules
+
+
+def _budget_public(rec: schema.Budget) -> dict[str, Any]:
+    return {
+        "id": rec.id,
+        "name": rec.name,
+        "scope_type": rec.scope_type,
+        "scope_value": rec.scope_value,
+        "period": rec.period,
+        "amount": float(rec.amount),
+        "currency": rec.currency,
+        "thresholds": rec.thresholds or [],
+        "channel_id": rec.channel_id,
+        "template_id": rec.template_id,
+        "enabled": rec.enabled,
+        "config": rec.config or {},
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+    }
+
+
+def _budget_event_public(rec: schema.BudgetThresholdEvent) -> dict[str, Any]:
+    return {
+        "id": rec.id,
+        "budget_id": rec.budget_id,
+        "period_key": rec.period_key,
+        "threshold_pct": float(rec.threshold_pct),
+        "basis": rec.basis,
+        "amount": float(rec.amount),
+        "budget_amount": float(rec.budget_amount),
+        "actual_pct": float(rec.actual_pct),
+        "currency": rec.currency,
+        "run_id": rec.run_id,
+        "notified": rec.notified,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+    }
+
+
+_BUDGET_MUTABLE = frozenset(
+    {
+        "name",
+        "scope_type",
+        "scope_value",
+        "period",
+        "amount",
+        "currency",
+        "thresholds",
+        "channel_id",
+        "template_id",
+        "enabled",
+        "config",
+    }
+)
+
+
+def create_budget(
+    session: Session,
+    *,
+    name: str,
+    amount: float,
+    scope_type: str = "subscription",
+    scope_value: str | None = None,
+    period: str = "monthly",
+    currency: str = "USD",
+    thresholds: list[dict[str, Any]] | None = None,
+    channel_id: int | None = None,
+    template_id: int | None = None,
+    enabled: bool = True,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a budget; thresholds are validated + normalised (raises on bad basis)."""
+    rec = schema.Budget(
+        name=name,
+        scope_type=scope_type,
+        scope_value=scope_value,
+        period=period,
+        amount=amount,
+        currency=currency,
+        thresholds=_normalize_thresholds(thresholds),
+        channel_id=channel_id,
+        template_id=template_id,
+        enabled=enabled,
+        config=config or {},
+    )
+    session.add(rec)
+    session.flush()
+    return _budget_public(rec)
+
+
+def get_budget(session: Session, budget_id: int) -> dict[str, Any] | None:
+    rec = session.get(schema.Budget, budget_id)
+    return _budget_public(rec) if rec else None
+
+
+def list_budgets(session: Session, *, enabled_only: bool = False) -> list[dict[str, Any]]:
+    """All budgets ordered by name (optionally only the enabled ones, for evaluation)."""
+    query = session.query(schema.Budget)
+    if enabled_only:
+        query = query.filter(schema.Budget.enabled.is_(True))
+    return [_budget_public(r) for r in query.order_by(schema.Budget.name.asc()).all()]
+
+
+def update_budget(
+    session: Session, budget_id: int, changes: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Partial-update a budget; unknown keys ignored, thresholds re-normalised."""
+    rec = session.get(schema.Budget, budget_id)
+    if rec is None:
+        return None
+    for key, value in changes.items():
+        if key not in _BUDGET_MUTABLE:
+            continue
+        if key == "thresholds":
+            value = _normalize_thresholds(value)
+        setattr(rec, key, value)
+    session.flush()
+    return _budget_public(rec)
+
+
+def delete_budget(session: Session, budget_id: int) -> bool:
+    rec = session.get(schema.Budget, budget_id)
+    if rec is None:
+        return False
+    session.delete(rec)
+    session.flush()
+    return True
+
+
+def _budget_scope_filter(scope_type: str, scope_value: str) -> tuple[str, dict[str, Any]]:
+    """WHERE fragment + params narrowing ``cost_snapshots`` to a budget scope.
+
+    ``subscription``/``account`` filter ``subscription_id`` directly; ``account_group``
+    resolves to its member subscriptions. ``tag``/``team`` have no cost dimension until
+    M14.5 — they **degrade** to a subscription match on ``scope_value`` (documented).
+    All values are bound parameters (injection-safe)."""
+    st = (scope_type or "subscription").lower()
+    if st in ("account_group", "accountgroup", "group"):
+        return (
+            " AND subscription_id IN (SELECT m.subscription_id FROM account_group_members m "
+            "JOIN account_groups g ON m.group_id = g.id WHERE g.name = :scope_value)",
+            {"scope_value": scope_value},
+        )
+    return " AND subscription_id = :scope_value", {"scope_value": scope_value}
+
+
+def budget_spend(
+    session: Session,
+    *,
+    scope_type: str,
+    scope_value: str | None,
+    start: date,
+    end: date,
+) -> float:
+    """Amortized spend for a budget scope over the inclusive ``[start, end]`` window.
+
+    A budget with no ``scope_value`` sums the whole tenant. Mirrors every other cost
+    read by filtering ``cost_type = 'Amortized'``."""
+    sql = (
+        "SELECT COALESCE(SUM(cost), 0) AS total FROM cost_snapshots "
+        "WHERE cost_type = 'Amortized' AND usage_date >= :start AND usage_date <= :end"
+    )
+    params: dict[str, Any] = {"start": start, "end": end}
+    if scope_value:
+        frag, scope_params = _budget_scope_filter(scope_type, scope_value)
+        sql += frag
+        params.update(scope_params)
+    rows = _rows(session, sql, **params)
+    return float(rows[0]["total"]) if rows else 0.0
+
+
+def record_budget_event(
+    session: Session,
+    *,
+    budget_id: int,
+    period_key: str,
+    threshold_pct: float,
+    basis: str,
+    amount: float,
+    budget_amount: float,
+    actual_pct: float,
+    currency: str = "USD",
+    run_id: str | None = None,
+    notified: bool = False,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Record a threshold crossing, deduped on ``(budget, period, threshold, basis)``.
+
+    Returns the new event, or ``None`` when this crossing was already recorded — the
+    idempotency guard that makes an alert fire exactly once per period/threshold even
+    under a re-run or a scheduler tick racing a manual run."""
+    stmt = (
+        pg_insert(schema.BudgetThresholdEvent)
+        .values(
+            budget_id=budget_id,
+            period_key=period_key,
+            threshold_pct=threshold_pct,
+            basis=basis,
+            amount=amount,
+            budget_amount=budget_amount,
+            actual_pct=actual_pct,
+            currency=currency,
+            run_id=run_id,
+            notified=notified,
+            config=config or {},
+        )
+        .on_conflict_do_nothing(constraint="uq_budget_threshold_event")
+        .returning(schema.BudgetThresholdEvent.id)
+    )
+    new_id = session.execute(stmt).scalar()
+    session.flush()
+    if new_id is None:
+        return None
+    return _budget_event_public(session.get(schema.BudgetThresholdEvent, new_id))
+
+
+def budget_events_for_period(
+    session: Session, budget_id: int, period_key: str
+) -> list[dict[str, Any]]:
+    """Recorded crossings for a budget in one period (ordered by threshold ascending)."""
+    query = (
+        session.query(schema.BudgetThresholdEvent)
+        .filter(
+            schema.BudgetThresholdEvent.budget_id == budget_id,
+            schema.BudgetThresholdEvent.period_key == period_key,
+        )
+        .order_by(schema.BudgetThresholdEvent.threshold_pct.asc())
+    )
+    return [_budget_event_public(r) for r in query.all()]
+
+
+def last_budget_event(
+    session: Session, budget_id: int, period_key: str | None = None
+) -> dict[str, Any] | None:
+    """The most recent crossing for a budget (optionally within one period)."""
+    query = session.query(schema.BudgetThresholdEvent).filter(
+        schema.BudgetThresholdEvent.budget_id == budget_id
+    )
+    if period_key is not None:
+        query = query.filter(schema.BudgetThresholdEvent.period_key == period_key)
+    rec = query.order_by(schema.BudgetThresholdEvent.id.desc()).first()
+    return _budget_event_public(rec) if rec else None
+
+
+def ensure_budget_template(session: Session) -> int:
+    """Get (or lazily create) the shared default budget-alert notification template."""
+    from ..notify import service
+
+    existing = (
+        session.query(schema.NotificationTemplate)
+        .filter(schema.NotificationTemplate.name == _BUDGET_TEMPLATE_NAME)
+        .one_or_none()
+    )
+    if existing is not None:
+        return existing.id
+    created = create_notification_template(
+        session,
+        name=_BUDGET_TEMPLATE_NAME,
+        subject=service.DEFAULT_BUDGET_SUBJECT,
+        body=service.DEFAULT_BUDGET_BODY,
+        description="Default budget threshold alert (M14.2)",
+    )
+    return created["id"]
 
 
 # --------------------------------------------------------------------------- #

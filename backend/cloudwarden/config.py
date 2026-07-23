@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     # small (or too bursty, its window minimum ≈ 0) to be worth committing.
     commitment_min_hourly: float = 0.5
 
+    # --- Budgets & threshold alerting (M14.2) ---
+    # Evaluate budgets vs actual spend each pipeline run / scheduler tick and fire a
+    # notification (through the existing transports) when a threshold is newly crossed.
+    budget_alerts_enabled: bool = True
+
     # --- Analysis windows & thresholds ---
     metric_lookback_days: int = 14
     cost_lookback_days: int = 30

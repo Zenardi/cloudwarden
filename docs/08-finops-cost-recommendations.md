@@ -112,6 +112,50 @@ signal yet (no-op stubs). The live path derives the commitment portfolio from th
 ARM Reservations/Consumption APIs; mock mode (`FINOPS_MOCK=1`) is backed by
 `fixtures/reservations.json`.
 
+## Budgets & threshold alerting (M14.2)
+
+Everything above is *descriptive* — it reports spend after the fact. Budgets make
+FinOps *preventive*. A **budget** is a spend limit over a **scope** (a subscription,
+account, account-group, tag value or team) and a **period** (monthly or quarterly),
+with an ordered list of **threshold rules** — each `{"pct": <float>, "basis":
+"actual"|"forecast"}` (a `forecast`-basis rule is inert until forecasting lands in
+M14.4). Every pipeline run — and every scheduler tick, transitively — evaluates
+actual (and, when available, forecast) spend against each enabled budget after cost is
+persisted.
+
+Two invariants govern alerting:
+
+- **Fire once.** When spend newly crosses a threshold, exactly **one** notification is
+  sent — for the *highest* newly-crossed threshold, so a jump past several at once is a
+  single alert, never a storm. Each crossing is persisted as a `BudgetThresholdEvent`
+  keyed on `(budget, period, threshold, basis)`; re-evaluating the same period is a
+  no-op and a new period resets the slate.
+- **Never break the run.** Notification dispatch is best-effort — a transport failure
+  is logged and swallowed; the crossing is still recorded so it won't re-fire.
+
+Alerts reuse the **existing** notification fabric (`notify/service.py` +
+`notify/dispatch.py`, all five transports — Slack / email / Teams / Jira / ServiceNow /
+webhook): a budget names a `channel_id` (and optionally a `template_id`, defaulting to
+the seeded `budget-alert` template). A budget with no channel evaluates silently. No
+new delivery code path is added.
+
+Scope resolution runs over `cost_snapshots` (amortized): `subscription`/`account`
+filter the subscription directly, `account_group` resolves to its member
+subscriptions. `tag`/`team` scope **degrades** to a subscription match on the scope
+value until the M14.5 tag dimension lands (documented, non-surprising).
+
+**Surfaced in:**
+
+| Where | What |
+|-------|------|
+| `GET /api/budgets` · `POST` · `PATCH` · `DELETE /api/budgets/{id}` | budget CRUD (RBAC `budget:read`/`budget:write`; mutations audited) |
+| `GET /api/budgets/{id}/status` | current-period spend, percent-of-limit, crossed thresholds, recorded events |
+| **Budgets** web page | create/edit budgets + spend-vs-limit bars and threshold chips |
+| *FinOps — Cost Overview* Grafana dashboard | budget-vs-actual (latest crossing) panel |
+
+Budget evaluation is toggled by `BUDGET_ALERTS_ENABLED` (default on) and is Azure-first
+behind the `CloudProvider` abstraction.
+
 ## AI executive summary
 
 Configured via the `AI_*` keys ([03](03-configuration.md#ai-provider-executive-summary)).

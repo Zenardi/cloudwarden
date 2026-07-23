@@ -44,6 +44,8 @@ export const apiPost = <T = any>(path: string, body?: unknown): Promise<T> =>
   request<T>("POST", path, body);
 export const apiPut = <T = any>(path: string, body?: unknown): Promise<T> =>
   request<T>("PUT", path, body);
+export const apiPatch = <T = any>(path: string, body?: unknown): Promise<T> =>
+  request<T>("PATCH", path, body);
 export const apiDelete = <T = any>(path: string): Promise<T> => request<T>("DELETE", path);
 
 export interface Subscription {
@@ -603,3 +605,83 @@ export function listAudit(filters: AuditFilters = {}): Promise<AuditEntry[]> {
 /** Resources currently flagged by a policy — the compliance drill-down (M9.3). */
 export const getPolicyMatchedResources = (policyId: number): Promise<MatchedResource[]> =>
   apiGet<MatchedResource[]>(`/api/governance/policies/${policyId}/matches`);
+
+// --------------------------------------------------------------------------- //
+// Budgets & threshold alerting (M14.2)
+// --------------------------------------------------------------------------- //
+export interface BudgetThreshold {
+  pct: number;
+  basis: "actual" | "forecast";
+}
+
+export interface Budget {
+  id: number;
+  name: string;
+  scope_type: string;
+  scope_value: string | null;
+  period: string;
+  amount: number;
+  currency: string;
+  thresholds: BudgetThreshold[];
+  channel_id: number | null;
+  template_id: number | null;
+  enabled: boolean;
+  config: Record<string, any>;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BudgetThresholdEvent {
+  id: number;
+  budget_id: number;
+  period_key: string;
+  threshold_pct: number;
+  basis: string;
+  amount: number;
+  budget_amount: number;
+  actual_pct: number;
+  currency: string;
+  run_id: string | null;
+  notified: boolean;
+  created_at?: string | null;
+}
+
+export interface BudgetStatus {
+  budget: Budget;
+  period_key: string;
+  spend: number;
+  actual_pct: number;
+  crossed: number[];
+  events: BudgetThresholdEvent[];
+}
+
+export interface BudgetCreate {
+  name: string;
+  amount: number;
+  scope_type?: string;
+  scope_value?: string | null;
+  period?: string;
+  currency?: string;
+  thresholds?: BudgetThreshold[];
+  channel_id?: number | null;
+  enabled?: boolean;
+}
+
+/** Budget scope kinds (subscription is fully supported; tag/team degrade — see M14.5). */
+export const BUDGET_SCOPES = ["subscription", "account", "account_group", "tag", "team"] as const;
+/** Budget periods. */
+export const BUDGET_PERIODS = ["monthly", "quarterly"] as const;
+
+export const listBudgets = (): Promise<Budget[]> => apiGet<Budget[]>("/api/budgets");
+
+export const createBudget = (body: BudgetCreate): Promise<Budget> =>
+  apiPost<Budget>("/api/budgets", body);
+
+export const updateBudget = (id: number, changes: Partial<BudgetCreate>): Promise<Budget> =>
+  apiPatch<Budget>(`/api/budgets/${id}`, changes);
+
+export const deleteBudget = (id: number): Promise<{ id: number; deleted: boolean }> =>
+  apiDelete(`/api/budgets/${id}`);
+
+export const getBudgetStatus = (id: number): Promise<BudgetStatus> =>
+  apiGet<BudgetStatus>(`/api/budgets/${id}/status`);

@@ -49,6 +49,7 @@ WRITE_PERMISSIONS: tuple[str, ...] = (
     "remediation:approve",
     "notification:write",
     "recommendation:decide",
+    "budget:write",
 )
 
 # Administrative permissions (managing RBAC itself, and teams — M11.2) — admin only.
@@ -59,7 +60,8 @@ ADMIN_PERMISSIONS: tuple[str, ...] = ("rbac:admin", "team:write")
 # commitment endpoint surfaces financially-sensitive purchase recommendations, so
 # it is gated behind a FinOps-analyst (``editor``) grant. ``viewer`` stays empty
 # (reads that need no grant remain open); ``admin`` satisfies it via the wildcard.
-READ_PERMISSIONS: tuple[str, ...] = ("commitment:read",)
+# Budget reads (M14.2) surface spend-vs-limit and are gated the same way.
+READ_PERMISSIONS: tuple[str, ...] = ("commitment:read", "budget:read")
 
 DEFAULT_ROLES: dict[str, dict] = {
     "admin": {
