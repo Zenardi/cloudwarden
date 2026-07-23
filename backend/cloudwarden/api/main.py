@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
@@ -16,9 +17,10 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from .. import reporting
+from .. import observability, reporting
 from ..analysis.savings import ENVIRONMENT_RECLAIM_FACTORS
 from ..authz import audit, oidc, rbac, teams
 from ..config import get_settings
@@ -62,6 +64,8 @@ logger = logging.getLogger("cloudwarden.api")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Structured JSON logs (M13.4): install the formatter before anything logs.
+    observability.configure_logging()
     try:
         init_db()
         from ..config import get_settings
@@ -91,11 +95,52 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Correlation id per request, threaded through the structured logs (M13.4).
+app.add_middleware(observability.CorrelationIdMiddleware)
 
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    """Liveness probe: the process is up. See ``/ready`` for DB-backed readiness."""
     return {"status": "ok", "sources": REGISTRY.snapshot()}
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    """Prometheus scrape endpoint (M13.4): policy-execution + remediation-action
+    counters and the execution-duration histogram, in the text exposition format."""
+    body, content_type = observability.metrics_payload()
+    return Response(content=body, media_type=content_type)
+
+
+def check_database_ready() -> None:
+    """Probe DB reachability with a trivial ``SELECT 1``. Raises when unreachable."""
+    with session_scope() as session:
+        session.execute(text("SELECT 1"))
+
+
+def get_readiness_checker() -> Callable[[], None]:
+    """Injection seam for the readiness probe (overridden offline in tests)."""
+    return check_database_ready
+
+
+@app.get("/ready")
+def ready(
+    response: Response,
+    check: Annotated[Callable[[], None], Depends(get_readiness_checker)],
+) -> dict[str, Any]:
+    """Readiness probe (M13.4): ``200`` when the DB is reachable, ``503`` when not.
+
+    Distinct from ``/health`` (liveness): a pod can be alive yet unable to serve if
+    its database is down, so orchestrators gate traffic on readiness, not liveness.
+    """
+    try:
+        check()
+    except Exception:  # noqa: BLE001 - any failure means "not ready to serve"
+        logger.warning("readiness probe failed: database unreachable")
+        response.status_code = 503
+        return {"status": "unavailable", "checks": {"database": "unavailable"}}
+    return {"status": "ready", "checks": {"database": "ok"}}
 
 
 _COST_PROVIDERS = {"azure", "aws", "gcp"}
@@ -1156,12 +1201,17 @@ def trigger_run(mock: bool = False, subscription_id: str | None = None) -> dict[
     from ..orchestrator import run_all_subscriptions, run_one_subscription
 
     mock_flag = True if mock else None
-    if subscription_id:
-        result = run_one_subscription(subscription_id, mock=mock_flag)
-        if result is None:
-            raise HTTPException(status_code=404, detail="subscription not found")
-        return result
-    return run_all_subscriptions(mock=mock_flag)
+    # Trace + time the execution run (M13.4).
+    with (
+        observability.span("api.run", subscription_id=subscription_id or "all"),
+        observability.time_execution(),
+    ):
+        if subscription_id:
+            result = run_one_subscription(subscription_id, mock=mock_flag)
+            if result is None:
+                raise HTTPException(status_code=404, detail="subscription not found")
+            return result
+        return run_all_subscriptions(mock=mock_flag)
 
 
 # --------------------------------------------------------------------------- #

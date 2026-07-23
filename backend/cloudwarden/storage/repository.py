@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from .. import models as m
+from .. import observability
 from . import schema
 
 # PostgreSQL binds at most 65535 parameters per statement. A single
@@ -154,6 +155,8 @@ def finish_policy_execution(
     rec.resources_matched = resources_matched
     rec.actions_taken = actions_taken if actions_taken is not None else []
     rec.error = error
+    # M13.4: count every finished execution by terminal status for /metrics.
+    observability.record_policy_execution(status)
 
 
 def insert_policy_matches(session: Session, execution_id: str, matches: list[m.PolicyMatch]) -> int:
