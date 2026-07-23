@@ -18,14 +18,19 @@ def test_full_pipeline_and_reads(db) -> None:
 
     counts = run_pipeline(mock=True)["counts"]
     assert counts["resources"] == 7 and counts["cost_rows"] == 360
-    assert counts["recommendations"] == 5 and counts["ai_summary"] == 1
+    # 5 heuristic/idle recs + 4 commitment recs (2 purchase, 1 under-utilized,
+    # 1 expiring) from the reservations fixture (M14.1).
+    assert counts["recommendations"] == 9 and counts["ai_summary"] == 1
+    assert counts["commitments"] == 3 and counts["commitment_coverage"] == 4
 
     with session_scope() as s:
         assert repo.total_cost(s) > 0
         assert len(repo.cost_by_type(s)) >= 1
         assert len(repo.cost_by_region(s)) == 2
         assert len(repo.cost_by_resource(s, limit=10)) >= 1
-        assert len(repo.latest_recommendations(s)) == 5
+        assert len(repo.latest_recommendations(s)) == 9
+        assert repo.latest_commitment_coverage(s)
+        assert len(repo.list_commitments(s)) == 3
         assert repo.latest_run(s)["status"] == "succeeded"
         assert repo.latest_ai_summary(s)["provider"] == "stub"
         assert len(repo.list_runs(s, limit=5)) == 1
@@ -82,12 +87,15 @@ def test_api_endpoints(db) -> None:
     assert len(c.get("/api/costs/by-region").json()) == 2
     assert len(c.get("/api/costs/by-resource").json()) >= 1
     recs = c.get("/api/recommendations").json()
-    assert len(recs) == 5
+    assert len(recs) == 9  # 5 heuristic + 4 commitment (M14.1)
     assert c.get("/api/summary").json()["provider"] == "stub"
     assert c.get("/api/runs/latest").json()["status"] == "succeeded"
     assert len(c.get("/api/runs").json()) >= 1
 
-    rid = recs[0]["id"]
+    # Decisions work on any recommendation; remediation targets a remediable
+    # (non-commitment) rec — commitment recs are advisory, not auto-remediable.
+    heuristic = [r for r in recs if r["category"] != "commitment"]
+    rid = heuristic[0]["id"]
     assert (
         c.post(f"/api/recommendations/{rid}/decision", json={"decision": "approve"}).json()[
             "status"
@@ -96,7 +104,7 @@ def test_api_endpoints(db) -> None:
     )
     assert (
         c.post(
-            f"/api/recommendations/{recs[1]['id']}/decision", json={"decision": "reject"}
+            f"/api/recommendations/{heuristic[1]['id']}/decision", json={"decision": "reject"}
         ).json()["status"]
         == "rejected"
     )
@@ -111,7 +119,7 @@ def test_api_endpoints(db) -> None:
     assert (
         c.post(f"/api/recommendations/{rid}/remediate?dry_run=true").json()["status"] == "dry_run"
     )
-    assert c.post(f"/api/recommendations/{recs[2]['id']}/remediate").status_code == 409
+    assert c.post(f"/api/recommendations/{heuristic[2]['id']}/remediate").status_code == 409
     assert c.post("/api/recommendations/999999/remediate").status_code == 404
     assert len(c.get("/api/remediation").json()) >= 1
     fanout = c.post("/api/runs", params={"mock": True}).json()

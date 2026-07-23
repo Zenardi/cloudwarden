@@ -18,6 +18,7 @@ _TABLES = (
     "runs, resources, assets, asset_events, asset_relationships, cost_snapshots, "
     "utilization_samples, "
     "utilization_rollups, advisor_recommendations, recommendations, remediation_actions, "
+    "commitment_inventory, commitment_coverage, "
     "ai_summaries, account_groups, account_group_members, bindings, event_log, "
     "subscriptions, "
     "policies, policy_versions, policy_collections, "

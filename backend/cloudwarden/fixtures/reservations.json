@@ -1,0 +1,58 @@
+{
+  "currency": "USD",
+  "commitments": [
+    {
+      "commitment_id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/microsoft.capacity/reservationorders/ro-web/reservations/res-web-p3y",
+      "kind": "reservation",
+      "display_name": "vm-web reserved instances (Dsv5)",
+      "scope": "Shared",
+      "region": "eastus",
+      "sku_family": "Dsv5",
+      "term": "P3Y",
+      "utilization_pct": 96.0,
+      "expiry_in_days": 400,
+      "hourly_committed": 0.77
+    },
+    {
+      "commitment_id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/microsoft.billingbenefits/savingsplanorders/spo-compute/savingsplans/sp-compute-p1y",
+      "kind": "savings_plan",
+      "display_name": "compute savings plan",
+      "scope": "Shared",
+      "region": "eastus",
+      "sku_family": "Fsv2",
+      "term": "P1Y",
+      "utilization_pct": 58.0,
+      "expiry_in_days": 210,
+      "hourly_committed": 0.50
+    },
+    {
+      "commitment_id": "/subscriptions/00000000-0000-0000-0000-000000000000/providers/microsoft.capacity/reservationorders/ro-sql/reservations/res-sql-p1y",
+      "kind": "reservation",
+      "display_name": "sql database reserved capacity",
+      "scope": "Single",
+      "region": "westeurope",
+      "sku_family": "SQLDB",
+      "term": "P1Y",
+      "utilization_pct": 88.0,
+      "expiry_in_days": 25,
+      "hourly_committed": 0.40
+    }
+  ],
+  "steady_state": [
+    {
+      "sku_family": "Fsv2",
+      "region": "eastus",
+      "window_hourly": [1.2, 1.4, 1.25, 1.3, 1.2, 1.35, 1.22]
+    },
+    {
+      "sku_family": "Dsv5",
+      "region": "eastus",
+      "window_hourly": [2.0, 2.3, 2.1, 2.05, 2.2, 2.15, 2.0]
+    },
+    {
+      "sku_family": "Bs",
+      "region": "westeurope",
+      "window_hourly": [0.0, 0.0, 3.0, 0.0, 0.0, 2.5, 0.0]
+    }
+  ]
+}

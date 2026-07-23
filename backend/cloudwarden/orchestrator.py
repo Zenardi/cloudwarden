@@ -16,10 +16,11 @@ from typing import Any
 
 from .ai import factory as ai_factory
 from .ai.prompt import build_payload
+from .analysis.commitments import analyze_commitments
 from .analysis.idle import detect_idle, detect_idle_by_activity
 from .analysis.rollup import build_rollups
 from .analysis.rules import evaluate_vms, prioritize
-from .analysis.savings import monthly_cost_map, reclaim_factor
+from .analysis.savings import monthly_cost_map, reclaim_factor, weight_commitment_savings
 from .azure._fixtures import retarget
 from .azure.activity_metrics import collect_activity_metrics
 from .azure.activitylog import collect_activity_log
@@ -30,9 +31,18 @@ from .azure.inventory import collect_inventory
 from .azure.logs import collect_memory
 from .azure.metrics import collect_metrics
 from .azure.ml_compute import collect_ml_computes
+from .azure.reservations import collect_reservations
 from .config import get_settings
 from .custodian import engine as custodian_engine
-from .models import AISummary, CostRow, PolicyMatch, ResourceRecord
+from .models import (
+    AISummary,
+    CommitmentCoverage,
+    CommitmentRecord,
+    CostRow,
+    PolicyMatch,
+    Recommendation,
+    ResourceRecord,
+)
 from .storage import repository as repo
 from .storage.db import init_db, session_scope
 
@@ -169,10 +179,38 @@ def run_pipeline(
                     "environment": environment,
                     "reclaim_factor": factor,
                 }
+
+        # Commitment coverage & RI/SP recommendations (M14.1): collect existing
+        # commitments + eligible steady-state usage, size purchase candidates at the
+        # min-of-window baseline, and flag under-utilized/expiring commitments. The
+        # recs are environment-weighted like the idle recs above and folded into the
+        # run so the executive total and UI see them uniformly. Best-effort — a
+        # failure here must not sink an otherwise-good cost run.
+        commitment_recs: list[Recommendation] = []
+        coverage: list[CommitmentCoverage] = []
+        commitments: list[CommitmentRecord] = []
+        try:
+            signals = collect_reservations(subscription=subscription)
+            commitment_recs, coverage = analyze_commitments(
+                signals,
+                currency=currency,
+                under_utilized_threshold=settings.commitment_under_utilized_pct,
+                expiring_within_days=settings.commitment_expiring_within_days,
+                min_commit_hourly=settings.commitment_min_hourly,
+            )
+            commitments = signals.commitments
+        except Exception:  # noqa: BLE001 - commitment analysis is best-effort
+            logger.warning("commitment analysis failed", exc_info=True)
+        weight_commitment_savings(commitment_recs, environment)
+        for rec in commitment_recs:
+            rec.currency = currency
+        recommendations = prioritize(recommendations + commitment_recs)
+
         payload = build_payload(
             recommendations,
             cost_rows,
             currency=currency,
+            commitment_coverage=[c.model_dump() for c in coverage],
             max_candidates=settings.ai_max_candidates,
         )
         ai_result = ai_factory.generate(payload)
@@ -216,6 +254,12 @@ def run_pipeline(
             counts["metric_samples"] = repo.insert_metric_samples(session, metric_samples)
             counts["rollups"] = repo.upsert_rollups(session, rollups)
             counts["advisor"] = repo.insert_advisor(session, advisor_recs)
+            # Commitments (M14.1): the current commitment portfolio + per-run coverage
+            # rollups. Purchase/waste/expiry recs live in `recommendations` (above).
+            counts["commitments"] = repo.upsert_commitment(session, commitments)
+            counts["commitment_coverage"] = repo.upsert_commitment_coverage(
+                session, run_id, coverage
+            )
             counts["recommendations"] = repo.replace_recommendations(
                 session, run_id, recommendations
             )

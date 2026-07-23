@@ -55,6 +55,12 @@ WRITE_PERMISSIONS: tuple[str, ...] = (
 # Not granted to ``editor``; only the ``admin`` wildcard satisfies them.
 ADMIN_PERMISSIONS: tuple[str, ...] = ("rbac:admin", "team:write")
 
+# Explicitly-guarded read permissions (M14.1). Most reads are ungated, but the
+# commitment endpoint surfaces financially-sensitive purchase recommendations, so
+# it is gated behind a FinOps-analyst (``editor``) grant. ``viewer`` stays empty
+# (reads that need no grant remain open); ``admin`` satisfies it via the wildcard.
+READ_PERMISSIONS: tuple[str, ...] = ("commitment:read",)
+
 DEFAULT_ROLES: dict[str, dict] = {
     "admin": {
         "description": "Full access to every action, including RBAC administration.",
@@ -62,7 +68,7 @@ DEFAULT_ROLES: dict[str, dict] = {
     },
     "editor": {
         "description": "May create and run governance objects, but not administer RBAC.",
-        "permissions": list(WRITE_PERMISSIONS),
+        "permissions": list(WRITE_PERMISSIONS) + list(READ_PERMISSIONS),
     },
     "viewer": {
         "description": "Read-only access. Mutating endpoints are denied.",

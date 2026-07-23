@@ -144,8 +144,17 @@ for remediation.
 ## FinOps recommendations (idle & right-sizing)
 
 The FinOps pipeline turns each run's inventory, cost and metrics into ranked,
-evidence-backed recommendations across four detector families:
+evidence-backed recommendations across five detector families:
 
+- **Commitment coverage** (`analysis/commitments.py`, M14.1) — Reservation /
+  Savings-Plan optimization, the largest untapped lever. Flags **under-utilized**
+  commitments (advisory waste = the idle share of committed capacity) and
+  **expiring** ones, and sizes **purchase candidates** at the **min-of-window**
+  steady-state baseline (bursty usage yields none), priced across term (P1Y/P3Y) ×
+  payment options with break-even. Coverage % and blended utilization roll up per SKU
+  family/region; all savings are conservative, caveated **estimates**. Azure-first
+  behind the `CloudProvider` abstraction. Read via `GET /api/finops/commitments`
+  (RBAC-guarded) and the *Commitment coverage* panel on the Recommendations page.
 - **Utilization rules** (`analysis/rules.py`) — from CPU / RAM / I-O rollups:
   **shutdown** (deallocate) a consistently-idle VM, **downsize** an over-provisioned
   one (memory-aware when Log Analytics is wired in), or **investigate** when metric

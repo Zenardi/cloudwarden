@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..models import CostRow
+from ..models import CostRow, Recommendation
 
 DAYS_PER_MONTH = 30.4
 
@@ -26,6 +26,31 @@ def reclaim_factor(environment: str | None) -> float:
     if not environment:
         return 1.0
     return ENVIRONMENT_RECLAIM_FACTORS.get(environment, 1.0)
+
+
+def weight_commitment_savings(
+    recs: list[Recommendation], environment: str | None
+) -> list[Recommendation]:
+    """Environment-weight commitment recommendation savings in place (M14.1).
+
+    Mirrors the idle/waste reclaim weighting the orchestrator applies to heuristic
+    recs: multiply each rec's estimated monthly savings by the subscription's
+    reclaim factor and stamp ``environment``/``reclaim_factor`` onto evidence so the
+    UI can group by subscription kind and show the discount. Keeps the executive
+    total consistent across recommendation families and errs toward under-stating
+    (never over-stating) commitment savings. Advisory (savings=0) recs are stamped
+    but left unchanged."""
+    factor = reclaim_factor(environment)
+    for rec in recs:
+        if factor != 1.0 and rec.est_monthly_savings:
+            rec.est_monthly_savings = round(rec.est_monthly_savings * factor, 2)
+        if environment:
+            rec.evidence = {
+                **rec.evidence,
+                "environment": environment,
+                "reclaim_factor": factor,
+            }
+    return recs
 
 
 def monthly_cost_map(cost_rows: list[CostRow], cost_type: str = "Amortized") -> dict[str, float]:

@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     # --- Database ---
     database_url: str = "postgresql+psycopg://finops:finops@localhost:5432/finops"
 
+    # --- Commitment coverage & RI/Savings-Plan recommendations (M14.1) ---
+    # A commitment utilized below this percent wastes its idle share (advisory).
+    commitment_under_utilized_pct: float = 80.0
+    # Surface a commitment as "expiring soon" within this many days of its expiry.
+    commitment_expiring_within_days: int = 60
+    # Ignore a steady-state baseline below this ($/hr) when sizing a purchase — too
+    # small (or too bursty, its window minimum ≈ 0) to be worth committing.
+    commitment_min_hourly: float = 0.5
+
     # --- Analysis windows & thresholds ---
     metric_lookback_days: int = 14
     cost_lookback_days: int = 30

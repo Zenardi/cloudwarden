@@ -2029,6 +2029,94 @@ def upsert_ai_summary(session: Session, run_id: str, summary: m.AISummary) -> No
 
 
 # --------------------------------------------------------------------------- #
+# Commitments — Reservations / Savings Plans (M14.1)
+# --------------------------------------------------------------------------- #
+def upsert_commitment(session: Session, commitments: list[m.CommitmentRecord]) -> int:
+    """Idempotently upsert existing commitments by ``commitment_id`` (no duplicates)."""
+    if not commitments:
+        return 0
+    dedup: dict[str, m.CommitmentRecord] = {c.commitment_id: c for c in commitments}
+    rows = [
+        {
+            "commitment_id": c.commitment_id,
+            "provider": c.provider,
+            "kind": c.kind,
+            "display_name": c.display_name,
+            "scope": c.scope,
+            "region": c.region,
+            "sku_family": c.sku_family,
+            "term": c.term,
+            "utilization_pct": c.utilization_pct,
+            "expiry_date": c.expiry_date,
+            "hourly_committed": c.hourly_committed,
+            "currency": c.currency,
+            "config": c.config,
+        }
+        for c in dedup.values()
+    ]
+    step = _rows_per_statement(columns=len(rows[0]))
+    for start in range(0, len(rows), step):
+        chunk = rows[start : start + step]
+        stmt = pg_insert(schema.CommitmentInventory).values(chunk)
+        update_cols = {
+            col: getattr(stmt.excluded, col) for col in chunk[0] if col != "commitment_id"
+        }
+        stmt = stmt.on_conflict_do_update(index_elements=["commitment_id"], set_=update_cols)
+        session.execute(stmt)
+    return len(rows)
+
+
+def list_commitments(session: Session, provider: str | None = None) -> list[dict[str, Any]]:
+    """Existing commitments, worst-utilized first (optionally scoped to one cloud)."""
+    sql = "SELECT * FROM commitment_inventory"
+    params: dict[str, Any] = {}
+    if provider:
+        sql += " WHERE provider = :provider"
+        params["provider"] = provider
+    sql += " ORDER BY utilization_pct ASC, commitment_id ASC"
+    return _rows(session, sql, **params)
+
+
+def upsert_commitment_coverage(
+    session: Session, run_id: str, rollups: list[m.CommitmentCoverage]
+) -> int:
+    """Replace this run's coverage rollups (delete-then-insert; idempotent per run)."""
+    session.execute(
+        delete(schema.CommitmentCoverageRollup).where(
+            schema.CommitmentCoverageRollup.run_id == run_id
+        )
+    )
+    for r in rollups:
+        session.add(
+            schema.CommitmentCoverageRollup(
+                run_id=run_id,
+                provider=r.provider,
+                sku_family=r.sku_family,
+                region=r.region,
+                eligible_monthly=r.eligible_monthly,
+                committed_monthly=r.committed_monthly,
+                coverage_pct=r.coverage_pct,
+                utilization_pct=r.utilization_pct,
+                currency=r.currency,
+            )
+        )
+    session.flush()
+    return len(rollups)
+
+
+def latest_commitment_coverage(session: Session) -> list[dict[str, Any]]:
+    """Coverage rollups from the most recent run that produced any (empty if none)."""
+    return _rows(
+        session,
+        "SELECT c.* FROM commitment_coverage c "
+        "WHERE c.run_id = ("
+        "  SELECT cc.run_id FROM commitment_coverage cc JOIN runs r ON cc.run_id = r.run_id "
+        "  ORDER BY r.started_at DESC LIMIT 1"
+        ") ORDER BY c.coverage_pct ASC, c.sku_family ASC",
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Read helpers (used by the API/UI)
 # --------------------------------------------------------------------------- #
 def _coerce(value: Any) -> Any:

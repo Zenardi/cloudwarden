@@ -757,6 +757,66 @@ class BindingNotification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class CommitmentInventory(Base):
+    """An existing Reservation / Savings Plan captured for coverage analysis (M14.1).
+
+    Upserted by ``commitment_id`` on each run so the table always reflects the
+    current commitment portfolio (utilization/expiry/scope) without duplicate rows.
+    ``config`` (JSONB) carries the raw provider payload; ``provider`` tags the owning
+    cloud so AWS/GCP can follow behind the same abstraction.
+    """
+
+    __tablename__ = "commitment_inventory"
+
+    commitment_id: Mapped[str] = mapped_column(String(512), primary_key=True)
+    provider: Mapped[str] = mapped_column(
+        String(32), default="azure", server_default="azure", index=True
+    )
+    kind: Mapped[str] = mapped_column(String(32), default="reservation")
+    display_name: Mapped[str | None] = mapped_column(String(256))
+    scope: Mapped[str] = mapped_column(String(32), default="Shared")
+    region: Mapped[str | None] = mapped_column(String(64), index=True)
+    sku_family: Mapped[str | None] = mapped_column(String(64), index=True)
+    term: Mapped[str] = mapped_column(String(16), default="P1Y")
+    utilization_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    hourly_committed: Mapped[float] = mapped_column(Numeric(18, 6), default=0)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    collected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class CommitmentCoverageRollup(Base):
+    """Per SKU-family/region commitment coverage & utilization rollup (M14.1).
+
+    One row per (run, family, region): how much eligible steady-state spend is
+    already covered by a commitment and the blended utilization of those
+    commitments. Replaced per ``run_id`` so a re-run never duplicates. ``config``
+    (JSONB) holds any extra rollup context; ``provider`` tags the owning cloud.
+    """
+
+    __tablename__ = "commitment_coverage"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), ForeignKey("runs.run_id"), index=True)
+    provider: Mapped[str] = mapped_column(
+        String(32), default="azure", server_default="azure", index=True
+    )
+    sku_family: Mapped[str] = mapped_column(String(64), index=True)
+    region: Mapped[str] = mapped_column(String(64))
+    eligible_monthly: Mapped[float] = mapped_column(Numeric(18, 4), default=0)
+    committed_monthly: Mapped[float] = mapped_column(Numeric(18, 4), default=0)
+    coverage_pct: Mapped[float] = mapped_column(Numeric(6, 2), default=0)
+    utilization_pct: Mapped[float | None] = mapped_column(Numeric(6, 2))
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class AISummary(Base):
     __tablename__ = "ai_summaries"
 

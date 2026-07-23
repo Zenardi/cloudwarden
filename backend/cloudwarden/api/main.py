@@ -232,6 +232,26 @@ def decide_recommendation(rec_id: int, body: Decision) -> dict[str, Any]:
     return {"id": rec_id, "status": status}
 
 
+@app.get(
+    "/api/finops/commitments",
+    dependencies=[Depends(rbac.require_permission("commitment:read"))],
+)
+def finops_commitments() -> dict[str, Any]:
+    """Commitment coverage + RI/Savings-Plan recommendations (M14.1).
+
+    Returns the latest per-family/region coverage rollups, the existing commitment
+    portfolio (utilization/expiry/scope), and the commitment recommendations from the
+    latest run (purchase candidates, under-utilized waste, expiring). RBAC-guarded
+    (``commitment:read``) because the purchase candidates are financially sensitive."""
+    with session_scope() as session:
+        coverage = repo.latest_commitment_coverage(session)
+        commitments = repo.list_commitments(session)
+        recs = [
+            r for r in repo.latest_recommendations(session) if r.get("category") == "commitment"
+        ]
+    return {"coverage": coverage, "commitments": commitments, "recommendations": recs}
+
+
 # --------------------------------------------------------------------------- #
 # Governance-as-code: policy validation + Custodian schema (M1.3)
 # --------------------------------------------------------------------------- #

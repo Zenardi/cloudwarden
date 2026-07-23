@@ -70,6 +70,48 @@ sparse data lowers confidence or skips the finding.
 Azure Advisor cost recommendations are merged in: when Advisor agrees on a
 resource, the recommendation is marked as combined and confidence is boosted.
 
+## Commitment coverage & RI/Savings-Plan recommendations (M14.1)
+
+Steady-state, always-on resources billed at on-demand rates are the single largest
+untapped FinOps lever: Reservations (RI) and Savings Plans (SP) discount them
+20–70%. CloudWarden collects existing commitments and eligible steady-state usage
+(per SKU family/region, aggregated — never raw samples) and emits two signals, both
+under the `commitment` recommendation category:
+
+- **Under-utilized commitment** (advisory waste) — an existing RI/SP utilized below
+  `COMMITMENT_UNDER_UTILIZED_PCT` (80%). The idle share of committed capacity is
+  money paid for nothing; the estimate is the wasted monthly amount.
+- **Expiring commitment** (informational) — a commitment lapsing within
+  `COMMITMENT_EXPIRING_WITHIN_DAYS` (60) days; renew or re-plan before it reverts to
+  on-demand. No savings are claimed.
+- **Under-covered steady-state** (purchase recommendation) — eligible usage that
+  runs *every day* of the window but isn't committed. The candidate is sized at the
+  **min-of-window** baseline (the level present every single day — never a burst; a
+  baseline below `COMMITMENT_MIN_HOURLY` $/hr yields no recommendation), priced with
+  a blended commitment discount for each term (P1Y/P3Y) and payment option
+  (no/partial/all-upfront), with **break-even** months for each.
+
+Coverage (% of eligible spend already covered) and blended commitment utilization
+are rolled up per SKU family/region. All savings are **estimates** carrying a
+`basis` and caveats, environment-weighted like idle/waste savings (a `Prod`
+subscription discounts them; see the reclaim factors), AI-reconciled, and persisted.
+Advisory items never over-state — the min-of-window floor and blended discount are
+deliberately conservative.
+
+**Surfaced in:**
+
+| Where | What |
+|-------|------|
+| `GET /api/finops/commitments` | coverage rollups + commitment portfolio + candidates (RBAC-guarded: `commitment:read`) |
+| `GET /api/recommendations` | commitment recs alongside the rest (category `commitment`) |
+| **Recommendations** web page | *Commitment coverage* panel + the recs table |
+| *Recommendations* Grafana dashboard | coverage-by-family + existing-commitments panels |
+
+Azure-first, behind the `CloudProvider` abstraction — AWS/GCP get no commitment
+signal yet (no-op stubs). The live path derives the commitment portfolio from the
+ARM Reservations/Consumption APIs; mock mode (`FINOPS_MOCK=1`) is backed by
+`fixtures/reservations.json`.
+
 ## AI executive summary
 
 Configured via the `AI_*` keys ([03](03-configuration.md#ai-provider-executive-summary)).

@@ -74,6 +74,38 @@ export interface Recommendation {
   status: string;
 }
 
+// Commitment coverage & RI/Savings-Plan recommendations (M14.1).
+export interface CommitmentCoverage {
+  provider?: string;
+  sku_family: string;
+  region: string;
+  eligible_monthly: number;
+  committed_monthly: number;
+  coverage_pct: number;
+  utilization_pct?: number | null;
+  currency?: string;
+}
+
+export interface CommitmentInventory {
+  commitment_id: string;
+  provider?: string;
+  kind: string;
+  display_name?: string | null;
+  scope?: string;
+  region?: string | null;
+  sku_family?: string | null;
+  term: string;
+  utilization_pct: number;
+  expiry_date?: string | null;
+  currency?: string;
+}
+
+export interface CommitmentData {
+  coverage: CommitmentCoverage[];
+  commitments: CommitmentInventory[];
+  recommendations: Recommendation[];
+}
+
 export interface Policy {
   id: number;
   name: string;

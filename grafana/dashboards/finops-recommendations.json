@@ -5,7 +5,7 @@
   "timezone": "",
   "editable": true,
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "",
   "time": { "from": "now-30d", "to": "now" },
   "templating": { "list": [] },
@@ -80,6 +80,136 @@
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
           "rawSql": "SELECT s.executive_summary, round(s.total_potential_savings,2) AS total_potential_savings, s.provider, s.model FROM ai_summaries s JOIN runs r ON s.run_id = r.run_id ORDER BY r.started_at DESC LIMIT 1" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Commitment coverage by SKU family (latest run)",
+      "datasource": {
+        "type": "postgres",
+        "uid": "finops_pg"
+      },
+      "description": "RI/Savings-Plan coverage of eligible steady-state spend and blended utilization, per SKU family/region (M14.1).",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "eligible_monthly"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "committed_monthly"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coverage_%"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "utilization_%"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "finops_pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT sku_family, region, coverage_pct AS \"coverage_%\", utilization_pct AS \"utilization_%\", eligible_monthly, committed_monthly FROM commitment_coverage WHERE run_id = (SELECT cc.run_id FROM commitment_coverage cc JOIN runs r ON cc.run_id = r.run_id ORDER BY r.started_at DESC LIMIT 1) ORDER BY coverage_pct ASC"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Existing commitments — utilization & expiry",
+      "datasource": {
+        "type": "postgres",
+        "uid": "finops_pg"
+      },
+      "description": "Existing Reservations / Savings Plans: worst-utilized first, with term, scope and expiry (M14.1).",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "utilization_%"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "finops_pg"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT display_name, kind, sku_family, term, scope, utilization_pct AS \"utilization_%\", expiry_date FROM commitment_inventory ORDER BY utilization_pct ASC"
+        }
       ]
     }
   ]

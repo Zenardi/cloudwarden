@@ -5,6 +5,28 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+- **Commitment coverage & RI/Savings-Plan recommendations (#134, M14.1).** Adds the
+  single largest untapped FinOps lever: commitment-discount optimization. A new
+  collector (`azure/reservations.py`, injectable + mock-fixture backed) gathers
+  existing Reservations/Savings Plans (utilization, expiry, scope) and eligible
+  steady-state on-demand usage per SKU family/region (aggregated — never raw
+  samples), and a detector (`analysis/commitments.py`) emits three signals under the
+  new `commitment` category: **under-utilized** commitments (advisory waste sized to
+  the idle share), **expiring** commitments (informational), and **purchase
+  candidates** sized to the **min-of-window** steady-state baseline (bursty usage
+  yields none), priced with a blended discount across term (P1Y/P3Y) × payment
+  (no/partial/all-upfront) with **break-even** months. Coverage % and blended
+  utilization roll up per family/region. All savings are **estimates** with a `basis`
+  + caveats, environment-weighted (`weight_commitment_savings`), AI-reconciled (new
+  aggregated `commitment_coverage` block in the prompt), and persisted
+  (`commitment_inventory` + `commitment_coverage` tables). Surfaced via
+  `GET /api/finops/commitments` (RBAC-guarded, `commitment:read`), the
+  **Recommendations** page's *Commitment coverage* panel, and two Grafana panels.
+  Azure-first behind the `CloudProvider` abstraction (AWS/GCP are no-op stubs).
+  Tunable via `COMMITMENT_UNDER_UTILIZED_PCT` / `COMMITMENT_EXPIRING_WITHIN_DAYS` /
+  `COMMITMENT_MIN_HOURLY`. Strict TDD, ≥95% coverage on the new modules, ruff clean.
+
 ### Changed
 - **Backend image shrunk ~271 MB by pruning the unused Azure SDK (#129, M13.6).**
   `c7n-azure` hard-pulls ~56 `azure-mgmt-*` provider SDKs (~480 MB) but imports

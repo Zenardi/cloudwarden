@@ -20,6 +20,10 @@ SYSTEM_PROMPT = (
     "them, and write a concise executive summary for engineering leadership. Ground every "
     "statement strictly in the provided data — never invent resources, SKUs, or numbers. If a "
     "recommendation notes missing memory data or low confidence, reflect that honestly. "
+    "Some candidates have category 'commitment' — Reservation/Savings-Plan coverage: "
+    "under-utilized existing commitments (advisory waste) and purchase recommendations sized to "
+    "steady-state usage. Treat their savings as caveated ESTIMATES (blended discount) and never "
+    "over-state them; the 'commitment_coverage' block gives current coverage/utilization context. "
     "Respond with ONLY a JSON object (no prose, no code fences) matching this schema: "
     '{"executive_summary": string, "total_potential_monthly_savings": number, '
     '"currency": string, "recommendations": [{"resource_id": string, "action": string, '
@@ -39,6 +43,7 @@ def build_payload(
     cost_rows: list[CostRow],
     currency: str = "USD",
     max_candidates: int = 40,
+    commitment_coverage: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     amortized = [c for c in cost_rows if c.cost_type == "Amortized"]
     total = sum(float(c.cost) for c in amortized)
@@ -53,6 +58,9 @@ def build_payload(
     ]
     return {
         "subscription": {"currency": currency},
+        # Aggregated commitment coverage/utilization per SKU family/region (M14.1) —
+        # already rolled up (never raw), so it adds negligible token cost.
+        "commitment_coverage": commitment_coverage or [],
         "totals": {
             "monthly_cost_estimate": round(total, 2),
             "by_type": [

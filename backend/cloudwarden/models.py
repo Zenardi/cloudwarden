@@ -107,10 +107,72 @@ class ActivitySignal(BaseModel):
     datapoints: int = 0
 
 
+class CommitmentRecord(BaseModel):
+    """An existing Reservation (RI) or Savings Plan (SP) captured for coverage
+    analysis (M14.1). ``hourly_committed`` is the on-demand-equivalent spend the
+    commitment covers per hour; ``utilization_pct`` is its reported utilization
+    (0..100). Provider-tagged so AWS/GCP can follow behind the same abstraction."""
+
+    commitment_id: str
+    provider: str = "azure"
+    kind: str = "reservation"  # reservation | savings_plan
+    display_name: str | None = None
+    scope: str = "Shared"  # Shared | Single
+    region: str | None = None
+    sku_family: str | None = None
+    term: str = "P1Y"  # P1Y | P3Y
+    utilization_pct: float = 0.0  # 0..100
+    expiry_date: date | None = None
+    hourly_committed: float = 0.0
+    currency: str = "USD"
+    config: dict = Field(default_factory=dict)
+
+
+class SteadyStateUsage(BaseModel):
+    """Aggregated eligible on-demand usage for one SKU family in one region (M14.1).
+
+    ``window_hourly`` is the per-day observed running level of *uncovered* eligible
+    on-demand spend ($/hr), one entry per day of the analysis window. Aggregated
+    (never raw samples) to keep AI token cost bounded; the detector sizes a safe
+    commitment at the window minimum (the level present every single day)."""
+
+    provider: str = "azure"
+    sku_family: str
+    region: str
+    window_hourly: list[float] = Field(default_factory=list)
+    currency: str = "USD"
+
+
+class CommitmentSignals(BaseModel):
+    """What the reservations collector returns: existing commitments + eligible
+    steady-state usage (M14.1). Empty for non-Azure providers (no-op stub)."""
+
+    provider: str = "azure"
+    commitments: list[CommitmentRecord] = Field(default_factory=list)
+    steady_state: list[SteadyStateUsage] = Field(default_factory=list)
+
+
+class CommitmentCoverage(BaseModel):
+    """Per SKU-family/region commitment coverage & utilization rollup (M14.1).
+
+    ``coverage_pct`` is the share of eligible steady-state spend already covered by
+    a commitment; ``utilization_pct`` is the blended utilization of the commitments
+    in that family/region (None when none exist)."""
+
+    provider: str = "azure"
+    sku_family: str
+    region: str
+    eligible_monthly: float = 0.0
+    committed_monthly: float = 0.0
+    coverage_pct: float = 0.0
+    utilization_pct: float | None = None
+    currency: str = "USD"
+
+
 class Recommendation(BaseModel):
     resource_id: str
     # shutdown|downsize|delete_orphan|idle_disk|idle_ip|empty_asp|
-    # stopped_vm|idle_by_activity|investigate
+    # stopped_vm|idle_by_activity|commitment|investigate
     category: str
     action: str
     current_sku: str | None = None
