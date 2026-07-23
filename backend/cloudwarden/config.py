@@ -159,6 +159,13 @@ class Settings(BaseSettings):
     # How a shared bucket is split across the others: even | proportional (by spend).
     showback_split_method: str = "even"
 
+    # --- Configuration drift detection (M14.7) ---
+    # Diff live AssetDB config vs a per-resource baseline each run and record drift. Set
+    # false to skip drift detection entirely.
+    drift_detection_enabled: bool = True
+    # Notification channel *name* new drift findings alert through; empty = record silently.
+    drift_alert_channel: str = ""
+
     # --- Analysis windows & thresholds ---
     metric_lookback_days: int = 14
     cost_lookback_days: int = 30

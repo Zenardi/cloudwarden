@@ -26,8 +26,9 @@ backbone:
   group them into **collections**, **evaluate them on a schedule across every
   account** (pull mode) or **react to change events in real time**, **shift-left**
   the same policies against a **Terraform plan in CI** (fail the PR before anything
-  is provisioned, M14.6), and review the full **execution history**. A cross-cloud
-  **AssetDB** tracks every resource
+  is provisioned, M14.6), detect **configuration drift** against a per-resource
+  desired-state baseline (M14.7), and review the full **execution history**. A
+  cross-cloud **AssetDB** tracks every resource
   (config, relationships, change history), with **posture and execution-health
   that filter and group by cloud provider** — one pane over every cloud.
 - **FinOps** cost & utilization optimization: visualize spend by

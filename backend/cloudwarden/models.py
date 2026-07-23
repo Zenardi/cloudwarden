@@ -213,6 +213,15 @@ class EvaluateIacRequest(BaseModel):
     fail_on: str | None = None
 
 
+class DriftBaselineRequest(BaseModel):
+    """Inbound shape for re-baselining a resource's desired state (M14.7).
+
+    ``resource_id`` names the asset to snapshot; the endpoint reads its current config,
+    captures a new baseline (clearing open drift), and records an audit entry."""
+
+    resource_id: str
+
+
 class ValidateResult(BaseModel):
     """Outcome of validating a policy spec: ``valid`` plus any error strings."""
 

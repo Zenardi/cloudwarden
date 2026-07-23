@@ -42,6 +42,9 @@ __all__ = [
     "build_anomaly_context",
     "DEFAULT_ANOMALY_SUBJECT",
     "DEFAULT_ANOMALY_BODY",
+    "build_drift_context",
+    "DEFAULT_DRIFT_SUBJECT",
+    "DEFAULT_DRIFT_BODY",
     "notify",
 ]
 
@@ -194,6 +197,48 @@ def build_anomaly_context(
         "contributors": children,
         "top_contributor": top,
         "count": len(children),
+    }
+
+
+# Config-drift alert (M14.7). Placeholders below are the keys build_drift_context emits.
+DEFAULT_DRIFT_SUBJECT = "[Drift] {{ change_count }} config change(s) on {{ resource_id }}"
+DEFAULT_DRIFT_BODY = (
+    "Configuration drift detected on {{ provider }} resource '{{ resource_id }}' versus "
+    "baseline v{{ baseline_version }}: {{ change_count }} field(s) changed "
+    "(e.g. {{ first_change }}). Most recent change by: {{ caller }}."
+)
+
+
+def build_drift_context(
+    *,
+    resource_id: str,
+    provider: str = "azure",
+    baseline_version: int,
+    changes: list[dict[str, Any]] | None = None,
+    events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Assemble the template context for a configuration-drift finding (M14.7).
+
+    Exposes the resource, its baseline version, the classified ``changes`` (with the count
+    and the first field path for a one-line summary), and the attributed change ``events``
+    (surfacing the most recent ``caller`` when known). Consumed by
+    :data:`DEFAULT_DRIFT_BODY` and any custom template."""
+    changes = changes or []
+    events = events or []
+    paths = [c.get("path") for c in changes]
+    caller = ""
+    if events:
+        caller = (events[0].get("data") or {}).get("caller", "")
+    return {
+        "resource_id": resource_id,
+        "provider": provider,
+        "baseline_version": baseline_version,
+        "changes": changes,
+        "change_count": len(changes),
+        "paths": paths,
+        "first_change": paths[0] if paths else "",
+        "events": events,
+        "caller": caller,
     }
 
 

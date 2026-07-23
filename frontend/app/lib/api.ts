@@ -419,6 +419,47 @@ export function showbackExportUrl(key: string, days = 30, fmt: "csv" | "json" = 
   return `${API_BASE}/api/costs/showback/export?${qs.toString()}`;
 }
 
+// Configuration drift detection (M14.7).
+export type DriftKind = "added" | "removed" | "changed";
+
+export interface DriftChange {
+  path: string;
+  kind: DriftKind;
+  old: unknown;
+  new: unknown;
+}
+
+export interface DriftFinding {
+  id: number;
+  resource_id: string;
+  provider: string;
+  baseline_version: number;
+  changes: DriftChange[];
+  added: number;
+  removed: number;
+  changed: number;
+  events: { data?: { caller?: string }; at?: string }[];
+  status: string; // open | resolved
+  notified: boolean;
+  created_at: string | null;
+}
+
+/** Recorded configuration-drift findings, newest first (RBAC `drift:read`). */
+export function listDrift(
+  params: { resource_id?: string; status?: string; limit?: number } = {},
+): Promise<DriftFinding[]> {
+  const qs = new URLSearchParams();
+  if (params.resource_id) qs.set("resource_id", params.resource_id);
+  if (params.status) qs.set("status", params.status);
+  qs.set("limit", String(params.limit ?? 100));
+  return apiGet<{ findings: DriftFinding[] }>(`/api/drift?${qs.toString()}`).then((r) => r.findings);
+}
+
+/** Re-baseline a resource's desired state, clearing its open drift (RBAC `drift:write`). */
+export function rebaselineDrift(resourceId: string): Promise<unknown> {
+  return apiPost("/api/drift/baseline", { resource_id: resourceId });
+}
+
 /**
  * Query string for the day/cloud-scoped cost endpoints (`/api/costs/summary`,
  * `by-type`, `by-region` — #116). Always sends `days`; omits `provider` for the

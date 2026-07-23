@@ -37,6 +37,7 @@ from .azure.ml_compute import collect_ml_computes
 from .azure.reservations import collect_reservations
 from .config import get_settings
 from .custodian import engine as custodian_engine
+from .custodian.drift import detect_drift
 from .models import (
     AISummary,
     CommitmentCoverage,
@@ -309,6 +310,18 @@ def run_pipeline(
                 counts["anomaly_alerts"] = summary["notifications_sent"]
             except Exception:  # noqa: BLE001 - anomaly detection is best-effort
                 logger.warning("anomaly detection failed for run %s", run_id, exc_info=True)
+        # Configuration drift detection (M14.7): with this run's assets committed, capture
+        # baselines for new resources and diff the rest against their baseline, recording
+        # classified drift findings. Best-effort in its own transaction — never fails a run.
+        if settings.drift_detection_enabled:
+            try:
+                with session_scope() as session:
+                    summary = detect_drift(session, run_id=run_id)
+                counts["drift_baselines"] = summary["baselines_captured"]
+                counts["drift_findings"] = summary["findings"]
+                counts["drift_alerts"] = summary["notifications_sent"]
+            except Exception:  # noqa: BLE001 - drift detection is best-effort
+                logger.warning("drift detection failed for run %s", run_id, exc_info=True)
         with session_scope() as session:
             repo.finish_run(session, run_id, status="succeeded")
     except Exception as exc:  # noqa: BLE001 - recorded then re-raised

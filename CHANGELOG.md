@@ -6,6 +6,24 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Configuration drift detection (#140, M14.7).** "Drift" previously meant only
+  policy-version drift — there was no way to know a resource changed away from its
+  intended state. The AssetDB already stores full resource `config` (JSONB) and change
+  history, so a new `custodian/drift.py` captures a per-resource desired-state **baseline**
+  (a normalized config snapshot — volatile/noise fields dropped — plus a stable hash,
+  versioned on re-baseline), and each run diffs live config against it: a recursive
+  structural diff yields **added / removed / changed** dotted field paths
+  (`properties.networkAcls.defaultAction`), each finding enriched with the recent
+  Activity-Log change events that caused it (who/how). **Volatile fields are excluded** so
+  an unchanged resource never drifts; findings persist idempotently (unique on
+  `(resource_id, baseline_version, change set)`) and notify **once** through the existing
+  transports (best-effort). Operators **re-baseline** (accept drift) via a new endpoint —
+  explicit, RBAC-guarded and **audited**. New `DriftBaseline`/`DriftFinding` tables,
+  `GET /api/drift` (RBAC `drift:read`) and `POST /api/drift/baseline` (RBAC `drift:write`,
+  audited), a **Configuration drift** section on the asset-detail page (baseline-vs-current
+  field diff + a re-baseline button), and a best-effort drift block in the run pipeline.
+  Config: `DRIFT_DETECTION_ENABLED`, `DRIFT_ALERT_CHANNEL`. Azure-first behind the
+  `CloudProvider` abstraction. Strict TDD, 100% coverage on the new module, ruff clean.
 - **Shift-left IaC policy evaluation (#139, M14.6).** Every governance control ran *after*
   provisioning — a violation was caught only once the resource existed and billed. A new
   `custodian/shiftleft.py` runs the **same authored c7n policies** against a **Terraform

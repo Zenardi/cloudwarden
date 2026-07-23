@@ -1002,3 +1002,70 @@ class CostForecast(Base):
             name="uq_cost_forecast_scope_horizon_asof",
         ),
     )
+
+
+class DriftBaseline(Base):
+    """A resource's desired-state configuration baseline (M14.7).
+
+    ``config`` is the *normalized* config snapshot (volatile fields dropped) and
+    ``config_hash`` its stable digest; ``version`` bumps each time an operator
+    re-baselines with a materially different config. One baseline per ``resource_id``
+    (the primary key); ``captured_by`` records who last set it. ``provider`` tags the
+    owning cloud.
+    """
+
+    __tablename__ = "drift_baselines"
+
+    resource_id: Mapped[str] = mapped_column(String(512), primary_key=True)
+    provider: Mapped[str] = mapped_column(
+        String(32), default="azure", server_default="azure", index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    config_hash: Mapped[str] = mapped_column(String(64), index=True)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    captured_by: Mapped[str | None] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DriftFinding(Base):
+    """A recorded configuration drift for one resource against its baseline (M14.7).
+
+    ``changes`` (JSONB) is the classified diff — a list of
+    ``{path, kind (added|removed|changed), old, new}`` — with ``added``/``removed``/
+    ``changed`` counts; ``events`` (JSONB) is the attributed Activity-Log change events.
+    The natural key ``(resource_id, baseline_version, changes_hash)`` is unique — the
+    idempotency marker so re-detecting the same drift updates rather than duplicates and a
+    new drift notifies **once**. ``status`` is ``open`` until a re-baseline resolves it;
+    ``notified`` records whether an alert was dispatched. ``run_id`` is the detecting run.
+    """
+
+    __tablename__ = "drift_findings"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    resource_id: Mapped[str] = mapped_column(String(512), index=True)
+    provider: Mapped[str] = mapped_column(
+        String(32), default="azure", server_default="azure", index=True
+    )
+    baseline_version: Mapped[int] = mapped_column(Integer, default=1)
+    changes_hash: Mapped[str] = mapped_column(String(64), index=True)
+    changes: Mapped[list] = mapped_column(JSONB, default=list)
+    added: Mapped[int] = mapped_column(Integer, default=0)
+    removed: Mapped[int] = mapped_column(Integer, default=0)
+    changed: Mapped[int] = mapped_column(Integer, default=0)
+    events: Mapped[list] = mapped_column(JSONB, default=list)
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    run_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "resource_id", "baseline_version", "changes_hash", name="uq_drift_finding"
+        ),
+    )

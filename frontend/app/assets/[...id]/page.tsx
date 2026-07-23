@@ -7,9 +7,12 @@ import {
   Asset,
   AssetEvent,
   AssetRelationship,
+  DriftFinding,
   getAsset,
   getAssetHistory,
   getAssetRelationships,
+  listDrift,
+  rebaselineDrift,
   shortId,
 } from "../../lib/api";
 
@@ -31,9 +34,32 @@ export default function AssetDetail() {
   const [asset, setAsset] = useState<Asset | null>(null);
   const [rels, setRels] = useState<AssetRelationship[]>([]);
   const [history, setHistory] = useState<AssetEvent[]>([]);
+  const [drift, setDrift] = useState<DriftFinding[]>([]);
+  const [rebaselining, setRebaselining] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [err, setErr] = useState("");
+
+  const loadDrift = async (rid: string) => {
+    try {
+      // Drift is RBAC-gated (drift:read) and optional — a denial must not break the page.
+      setDrift(await listDrift({ resource_id: rid, status: "open" }));
+    } catch {
+      /* gated or unavailable — leave the drift section empty */
+    }
+  };
+
+  const onRebaseline = async () => {
+    setRebaselining(true);
+    try {
+      await rebaselineDrift(resourceId);
+      await loadDrift(resourceId);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setRebaselining(false);
+    }
+  };
 
   useEffect(() => {
     if (resourceId === "/") return;
@@ -57,6 +83,7 @@ export default function AssetDetail() {
         if (!active) return;
         setRels(r);
         setHistory(h);
+        await loadDrift(resourceId);
       } catch (e) {
         if (active) setErr(String(e));
       } finally {
@@ -222,6 +249,60 @@ export default function AssetDetail() {
           )}
         </tbody>
       </table>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+        <h2 style={{ margin: 0 }}>Configuration drift</h2>
+        <button className="btn" onClick={onRebaseline} disabled={rebaselining}>
+          {rebaselining ? "Re-baselining…" : "Re-baseline (accept)"}
+        </button>
+      </div>
+      <p className="sub">
+        Live config diffed against this resource&apos;s desired-state baseline. Re-baselining
+        accepts the current config as the new intended state.
+      </p>
+      {drift.length === 0 ? (
+        <p className="muted">No drift — the resource matches its baseline.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Change</th>
+              <th>Baseline</th>
+              <th>Current</th>
+            </tr>
+          </thead>
+          <tbody>
+            {drift.flatMap((f) =>
+              f.changes.map((c) => (
+                <tr key={`${f.id}-${c.path}`}>
+                  <td>
+                    <code>{c.path}</code>
+                  </td>
+                  <td>
+                    <span
+                      className="badge"
+                      style={{
+                        background:
+                          c.kind === "added"
+                            ? "#166534"
+                            : c.kind === "removed"
+                              ? "#991b1b"
+                              : "#a16207",
+                        color: "#fff",
+                      }}
+                    >
+                      {c.kind}
+                    </span>
+                  </td>
+                  <td className="muted">{c.old === undefined ? "—" : JSON.stringify(c.old)}</td>
+                  <td>{c.new === undefined ? "—" : JSON.stringify(c.new)}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      )}
 
       <h2>Config</h2>
       <pre className="policy-editor" style={{ minHeight: "auto" }}>

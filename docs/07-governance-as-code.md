@@ -172,6 +172,43 @@ offline path is used.
 | `POST /api/policies/evaluate-iac` | API — `{"plan": <plan json>}` → matches + severity (RBAC `policy:run`); malformed → `422` |
 | [`docs/examples/shift-left.github-workflow.yml`](examples/shift-left.github-workflow.yml) | copy-paste GitHub Action: `terraform show -json` → `evaluate-iac` |
 
+## Configuration drift detection — M14.7
+
+Push/pull/event/shift-left govern *policy*; **drift detection** governs *state*: did a
+resource change away from its intended configuration? The AssetDB already stores each
+resource's full `config` (JSONB) and change history, so `custodian/drift.py` turns that
+into a control.
+
+* **Baseline.** A per-resource desired-state snapshot: `config` **normalized** (volatile /
+  noise fields dropped — `etag`, `provisioningState`, timestamps, …) plus a stable hash,
+  **versioned** on re-baseline. Captured automatically the first time a resource is seen,
+  or explicitly by an operator (re-baseline).
+* **Diff.** Each run, `diff_config` recursively compares live (normalized) config against
+  the baseline and emits **classified** changes — `added` / `removed` / `changed` — each
+  with a **dotted field path** (`properties.networkAcls.defaultAction`). Because volatile
+  fields are excluded at every level, an unchanged resource **never** drifts.
+* **Attribution.** Each finding carries the recent Activity-Log change **events**
+  (`attribute_events`) so it says *who/how* the resource changed, when that's known.
+* **Fire once, never break the run.** Findings persist to `drift_findings` keyed on
+  `(resource_id, baseline_version, change set)` — idempotent, so a new drift notifies
+  exactly once through the existing transports; detection is best-effort in its own
+  transaction.
+* **Re-baseline (accept drift).** `POST /api/drift/baseline` snapshots the current config
+  as the new baseline and **resolves** the resource's open findings — an explicit,
+  RBAC-guarded (`drift:write`), **audited** act.
+
+**Surfaced as:**
+
+| Where | What |
+|-------|------|
+| `GET /api/drift` | drift findings — classified field diffs + attributed events (RBAC `drift:read`; filter by resource/status) |
+| `POST /api/drift/baseline` | re-baseline a resource (RBAC `drift:write`, audited) |
+| **Asset detail** page | a *Configuration drift* section — baseline-vs-current field diff + a *Re-baseline* button |
+
+Toggled by `DRIFT_DETECTION_ENABLED` (default on); new findings alert through
+`DRIFT_ALERT_CHANNEL` (empty = record silently). Azure-first behind the `CloudProvider`
+abstraction.
+
 ## Policy packs
 
 Pre-built, versioned bundles of policies (e.g. tag-compliance, cost-hygiene,

@@ -151,3 +151,34 @@ def dispatch_for_anomaly(
         context=context,
         transport=transport,
     )
+
+
+def dispatch_for_drift(
+    session: Any,
+    *,
+    context: dict[str, Any],
+    template_id: int,
+    channel_name: str,
+    transport_factory: Callable[[str], Transport] | None = None,
+) -> dict[str, Any] | None:
+    """Render ``template_id`` against ``context`` and send it via the named channel (M14.7).
+
+    Drift alerts are system-wide, so the destination is a **channel resolved by name**
+    (``settings.drift_alert_channel``) rather than a per-object id. Returns ``None`` when no
+    channel name is configured or no such channel exists — detection then records the drift
+    silently. Reuses the same transport registry + :func:`service.notify` seam as the other
+    alerts, so no new delivery code path is added."""
+    if not channel_name:
+        return None
+    channel = repo.get_notification_channel_by_name(session, channel_name)
+    if channel is None:
+        return None
+    make = transport_factory or build_transport
+    transport = make(channel["transport"])
+    return service.notify(
+        session,
+        template_id=template_id,
+        channel_id=channel["id"],
+        context=context,
+        transport=transport,
+    )

@@ -42,6 +42,7 @@ from ..models import (
     BudgetCreate,
     BudgetUpdate,
     CollectionCreate,
+    DriftBaselineRequest,
     EvaluateIacRequest,
     NotificationChannelIn,
     NotificationChannelUpdate,
@@ -648,6 +649,55 @@ def evaluate_iac(body: EvaluateIacRequest) -> dict[str, Any]:
     except shiftleft.ShiftLeftError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return shiftleft.result_public(result)
+
+
+# --- Configuration drift detection (M14.7) -------------------------------------
+@app.get("/api/drift", dependencies=[Depends(rbac.require_permission("drift:read"))])
+def list_drift(
+    resource_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    """Recorded configuration-drift findings — the classified added/removed/changed field
+    paths per resource, with the attributed change events. Filter by ``resource_id`` /
+    ``status`` (``open``/``resolved``). RBAC-guarded (``drift:read``)."""
+    with session_scope() as session:
+        findings = repo.list_drift_findings(
+            session, resource_id=resource_id, status=status, limit=limit
+        )
+    return {"findings": findings}
+
+
+@app.post("/api/drift/baseline", dependencies=[Depends(rbac.require_permission("drift:write"))])
+def rebaseline_drift(body: DriftBaselineRequest, request: Request) -> dict[str, Any]:
+    """Capture / re-baseline a resource's desired state from its current config — accepting
+    (clearing) any open drift for it. RBAC-guarded (``drift:write``) and audited; a
+    ``404`` if the resource is unknown."""
+    from ..custodian import drift
+
+    principal = rbac.principal_from_request(request)
+    with session_scope() as session:
+        asset = repo.get_asset(session, body.resource_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail=f"unknown resource: {body.resource_id}")
+        before = repo.get_drift_baseline(session, body.resource_id)
+        baseline = drift.capture_baseline(
+            session,
+            resource_id=body.resource_id,
+            config=asset["config"],
+            provider=asset.get("provider") or "azure",
+            captured_by=principal,
+        )
+        audit.record(
+            session,
+            actor=principal,
+            action="drift:baseline",
+            target_type="resource",
+            target_id=body.resource_id,
+            before=before,
+            after=baseline,
+        )
+    return baseline
 
 
 @app.get("/api/custodian/schema")

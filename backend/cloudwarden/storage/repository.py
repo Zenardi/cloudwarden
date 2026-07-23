@@ -2830,6 +2830,255 @@ def get_cost_forecast(
 
 
 # --------------------------------------------------------------------------- #
+# Configuration drift detection (M14.7)
+# --------------------------------------------------------------------------- #
+_DRIFT_TEMPLATE_NAME = "config-drift"
+
+
+def _drift_baseline_public(rec: schema.DriftBaseline) -> dict[str, Any]:
+    return {
+        "resource_id": rec.resource_id,
+        "provider": rec.provider,
+        "version": rec.version,
+        "config_hash": rec.config_hash,
+        "config": rec.config or {},
+        "captured_by": rec.captured_by,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+        "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+    }
+
+
+def _drift_finding_public(rec: schema.DriftFinding) -> dict[str, Any]:
+    return {
+        "id": rec.id,
+        "resource_id": rec.resource_id,
+        "provider": rec.provider,
+        "baseline_version": rec.baseline_version,
+        "changes": rec.changes or [],
+        "added": rec.added,
+        "removed": rec.removed,
+        "changed": rec.changed,
+        "events": rec.events or [],
+        "status": rec.status,
+        "notified": rec.notified,
+        "run_id": rec.run_id,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+    }
+
+
+def _changes_hash(changes: list[dict[str, Any]]) -> str:
+    """Stable digest of a change set — the idempotency key for a drift finding."""
+    import hashlib
+    import json
+
+    canonical = json.dumps(
+        sorted((c.get("path", ""), c.get("kind", "")) for c in changes), default=str
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def get_asset(session: Session, resource_id: str) -> dict[str, Any] | None:
+    """A single asset's row (config + metadata), or ``None`` if unknown."""
+    rec = session.get(schema.Asset, resource_id)
+    if rec is None:
+        return None
+    return {
+        "resource_id": rec.resource_id,
+        "subscription_id": rec.subscription_id,
+        "provider": rec.provider,
+        "type": rec.type,
+        "name": rec.name,
+        "config": rec.config or {},
+        "tags": rec.tags or {},
+    }
+
+
+def assets_for_drift(session: Session, *, provider: str | None = None) -> list[dict[str, Any]]:
+    """Every asset's ``(resource_id, provider, config)`` — the drift diff input."""
+    query = session.query(schema.Asset)
+    if provider:
+        query = query.filter(schema.Asset.provider == provider)
+    return [
+        {"resource_id": r.resource_id, "provider": r.provider, "config": r.config or {}}
+        for r in query.order_by(schema.Asset.resource_id).all()
+    ]
+
+
+def upsert_drift_baseline(
+    session: Session,
+    *,
+    resource_id: str,
+    config: dict[str, Any],
+    config_hash: str,
+    provider: str = "azure",
+    captured_by: str | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Capture/version a resource's baseline. Returns ``(row, changed)``.
+
+    A first capture inserts version 1. A later capture whose ``config_hash`` differs bumps
+    the version and stores the new config (``changed=True``); an identical capture is a
+    no-op (``changed=False``)."""
+    rec = session.get(schema.DriftBaseline, resource_id)
+    if rec is None:
+        rec = schema.DriftBaseline(
+            resource_id=resource_id,
+            provider=provider,
+            version=1,
+            config_hash=config_hash,
+            config=config,
+            captured_by=captured_by,
+        )
+        session.add(rec)
+        session.flush()
+        return _drift_baseline_public(rec), True
+    if rec.config_hash == config_hash:
+        return _drift_baseline_public(rec), False
+    rec.version += 1
+    rec.config_hash = config_hash
+    rec.config = config
+    rec.provider = provider
+    rec.captured_by = captured_by
+    session.flush()
+    return _drift_baseline_public(rec), True
+
+
+def list_drift_baselines(session: Session, *, provider: str | None = None) -> list[dict[str, Any]]:
+    """All drift baselines (optionally provider-filtered)."""
+    query = session.query(schema.DriftBaseline)
+    if provider:
+        query = query.filter(schema.DriftBaseline.provider == provider)
+    return [_drift_baseline_public(r) for r in query.all()]
+
+
+def get_drift_baseline(session: Session, resource_id: str) -> dict[str, Any] | None:
+    rec = session.get(schema.DriftBaseline, resource_id)
+    return _drift_baseline_public(rec) if rec else None
+
+
+def record_drift_finding(
+    session: Session,
+    *,
+    resource_id: str,
+    baseline_version: int,
+    changes: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+    provider: str = "azure",
+    run_id: str | None = None,
+    notified: bool = False,
+) -> tuple[dict[str, Any], bool]:
+    """Record a drift finding, deduped on ``(resource_id, baseline_version, changes_hash)``.
+
+    Returns ``(row, inserted)``: ``inserted`` is ``True`` only on the first sighting of this
+    exact drift (a fresh INSERT), ``False`` when a re-detect refreshes it — the signal that
+    fires a notification exactly once. Counts are derived from ``changes`` by kind."""
+    counts = {"added": 0, "removed": 0, "changed": 0}
+    for change in changes:
+        kind = change.get("kind")
+        if kind in counts:
+            counts[kind] += 1
+    stmt = (
+        pg_insert(schema.DriftFinding)
+        .values(
+            resource_id=resource_id,
+            provider=provider,
+            baseline_version=baseline_version,
+            changes_hash=_changes_hash(changes),
+            changes=changes,
+            added=counts["added"],
+            removed=counts["removed"],
+            changed=counts["changed"],
+            events=events,
+            status="open",
+            notified=notified,
+            run_id=run_id,
+        )
+        .on_conflict_do_update(
+            constraint="uq_drift_finding",
+            set_={
+                "changes": changes,
+                "added": counts["added"],
+                "removed": counts["removed"],
+                "changed": counts["changed"],
+                "events": events,
+                "run_id": run_id,
+                "provider": provider,
+            },
+        )
+        .returning(schema.DriftFinding.id, literal_column("(xmax = 0)"))
+    )
+    new_id, inserted = session.execute(stmt).one()
+    session.flush()
+    return _drift_finding_public(session.get(schema.DriftFinding, new_id)), bool(inserted)
+
+
+def list_drift_findings(
+    session: Session,
+    *,
+    resource_id: str | None = None,
+    status: str | None = None,
+    provider: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Recorded drift findings, newest first, with optional filters."""
+    query = session.query(schema.DriftFinding)
+    if resource_id:
+        query = query.filter(schema.DriftFinding.resource_id == resource_id)
+    if status:
+        query = query.filter(schema.DriftFinding.status == status)
+    if provider:
+        query = query.filter(schema.DriftFinding.provider == provider)
+    query = query.order_by(schema.DriftFinding.id.desc()).limit(limit)
+    return [_drift_finding_public(r) for r in query.all()]
+
+
+def resolve_drift_findings(session: Session, resource_id: str) -> int:
+    """Mark a resource's open findings resolved (a re-baseline accepts the drift)."""
+    recs = (
+        session.query(schema.DriftFinding)
+        .filter(
+            schema.DriftFinding.resource_id == resource_id,
+            schema.DriftFinding.status == "open",
+        )
+        .all()
+    )
+    for rec in recs:
+        rec.status = "resolved"
+    session.flush()
+    return len(recs)
+
+
+def mark_drift_notified(session: Session, finding_id: int) -> bool:
+    """Flag a finding as notified (a dispatch actually went out)."""
+    rec = session.get(schema.DriftFinding, finding_id)
+    if rec is None:
+        return False
+    rec.notified = True
+    session.flush()
+    return True
+
+
+def ensure_drift_template(session: Session) -> int:
+    """Get (or lazily create) the shared default config-drift notification template."""
+    from ..notify import service
+
+    existing = (
+        session.query(schema.NotificationTemplate)
+        .filter(schema.NotificationTemplate.name == _DRIFT_TEMPLATE_NAME)
+        .one_or_none()
+    )
+    if existing is not None:
+        return existing.id
+    created = create_notification_template(
+        session,
+        name=_DRIFT_TEMPLATE_NAME,
+        subject=service.DEFAULT_DRIFT_SUBJECT,
+        body=service.DEFAULT_DRIFT_BODY,
+        description="Default configuration drift alert (M14.7)",
+    )
+    return created["id"]
+
+
+# --------------------------------------------------------------------------- #
 # Read helpers (used by the API/UI)
 # --------------------------------------------------------------------------- #
 def _coerce(value: Any) -> Any:
