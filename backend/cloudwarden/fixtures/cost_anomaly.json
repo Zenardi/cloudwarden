@@ -1,0 +1,8 @@
+{
+  "description": "M14.3 cost-anomaly demo overlay for FINOPS_MOCK=1. Applied by azure/cost.py::_mock_rows ONLY when ANOMALY_MOCK_SPIKE is enabled, so the default mock series (and the test suite) keep their smooth baseline while the demo stack can surface a detectable spike. Spikes one resource's most-recent day so the pipeline flags a clear anomaly with an obvious top contributor.",
+  "spike": {
+    "resource_index": 0,
+    "day_index": 0,
+    "multiplier": 9.0
+  }
+}

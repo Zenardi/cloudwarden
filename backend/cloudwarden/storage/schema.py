@@ -902,3 +902,47 @@ class BudgetThresholdEvent(Base):
             "budget_id", "period_key", "threshold_pct", "basis", name="uq_budget_threshold_event"
         ),
     )
+
+
+class CostAnomaly(Base):
+    """A statistically abnormal day of spend for one scope (M14.3).
+
+    ``scope_type``/``scope_value`` name the grain (a subscription, service,
+    resource_type or resource); ``usage_date`` is the anomalous day. ``expected`` is
+    the robust (weekday-deseasonalized) baseline, ``actual`` the measured spend, and
+    ``score`` the deviation in robust-sigma (MAD) units bucketed into ``severity``.
+    ``contributors`` (JSONB) is the ranked breakdown of the child rows that drove the
+    delta. The natural key ``(scope_type, scope_value, usage_date)`` is unique — the
+    idempotency marker that makes a new anomaly notify **exactly once**; ``notified``
+    records whether an alert was actually dispatched (vs recorded only). ``provider``
+    tags the owning cloud (Azure-first cost analytics); ``run_id`` is the detecting run.
+    """
+
+    __tablename__ = "cost_anomalies"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    scope_type: Mapped[str] = mapped_column(String(32), default="subscription", index=True)
+    scope_value: Mapped[str] = mapped_column(String(512), index=True)
+    usage_date: Mapped[date] = mapped_column(Date, index=True)
+    provider: Mapped[str] = mapped_column(
+        String(32), default="azure", server_default="azure", index=True
+    )
+    expected: Mapped[float] = mapped_column(Numeric(18, 6), default=0)
+    actual: Mapped[float] = mapped_column(Numeric(18, 6), default=0)
+    score: Mapped[float] = mapped_column(Numeric(10, 4), default=0)
+    severity: Mapped[str] = mapped_column(String(16), default="low", index=True)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    contributors: Mapped[list] = mapped_column(JSONB, default=list)
+    run_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_type", "scope_value", "usage_date", name="uq_cost_anomaly_scope_date"
+        ),
+    )

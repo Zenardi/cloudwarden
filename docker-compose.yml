@@ -23,6 +23,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://finops:finops@db:5432/finops
       APP_DATA_DIR: /data
+      # Cost anomaly detection (M14.3): seed a demo spike into the mock cost series so
+      # the FINOPS_MOCK stack surfaces a detectable anomaly out of the box.
+      ANOMALY_MOCK_SPIKE: ${ANOMALY_MOCK_SPIKE:-true}
       # RBAC (M11.1): off by default; set these to enforce permissions on writes.
       RBAC_ENABLED: ${RBAC_ENABLED:-false}
       RBAC_BOOTSTRAP_ADMIN: ${RBAC_BOOTSTRAP_ADMIN:-}

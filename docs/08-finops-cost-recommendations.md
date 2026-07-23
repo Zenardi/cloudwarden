@@ -156,6 +156,59 @@ value until the M14.5 tag dimension lands (documented, non-surprising).
 Budget evaluation is toggled by `BUDGET_ALERTS_ENABLED` (default on) and is Azure-first
 behind the `CloudProvider` abstraction.
 
+## Cost anomaly detection (M14.3)
+
+Budgets guard a *known* limit; anomaly detection catches the *unexpected* — a spend
+spike nobody set a threshold for. Every pipeline run, after cost is persisted,
+`analysis/anomaly.py` scores the latest day's spend for each scope and flags the
+statistically abnormal ones.
+
+**Grain.** Detection runs at four grains — `subscription`, `service`, `resource_type`,
+`resource` — so a spike is caught whether it's one runaway VM or a whole service line.
+
+**A robust, seasonality-aware baseline.** For each scope's trailing window
+(`ANOMALY_WINDOW_DAYS`, default 45) the centre is the **median** and the spread the
+**MAD** (median absolute deviation) — both immune to the very outliers we hunt, unlike
+mean/stdev which a single spike would poison. Cloud spend is weekly-seasonal, so each
+day is **deseasonalized** by its weekday factor (that weekday's median ÷ the overall
+median) before scoring: an in-pattern weekend peak is *expected*, not anomalous. The
+score is the day's distance from the centre in robust-sigma (MAD) units; a day scoring
+at or above `ANOMALY_SENSITIVITY` (default 3.5; **lower = more sensitive**) is an
+anomaly, bucketed into a **severity** — `low` / `medium` / `high` / `critical`.
+
+**Signal-gated — no false positives.** Two guards keep it quiet when it should be:
+
+- **Thin history.** With fewer than `ANOMALY_MIN_HISTORY_DAYS` (default 14) baseline
+  days, the detector emits **nothing** — a new subscription never trips an alert.
+- **Ultra-steady series.** A scale floor (the spread is at least a small fraction of the
+  centre) stops a perfectly flat series turning trivial noise into an infinite score.
+
+**Contribution breakdown.** Each anomaly carries a ranked `contributors` list — the
+child rows (resources, or meters for a resource-grain anomaly) whose day-vs-baseline
+delta drove the spike, each with its `share` of the increase — so an alert says *what*
+moved, not just *that* something did.
+
+**Fire once, never break the run.** An anomaly persists to `cost_anomalies` keyed on
+`(scope_type, scope_value, usage_date)`. The first time a scope+date is seen it fires
+**exactly one** notification through the **existing** transports (the channel named by
+`ANOMALY_ALERT_CHANNEL`; empty = record silently — no new delivery code path); a
+re-detect refreshes the row but never re-alerts. Dispatch is best-effort — a transport
+failure is logged and swallowed, and the anomaly stays recorded (unnotified).
+
+**Surfaced in:**
+
+| Where | What |
+|-------|------|
+| `GET /api/finops/anomalies` | recorded anomalies + expected/actual/score/severity/contributors (RBAC-guarded: `anomaly:read`; filter by scope/severity/date window) |
+| **Cost explorer** web page | a *Cost anomalies* panel — severity, spike ratio, and the top driver |
+| *FinOps — Cost Overview* Grafana dashboard | *Cost anomalies — recent spikes* table |
+
+Detection is toggled by `ANOMALY_DETECTION_ENABLED` (default on), deseasonalization by
+`ANOMALY_SEASONALITY`, and is Azure-first behind the `CloudProvider` abstraction. In
+mock mode a seeded spike (`fixtures/cost_anomaly.json`) is overlaid only when
+`ANOMALY_MOCK_SPIKE=1`, so a demo stack surfaces a live anomaly while the default mock
+series (and the test suite) stay smooth.
+
 ## AI executive summary
 
 Configured via the `AI_*` keys ([03](03-configuration.md#ai-provider-executive-summary)).

@@ -299,6 +299,54 @@ export interface CostTrend {
 export const getCostTrend = (days = 30): Promise<CostTrend> =>
   apiGet<CostTrend>(`/api/costs/trend?days=${days}`);
 
+// --- Cost anomaly detection (M14.3) ------------------------------------------
+export type AnomalySeverity = "low" | "medium" | "high" | "critical";
+
+/** One child (resource/meter) that drove a spike, with its day-vs-baseline delta. */
+export interface AnomalyContributor {
+  child: string;
+  actual: number;
+  baseline: number;
+  delta: number;
+  share: number;
+}
+
+/** A statistically abnormal day of spend for one scope (mirrors the backend row). */
+export interface CostAnomaly {
+  id: number;
+  scope_type: string;
+  scope_value: string;
+  usage_date: string; // ISO YYYY-MM-DD
+  provider: string;
+  expected: number;
+  actual: number;
+  score: number;
+  severity: AnomalySeverity;
+  currency: string;
+  contributors: AnomalyContributor[];
+  run_id: string | null;
+  notified: boolean;
+  created_at: string | null;
+}
+
+/** Ordering weight for a severity (critical first) — for sorting/colouring in the UI. */
+export function severityRank(severity: string): number {
+  return { critical: 4, high: 3, medium: 2, low: 1 }[severity] ?? 0;
+}
+
+/** Recorded cost anomalies (spend spikes), newest & highest-scoring first. */
+export function listAnomalies(
+  params: { scope_type?: string; severity?: string; limit?: number } = {},
+): Promise<CostAnomaly[]> {
+  const qs = new URLSearchParams();
+  if (params.scope_type) qs.set("scope_type", params.scope_type);
+  if (params.severity) qs.set("severity", params.severity);
+  qs.set("limit", String(params.limit ?? 50));
+  return apiGet<{ anomalies: CostAnomaly[] }>(`/api/finops/anomalies?${qs.toString()}`).then(
+    (r) => r.anomalies,
+  );
+}
+
 /**
  * Query string for the day/cloud-scoped cost endpoints (`/api/costs/summary`,
  * `by-type`, `by-region` — #116). Always sends `days`; omits `provider` for the

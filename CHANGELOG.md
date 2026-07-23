@@ -6,6 +6,26 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Cost anomaly detection (#136, M14.3).** Spend spikes were invisible until someone
+  read a dashboard; detection makes FinOps watchful. A new `analysis/anomaly.py` scores
+  the latest day's spend per scope (subscription / service / resource-type / resource)
+  against a **robust, weekday-aware baseline** — rolling **median + MAD** deseasonalized
+  by a per-weekday factor, so an in-pattern weekend peak is expected, not flagged. Days
+  exceeding a configurable robust-sigma threshold become anomalies with a **severity**
+  (low→critical) and a **contributor breakdown** (the child resources/meters that drove
+  the delta). Detection is **signal-gated** — nothing is emitted on thin history (a
+  configurable minimum) or an ultra-steady series (a scale floor prevents runaway
+  scores) — so no false positives. Anomalies persist to a new `cost_anomalies` table
+  (unique on `(scope_type, scope_value, usage_date)`), run every pipeline run after cost
+  is committed, and fire **exactly one** notification per new anomaly through the
+  **existing** transports (no new delivery code path), idempotent on `(scope, date)` and
+  best-effort so a transport failure never breaks a run. New `GET /api/finops/anomalies`
+  (RBAC `anomaly:read`, filter by scope/severity/date window), anomaly markers on the
+  **Cost explorer** page, a *Cost anomalies* Grafana panel, and a demo mock spike
+  (`fixtures/cost_anomaly.json`, off unless `ANOMALY_MOCK_SPIKE=1`). Azure-first behind
+  the `CloudProvider` abstraction. Tuning via `ANOMALY_SENSITIVITY` /
+  `ANOMALY_MIN_HISTORY_DAYS` / `ANOMALY_WINDOW_DAYS` / `ANOMALY_SEASONALITY`; toggle with
+  `ANOMALY_DETECTION_ENABLED`. Strict TDD, 100% coverage on the new module, ruff clean.
 - **Budgets & threshold alerting (#135, M14.2).** FinOps gains a first-class **budget**
   concept: a spend limit over a scope (subscription / account / account-group / tag /
   team) and period (monthly / quarterly) with ordered **threshold rules**

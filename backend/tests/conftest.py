@@ -19,7 +19,7 @@ _TABLES = (
     "utilization_samples, "
     "utilization_rollups, advisor_recommendations, recommendations, remediation_actions, "
     "commitment_inventory, commitment_coverage, "
-    "budgets, budget_threshold_events, "
+    "budgets, budget_threshold_events, cost_anomalies, "
     "ai_summaries, account_groups, account_group_members, bindings, event_log, "
     "subscriptions, "
     "policies, policy_versions, policy_collections, "

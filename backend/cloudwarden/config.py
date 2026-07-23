@@ -113,6 +113,24 @@ class Settings(BaseSettings):
     # notification (through the existing transports) when a threshold is newly crossed.
     budget_alerts_enabled: bool = True
 
+    # --- Cost anomaly detection (M14.3) ---
+    # Detect abnormal daily spend over cost_snapshots each run and alert on new anomalies.
+    anomaly_detection_enabled: bool = True
+    # Signal gate: with fewer than this many baseline days, nothing is ever flagged.
+    anomaly_min_history_days: int = 14
+    # Robust-sigma (MAD units) above which a day is anomalous; LOWER = more sensitive.
+    anomaly_sensitivity: float = 3.5
+    # Trailing window (days) feeding the robust, weekday-aware baseline.
+    anomaly_window_days: int = 45
+    # Deseasonalize by weekday before scoring (weekend/weekday spend effects).
+    anomaly_seasonality: bool = True
+    # Notification channel *name* new anomalies alert through; empty = record silently.
+    anomaly_alert_channel: str = ""
+    # Demo only: overlay a seeded spend spike on the mock cost series (fixtures/
+    # cost_anomaly.json) so FINOPS_MOCK=1 stacks surface a detectable anomaly. Off by
+    # default so the default mock series stays smooth (no synthetic anomaly in tests).
+    anomaly_mock_spike: bool = False
+
     # --- Analysis windows & thresholds ---
     metric_lookback_days: int = 14
     cost_lookback_days: int = 30

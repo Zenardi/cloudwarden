@@ -39,16 +39,29 @@ def collect_cost(
     return _collect_live(settings, sub_id, cred)
 
 
+def _mock_spike(settings: Settings) -> tuple[int, int, float] | None:
+    """The optional demo anomaly overlay (M14.3): ``(resource_index, day_index,
+    multiplier)`` or ``None`` when disabled. Off by default so the mock series stays
+    smooth; enabled via ``ANOMALY_MOCK_SPIKE`` to demo detection end-to-end."""
+    if not getattr(settings, "anomaly_mock_spike", False):
+        return None
+    spike = load_fixture("cost_anomaly")["spike"]
+    return int(spike["resource_index"]), int(spike["day_index"]), float(spike["multiplier"])
+
+
 def _mock_rows(settings: Settings, subscription_id: str) -> list[CostRow]:
     data = load_fixture("cost")
     currency = data.get("currency", "USD")
     today = dt.date.today()
+    spike = _mock_spike(settings)
     out: list[CostRow] = []
     for day_index in range(settings.cost_lookback_days):
         day = today - dt.timedelta(days=day_index)
         for res_index, res in enumerate(data["resources"]):
             factor = 1.0 + 0.05 * (((day_index + res_index) % 5) - 2)
             base = float(res["base_daily_cost"]) * factor
+            if spike and res_index == spike[0] and day_index == spike[1]:
+                base *= spike[2]  # seeded demo spike on this resource's most-recent day
             for cost_type in ("Amortized", "Actual"):
                 out.append(
                     CostRow(

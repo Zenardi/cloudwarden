@@ -39,6 +39,9 @@ __all__ = [
     "build_budget_context",
     "DEFAULT_BUDGET_SUBJECT",
     "DEFAULT_BUDGET_BODY",
+    "build_anomaly_context",
+    "DEFAULT_ANOMALY_SUBJECT",
+    "DEFAULT_ANOMALY_BODY",
     "notify",
 ]
 
@@ -142,6 +145,55 @@ def build_budget_context(
         "actual_pct": actual_pct,
         "threshold_pct": threshold_pct,
         "basis": basis,
+    }
+
+
+# The default cost-anomaly template (M14.3). Used when no template is named — see
+# :func:`cloudwarden.storage.repository.ensure_anomaly_template`. The variables come
+# from :func:`build_anomaly_context`; missing ones render empty.
+DEFAULT_ANOMALY_SUBJECT = (
+    "[Anomaly] {{ severity }} spend on {{ scope_type }} {{ scope_value }} "
+    "({{ actual }} vs ~{{ expected }} {{ currency }})"
+)
+DEFAULT_ANOMALY_BODY = (
+    "A {{ severity }} cost anomaly was detected for {{ scope_type }} '{{ scope_value }}' on "
+    "{{ date }}: {{ actual }} {{ currency }} spent versus an expected ~{{ expected }} "
+    "{{ currency }} (deviation score {{ score }}). Top contributor: {{ top_contributor }}."
+)
+
+
+def build_anomaly_context(
+    *,
+    scope_type: str,
+    scope_value: str,
+    on: Any,
+    expected: float,
+    actual: float,
+    score: float,
+    severity: str,
+    currency: str = "USD",
+    contributors: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Assemble the template context for a cost anomaly (M14.3).
+
+    Exposes the anomalous scope + day, the expected-vs-actual spend and deviation
+    ``score``/``severity``, and the ranked ``contributors`` (plus a convenience
+    ``top_contributor`` — the biggest driver). Consumed by :data:`DEFAULT_ANOMALY_BODY`
+    and any custom template."""
+    children = contributors or []
+    top = children[0].get("child") if children else ""
+    return {
+        "scope_type": scope_type,
+        "scope_value": scope_value,
+        "date": on.isoformat() if hasattr(on, "isoformat") else str(on),
+        "expected": expected,
+        "actual": actual,
+        "score": score,
+        "severity": severity,
+        "currency": currency,
+        "contributors": children,
+        "top_contributor": top,
+        "count": len(children),
     }
 
 

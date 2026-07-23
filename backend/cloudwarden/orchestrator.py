@@ -16,6 +16,7 @@ from typing import Any
 
 from .ai import factory as ai_factory
 from .ai.prompt import build_payload
+from .analysis.anomaly import detect_cost_anomalies
 from .analysis.budgets import evaluate_budgets
 from .analysis.commitments import analyze_commitments
 from .analysis.idle import detect_idle, detect_idle_by_activity
@@ -277,6 +278,17 @@ def run_pipeline(
                 counts["budget_alerts"] = summary["notifications_sent"]
             except Exception:  # noqa: BLE001 - budget evaluation is best-effort
                 logger.warning("budget evaluation failed for run %s", run_id, exc_info=True)
+        # Cost anomaly detection (M14.3): with this run's cost committed, score the
+        # latest day per scope against a robust, weekday-aware baseline and alert on new
+        # spikes. Best-effort in its own transaction — detection never fails a run.
+        if settings.anomaly_detection_enabled:
+            try:
+                with session_scope() as session:
+                    summary = detect_cost_anomalies(session, on=date.today(), run_id=run_id)
+                counts["anomalies"] = summary["anomalies_detected"]
+                counts["anomaly_alerts"] = summary["notifications_sent"]
+            except Exception:  # noqa: BLE001 - anomaly detection is best-effort
+                logger.warning("anomaly detection failed for run %s", run_id, exc_info=True)
         with session_scope() as session:
             repo.finish_run(session, run_id, status="succeeded")
     except Exception as exc:  # noqa: BLE001 - recorded then re-raised

@@ -60,8 +60,9 @@ ADMIN_PERMISSIONS: tuple[str, ...] = ("rbac:admin", "team:write")
 # commitment endpoint surfaces financially-sensitive purchase recommendations, so
 # it is gated behind a FinOps-analyst (``editor``) grant. ``viewer`` stays empty
 # (reads that need no grant remain open); ``admin`` satisfies it via the wildcard.
-# Budget reads (M14.2) surface spend-vs-limit and are gated the same way.
-READ_PERMISSIONS: tuple[str, ...] = ("commitment:read", "budget:read")
+# Budget reads (M14.2) surface spend-vs-limit and are gated the same way. Anomaly
+# reads (M14.3) surface spend spikes + drivers and are gated the same way.
+READ_PERMISSIONS: tuple[str, ...] = ("commitment:read", "budget:read", "anomaly:read")
 
 DEFAULT_ROLES: dict[str, dict] = {
     "admin": {

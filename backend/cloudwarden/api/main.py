@@ -394,6 +394,44 @@ def delete_budget(budget_id: int, request: Request) -> dict[str, Any]:
     return {"id": budget_id, "deleted": True}
 
 
+# --- Cost anomaly detection (M14.3) --------------------------------------------
+@app.get(
+    "/api/finops/anomalies",
+    dependencies=[Depends(rbac.require_permission("anomaly:read"))],
+)
+def list_anomalies(
+    scope_type: str | None = Query(default=None),
+    severity: str | None = Query(default=None),
+    since: str | None = Query(default=None),
+    until: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    """Recorded cost anomalies (spend spikes) with their expected-vs-actual, score,
+    severity and top contributors. Filter by ``scope_type``/``severity`` and a
+    ``[since, until]`` date window. RBAC-guarded (``anomaly:read``) because a spike is
+    financially sensitive."""
+    from datetime import date
+
+    def _parse(value: str | None) -> date | None:
+        if not value:
+            return None
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"invalid date: {value!r}") from exc
+
+    with session_scope() as session:
+        anomalies = repo.list_cost_anomalies(
+            session,
+            scope_type=scope_type,
+            severity=severity,
+            since=_parse(since),
+            until=_parse(until),
+            limit=limit,
+        )
+    return {"anomalies": anomalies}
+
+
 # --------------------------------------------------------------------------- #
 # Governance-as-code: policy validation + Custodian schema (M1.3)
 # --------------------------------------------------------------------------- #

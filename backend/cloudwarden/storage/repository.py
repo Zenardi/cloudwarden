@@ -2397,6 +2397,240 @@ def ensure_budget_template(session: Session) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Cost anomaly detection (M14.3)
+# --------------------------------------------------------------------------- #
+_ANOMALY_TEMPLATE_NAME = "cost-anomaly"
+
+# The ``cost_snapshots`` column each detection grain sums over, and the child column
+# a contributor breakdown attributes the delta to. Interpolated into SQL, so BOTH are
+# read ONLY from these whitelists (never from caller input) — injection-safe.
+_ANOMALY_SCOPE_COLUMNS = {
+    "subscription": "subscription_id",
+    "service": "service_name",
+    "resource_type": "resource_type",
+    "resource": "resource_id",
+}
+_ANOMALY_CHILD_COLUMNS = {
+    "subscription": "resource_id",
+    "service": "resource_id",
+    "resource_type": "resource_id",
+    "resource": "meter_category",
+}
+
+
+def _anomaly_scope_column(scope_type: str) -> str:
+    column = _ANOMALY_SCOPE_COLUMNS.get(scope_type)
+    if column is None:
+        raise ValueError(f"unknown anomaly scope_type: {scope_type!r}")
+    return column
+
+
+def _anomaly_public(rec: schema.CostAnomaly) -> dict[str, Any]:
+    return {
+        "id": rec.id,
+        "scope_type": rec.scope_type,
+        "scope_value": rec.scope_value,
+        "usage_date": rec.usage_date.isoformat() if rec.usage_date else None,
+        "provider": rec.provider,
+        "expected": float(rec.expected),
+        "actual": float(rec.actual),
+        "score": float(rec.score),
+        "severity": rec.severity,
+        "currency": rec.currency,
+        "contributors": rec.contributors or [],
+        "run_id": rec.run_id,
+        "notified": rec.notified,
+        "created_at": rec.created_at.isoformat() if rec.created_at else None,
+    }
+
+
+def cost_daily_by_scope(
+    session: Session, *, scope_type: str, start: date, end: date
+) -> list[dict[str, Any]]:
+    """Daily amortized spend per scope value over ``[start, end]`` (a time-series feed).
+
+    One row per (scope value, day) with the summed cost — the input the anomaly
+    detector groups into a per-scope series. The scope column is whitelisted (see
+    :data:`_ANOMALY_SCOPE_COLUMNS`); dates are bound parameters."""
+    column = _anomaly_scope_column(scope_type)
+    return _rows(
+        session,
+        f"SELECT {column} AS scope_value, usage_date, SUM(cost) AS cost, "
+        "MAX(currency) AS currency FROM cost_snapshots "
+        f"WHERE cost_type = 'Amortized' AND usage_date >= :start AND usage_date <= :end "
+        f"AND {column} IS NOT NULL "
+        f"GROUP BY {column}, usage_date ORDER BY {column}, usage_date",
+        start=start,
+        end=end,
+    )
+
+
+def cost_scope_children(
+    session: Session,
+    *,
+    scope_type: str,
+    scope_value: str,
+    on: date,
+    start: date,
+    top: int = 8,
+) -> list[dict[str, Any]]:
+    """Top child rows of a scope on ``on`` with each child's trailing baseline.
+
+    Returns the ``top`` children (by spend on ``on``) inside the scope, each with its
+    ``actual`` cost that day and its ``baseline`` (average daily spend over
+    ``[start, on)``) — the raw material for contributor attribution. Both the scope and
+    child columns are whitelisted; every value is a bound parameter."""
+    column = _anomaly_scope_column(scope_type)
+    child = _ANOMALY_CHILD_COLUMNS.get(scope_type, "resource_id")
+    actuals = _rows(
+        session,
+        f"SELECT {child} AS child, SUM(cost) AS actual FROM cost_snapshots "
+        f"WHERE cost_type = 'Amortized' AND usage_date = :on AND {column} = :scope_value "
+        f"AND {child} IS NOT NULL GROUP BY {child} ORDER BY actual DESC LIMIT :top",
+        on=on,
+        scope_value=scope_value,
+        top=top,
+    )
+    baselines = _rows(
+        session,
+        f"SELECT child, AVG(daily) AS baseline FROM ("
+        f"SELECT {child} AS child, usage_date, SUM(cost) AS daily FROM cost_snapshots "
+        f"WHERE cost_type = 'Amortized' AND usage_date >= :start AND usage_date < :on "
+        f"AND {column} = :scope_value AND {child} IS NOT NULL "
+        f"GROUP BY {child}, usage_date) t GROUP BY child",
+        start=start,
+        on=on,
+        scope_value=scope_value,
+    )
+    baseline_map = {r["child"]: float(r["baseline"]) for r in baselines}
+    return [
+        {
+            "child": r["child"],
+            "actual": float(r["actual"]),
+            "baseline": baseline_map.get(r["child"], 0.0),
+        }
+        for r in actuals
+    ]
+
+
+def upsert_cost_anomaly(
+    session: Session,
+    *,
+    scope_type: str,
+    scope_value: str,
+    usage_date: date,
+    expected: float,
+    actual: float,
+    score: float,
+    severity: str,
+    provider: str = "azure",
+    currency: str = "USD",
+    contributors: list[dict[str, Any]] | None = None,
+    run_id: str | None = None,
+    notified: bool = False,
+    config: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Upsert an anomaly, deduped on ``(scope_type, scope_value, usage_date)``.
+
+    Returns ``(row, inserted)``: ``inserted`` is ``True`` only on the first sighting of
+    this scope+date (a fresh INSERT), ``False`` when a later detection updates the same
+    row — the idempotency signal that fires a notification exactly once. A re-detect
+    refreshes the score/expected/actual/contributors but never resets ``notified``
+    (``xmax = 0`` distinguishes insert from update)."""
+    stmt = (
+        pg_insert(schema.CostAnomaly)
+        .values(
+            scope_type=scope_type,
+            scope_value=scope_value,
+            usage_date=usage_date,
+            provider=provider,
+            expected=expected,
+            actual=actual,
+            score=score,
+            severity=severity,
+            currency=currency,
+            contributors=contributors or [],
+            run_id=run_id,
+            notified=notified,
+            config=config or {},
+        )
+        .on_conflict_do_update(
+            constraint="uq_cost_anomaly_scope_date",
+            set_={
+                "expected": expected,
+                "actual": actual,
+                "score": score,
+                "severity": severity,
+                "currency": currency,
+                "contributors": contributors or [],
+                "run_id": run_id,
+                "provider": provider,
+            },
+        )
+        .returning(schema.CostAnomaly.id, literal_column("(xmax = 0)"))
+    )
+    new_id, inserted = session.execute(stmt).one()
+    session.flush()
+    return _anomaly_public(session.get(schema.CostAnomaly, new_id)), bool(inserted)
+
+
+def list_cost_anomalies(
+    session: Session,
+    *,
+    scope_type: str | None = None,
+    severity: str | None = None,
+    since: date | None = None,
+    until: date | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Recorded anomalies, newest (and highest-scoring) first, with optional filters."""
+    query = session.query(schema.CostAnomaly)
+    if scope_type:
+        query = query.filter(schema.CostAnomaly.scope_type == scope_type)
+    if severity:
+        query = query.filter(schema.CostAnomaly.severity == severity)
+    if since:
+        query = query.filter(schema.CostAnomaly.usage_date >= since)
+    if until:
+        query = query.filter(schema.CostAnomaly.usage_date <= until)
+    query = query.order_by(
+        schema.CostAnomaly.usage_date.desc(), schema.CostAnomaly.score.desc()
+    ).limit(limit)
+    return [_anomaly_public(r) for r in query.all()]
+
+
+def mark_anomaly_notified(session: Session, anomaly_id: int) -> bool:
+    """Flag an anomaly as notified (a dispatch actually went out)."""
+    rec = session.get(schema.CostAnomaly, anomaly_id)
+    if rec is None:
+        return False
+    rec.notified = True
+    session.flush()
+    return True
+
+
+def ensure_anomaly_template(session: Session) -> int:
+    """Get (or lazily create) the shared default cost-anomaly notification template."""
+    from ..notify import service
+
+    existing = (
+        session.query(schema.NotificationTemplate)
+        .filter(schema.NotificationTemplate.name == _ANOMALY_TEMPLATE_NAME)
+        .one_or_none()
+    )
+    if existing is not None:
+        return existing.id
+    created = create_notification_template(
+        session,
+        name=_ANOMALY_TEMPLATE_NAME,
+        subject=service.DEFAULT_ANOMALY_SUBJECT,
+        body=service.DEFAULT_ANOMALY_BODY,
+        description="Default cost anomaly alert (M14.3)",
+    )
+    return created["id"]
+
+
+# --------------------------------------------------------------------------- #
 # Read helpers (used by the API/UI)
 # --------------------------------------------------------------------------- #
 def _coerce(value: Any) -> Any:
@@ -2996,6 +3230,16 @@ def create_notification_channel(
 
 def get_notification_channel(session: Session, channel_id: int) -> dict[str, Any] | None:
     rec = session.get(schema.NotificationChannel, channel_id)
+    return _notification_channel_public(rec) if rec is not None else None
+
+
+def get_notification_channel_by_name(session: Session, name: str) -> dict[str, Any] | None:
+    """Look up a channel by its unique name (used to resolve the anomaly alert channel)."""
+    rec = (
+        session.query(schema.NotificationChannel)
+        .filter(schema.NotificationChannel.name == name)
+        .one_or_none()
+    )
     return _notification_channel_public(rec) if rec is not None else None
 
 

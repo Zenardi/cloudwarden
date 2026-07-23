@@ -155,6 +155,15 @@ evidence-backed recommendations across five detector families, plus a preventive
   Manage via `GET/POST/PATCH/DELETE /api/budgets` (+ `/status`), the **Budgets** page,
   and a budget-vs-actual Grafana panel; RBAC-guarded (`budget:write`/`budget:read`) and
   audited.
+- **Cost anomaly detection** (`analysis/anomaly.py`, M14.3) — watchful, not descriptive:
+  each run scores the latest day's spend per scope (subscription / service / resource
+  type / resource) against a **robust, weekday-aware baseline** (rolling median + MAD,
+  deseasonalized), flags abnormal days with a **severity** and a **contributor
+  breakdown** (what drove the spike), and fires **one** notification per new anomaly
+  through the existing transports. **Signal-gated** — nothing is flagged on thin history
+  or an in-pattern weekly peak. Surfaced at `GET /api/finops/anomalies` (RBAC
+  `anomaly:read`), on the **Cost explorer** page, and in a *Cost anomalies* Grafana
+  panel; idempotent on `(scope, date)` so it never re-alerts.
 - **Commitment coverage** (`analysis/commitments.py`, M14.1) — Reservation /
   Savings-Plan optimization, the largest untapped lever. Flags **under-utilized**
   commitments (advisory waste = the idle share of committed capacity) and

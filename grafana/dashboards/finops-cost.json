@@ -5,7 +5,7 @@
   "timezone": "",
   "editable": true,
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "",
   "time": { "from": "now-30d", "to": "now" },
   "templating": { "list": [] },
@@ -153,6 +153,33 @@
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT b.name, b.scope_type, b.scope_value, b.period, b.amount, b.currency, e.period_key, e.threshold_pct AS last_threshold, e.actual_pct, e.amount AS spend, e.created_at FROM budgets b LEFT JOIN LATERAL (SELECT * FROM budget_threshold_events be WHERE be.budget_id = b.id ORDER BY be.created_at DESC LIMIT 1) e ON true WHERE b.enabled ORDER BY e.actual_pct DESC NULLS LAST, b.name"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Cost anomalies — recent spikes",
+      "description": "Days where spend broke from its robust, weekday-aware baseline. x_baseline = actual / expected; score is the deviation in robust-sigma (MAD) units.",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 34 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "expected" }, "properties": [ { "id": "unit", "value": "currencyUSD" } ] },
+          { "matcher": { "id": "byName", "options": "actual" }, "properties": [ { "id": "unit", "value": "currencyUSD" } ] },
+          { "matcher": { "id": "byName", "options": "severity" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "mappings", "value": [ { "type": "value", "options": { "critical": { "color": "dark-red", "index": 0 }, "high": { "color": "dark-orange", "index": 1 }, "medium": { "color": "dark-yellow", "index": 2 }, "low": { "color": "dark-green", "index": 3 } } } ] } ] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "usage_date", "desc": true } ] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "finops_pg" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT usage_date, scope_type, scope_value, severity, expected, actual, ROUND((actual / NULLIF(expected, 0))::numeric, 2) AS x_baseline, ROUND(score::numeric, 1) AS score, currency, notified, created_at FROM cost_anomalies ORDER BY usage_date DESC, score DESC LIMIT 100"
         }
       ]
     }
