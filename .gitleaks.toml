@@ -1,0 +1,26 @@
+# CloudWarden secret-scanning config — gitleaks (issue #53 / M13.3).
+#
+# CI runs `gitleaks detect --no-git` over the checked-out tree and FAILS the
+# build on any finding (see the `secrets` job in .github/workflows/ci.yml).
+# We extend gitleaks' built-in ruleset (100+ providers) rather than replace it.
+#
+# The [allowlist] below is the reviewed set of accepted exceptions. Keep it
+# MINIMAL — each entry must be justified by a comment directly above it, and must
+# only ever silence a false positive (never a real credential). A tracked file
+# that needs a secret is a bug to fix, not an entry to add here.
+title = "CloudWarden gitleaks config"
+
+[extend]
+# Inherit gitleaks' default rules (AWS, Azure, GCP, Slack, JWT, private keys, …).
+useDefault = true
+
+[allowlist]
+description = "CloudWarden reviewed secret-scan exceptions (issue #53)."
+paths = [
+  # Local, git-ignored runtime config: `.env` is never committed (it is in
+  # .gitignore; the e2e job derives it from `.env.example`), so it cannot leak
+  # through the repo. It only exists on a developer's machine, where `make
+  # secrets` would otherwise flag the local Azure CLIENT_ID (a non-secret UUID).
+  # CI runs on a fresh checkout with no `.env`, so this is a no-op there.
+  '''(^|/)\.env$''',
+]

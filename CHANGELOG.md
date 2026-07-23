@@ -27,6 +27,22 @@ All notable changes to this project are documented here. Format loosely follows
   100% coverage on the gated modules).
 
 ### Added
+- **SBOM, dependency pinning & secret scanning (#53, M13.3).** Closes the
+  supply-chain and credential gaps. **SBOM:** a new `supply-chain` CI job runs
+  [syft](https://github.com/anchore/syft) over the built backend image and uploads
+  an SPDX-JSON Software Bill of Materials (`backend-sbom`) as a build artifact.
+  **Hash-pinned dependencies:** `backend/requirements.lock` — the fully-resolved,
+  fully-hashed transitive closure of `requirements.txt` (`pip-compile
+  --generate-hashes`) — is installed in CI with **`pip --require-hashes`**, so a
+  substituted or tampered wheel fails the build (the lock resolves to *patched*
+  `cryptography`/`PyJWT`). **Secret scanning:** a new `secrets` CI job runs
+  [gitleaks](https://github.com/gitleaks/gitleaks) over the tree and **blocks the
+  build on any finding**; the reviewed allowlist in `.gitleaks.toml` excepts only
+  the local git-ignored `.env` (a non-secret Azure client-id UUID), documented
+  inline. New `make lock` / `make sbom` / `make secrets` targets run each gate
+  locally. TDD-first: `backend/tests/test_supply_chain.py` (7 tests) asserts the
+  SBOM generation + upload, the hash-pinned lock + `--require-hashes` install, and
+  the blocking gitleaks gate + documented allowlist.
 - **Coverage & mutation-testing gate (#52, M13.2).** Hardens the quality bar two
   ways. **Coverage:** the CI backend job now enforces the 95 % floor explicitly
   (`pytest --cov-fail-under=95`, backing the existing `fail_under = 95` in

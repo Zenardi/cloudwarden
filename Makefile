@@ -32,6 +32,18 @@ trivy: ## Local pre-commit security gate — Trivy fs + config (HIGH/CRITICAL) v
 mutation: ## Mutation testing on core modules (mutmut; config in backend/setup.cfg)
 	cd backend && mutmut run; mutmut results
 
+lock: ## Regenerate the hash-pinned runtime lockfile (backend/requirements.lock; needs pip-tools)
+	cd backend && pip-compile --generate-hashes --output-file=requirements.lock requirements.txt
+
+sbom: ## Generate an SBOM (SPDX JSON) for the backend image via syft (needs Docker)
+	docker build -t cloudwarden-backend ./backend
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$(CURDIR)":/work -w /work \
+		anchore/syft:v1.49.0 cloudwarden-backend:latest -o spdx-json=backend-sbom.spdx.json
+
+secrets: ## Secret-scan the working tree with gitleaks — fail on any finding (needs Docker)
+	docker run --rm -v "$(CURDIR)":/repo -w /repo zricethezav/gitleaks:v8.18.4 \
+		detect --source /repo --no-git --config /repo/.gitleaks.toml --redact --verbose
+
 run-mock: ## Run the full pipeline against fixtures (no Azure), local
 	cd backend && FINOPS_MOCK=1 DATABASE_URL=$${DATABASE_URL:-postgresql+psycopg://finops:finops@localhost:5432/finops} python -m cloudwarden.cli run --mock
 
@@ -56,4 +68,4 @@ initdb: ## Create/upgrade the database schema (in-container)
 seed: ## Run one mock pipeline inside the backend container
 	$(COMPOSE) run --rm backend run --mock
 
-.PHONY: help install install-dev lint fmt test coverage trivy mutation run-mock up up-core up-all down logs initdb seed
+.PHONY: help install install-dev lint fmt test coverage trivy mutation lock sbom secrets run-mock up up-core up-all down logs initdb seed

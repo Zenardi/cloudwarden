@@ -951,6 +951,9 @@ make test      # offline unit tests (no DB/Azure needed)
 make coverage  # full suite + 95% gate (spins an ephemeral Postgres via testcontainers; needs Docker)
 make trivy     # security gate — Trivy fs + config scan, HIGH/CRITICAL (needs Docker)
 make mutation  # mutation testing on core modules (mutmut, advisory)
+make secrets   # secret-scan the tree with gitleaks — fail on any finding (needs Docker)
+make sbom      # generate an SBOM (SPDX JSON) for the backend image (needs Docker)
+make lock      # regenerate the hash-pinned backend/requirements.lock (needs pip-tools)
 make run-mock  # run pipeline locally against a Postgres at localhost:5432
 ```
 
@@ -995,6 +998,26 @@ docker build -t cloudwarden-backend ./backend
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.72.0 \
   image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 cloudwarden-backend
 ```
+
+### Supply chain (SBOM, dependency pinning & secret scanning)
+
+Three supply-chain / credential gates catch tampering and leaks pre-merge
+(`.github/workflows/ci.yml`):
+
+- **SBOM** — the `supply-chain` job runs [syft](https://github.com/anchore/syft)
+  over the built backend image and uploads an SPDX-JSON **Software Bill of
+  Materials** (`backend-sbom`) as a build artifact, so every shipped dependency
+  is auditable. Reproduce locally with `make sbom`.
+- **Hash-pinned dependencies** — [`backend/requirements.lock`](backend/requirements.lock)
+  is the fully-resolved, fully-hashed transitive closure of `requirements.txt`
+  (generated with `pip-compile --generate-hashes`; regenerate via `make lock`).
+  The same `supply-chain` job installs it with **`pip --require-hashes`**, so a
+  substituted or tampered wheel (sha256 mismatch) fails the build.
+- **Secret scanning** — the `secrets` job runs [gitleaks](https://github.com/gitleaks/gitleaks)
+  over the tree and **fails the build on any finding**. The reviewed allowlist
+  lives in [`.gitleaks.toml`](.gitleaks.toml) (only the local, git-ignored `.env`
+  is excepted, with justification). Run the identical gate locally before
+  committing with `make secrets`.
 
 ## License
 
