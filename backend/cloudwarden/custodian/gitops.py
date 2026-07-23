@@ -74,6 +74,39 @@ def _default_git_client() -> GitClient:
     return LiveGitClient()
 
 
+# --------------------------------------------------------------------------- #
+# Shared repo layout — the one mapping the read-sync and the write-back share.
+# Keeping it here guarantees a serialized policy (M14.8) round-trips through the
+# same import path with no drift.
+# --------------------------------------------------------------------------- #
+def policy_record_from_doc(entry: dict[str, Any]) -> dict[str, Any]:
+    """Map one authored c7n policy (a ``policies[]`` entry) to persisted fields.
+
+    This is the single source of truth for how a repo policy document becomes a
+    stored policy — used by :func:`sync_policies` (read) and by the write-back
+    round-trip (:mod:`cloudwarden.custodian.gitwriteback`). ``name`` may be
+    ``None`` for a malformed entry; the caller decides whether to skip it.
+    """
+    return {
+        "name": entry.get("name"),
+        "resource_type": entry.get("resource", ""),
+        "spec": {"policies": [entry]},
+        "description": entry.get("description"),
+    }
+
+
+def repo_policy_path(name: str, settings: Any | None = None) -> str:
+    """Canonical repo-relative path for policy ``name`` under the policy dir.
+
+    One policy per file (``<policy-path>/<name>.yml``). ``name`` is sanitised so a
+    crafted name can never escape the policy directory (no ``/`` or ``\\``).
+    """
+    settings = settings if settings is not None else get_settings()
+    base = (settings.gitops_policy_path or "policies").strip("/")
+    safe = name.strip().replace("/", "-").replace("\\", "-")
+    return f"{base}/{safe}.yml"
+
+
 def _local_policy_dir(settings: Any) -> Path:
     """Policy directory used when no remote is configured (Git-tracked, bundled).
 
@@ -151,12 +184,13 @@ def sync_policies(
                 continue
 
             for policy in policies:
-                name = policy.get("name") if isinstance(policy, dict) else None
+                record = policy_record_from_doc(policy) if isinstance(policy, dict) else {}
+                name = record.get("name")
                 if not name:
                     report["skipped"] += 1
                     report["errors"].append({"file": rel, "error": "policy entry missing 'name'"})
                     continue
-                spec = {"policies": [policy]}
+                spec = record["spec"]
                 validation = validate_policy(spec, runner=runner)
                 if not validation.get("valid"):
                     report["skipped"] += 1
@@ -167,9 +201,9 @@ def sync_policies(
                 outcome = repo.upsert_policy_by_name(
                     session,
                     name=name,
-                    resource_type=policy.get("resource", ""),
+                    resource_type=record["resource_type"],
                     spec=spec,
-                    description=policy.get("description"),
+                    description=record["description"],
                     source="gitops",
                 )
                 report[outcome] += 1

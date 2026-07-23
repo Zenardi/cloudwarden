@@ -39,6 +39,7 @@ WILDCARD = "*"
 WRITE_PERMISSIONS: tuple[str, ...] = (
     "policy:write",
     "policy:run",
+    "policy:propose",
     "collection:write",
     "pack:install",
     "accountgroup:write",

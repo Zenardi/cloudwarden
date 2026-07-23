@@ -11,6 +11,8 @@ import {
   listPolicyVersions,
   Policy,
   PolicyDiff,
+  PolicyProposal,
+  proposePolicyChange,
   PolicyVersion,
   ValidationResult,
 } from "../lib/api";
@@ -78,6 +80,8 @@ export default function Policies() {
   // Which row's action menu is open (only one at a time). Keyed by policy id.
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const closeMenu = useCallback(() => setMenuFor(null), []);
+  // The PR opened by the most recent "Propose change" action (M14.8).
+  const [proposal, setProposal] = useState<PolicyProposal | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -192,6 +196,22 @@ export default function Policies() {
     return act(`del:${p.id}`, () => apiDelete(`/api/policies/${p.id}`));
   };
 
+  // Propose this policy's current state as a PR against the policy git repo (M14.8).
+  // Nothing is pushed to the default branch directly — the reviewed PR is the source
+  // of truth. Surfaces the resulting PR link (or a clear error, e.g. token not set).
+  async function propose(p: Policy) {
+    setProposal(null);
+    setErr("");
+    setBusy(`propose:${p.id}`);
+    try {
+      setProposal(await proposePolicyChange(p.id));
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function openHistory(p: Policy) {
     setHistoryId(p.id);
     setHistoryName(p.name);
@@ -240,6 +260,20 @@ export default function Policies() {
       </p>
 
       {err && <div className="err">{err}</div>}
+
+      {proposal && (
+        <div className="ok" role="status">
+          Opened a pull request on branch <code>{proposal.branch}</code> (
+          <code>{proposal.path}</code>) —{" "}
+          <a href={proposal.pr_url} target="_blank" rel="noreferrer">
+            review &amp; merge the PR
+          </a>
+          . Nothing was pushed to <code>{proposal.base_branch}</code> directly.
+          <button className="link" onClick={() => setProposal(null)} style={{ marginLeft: 8 }}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="panel-form">
         <h2 style={{ marginTop: 0 }}>{editingId !== null ? "Edit policy" : "New policy"}</h2>
@@ -456,6 +490,11 @@ export default function Policies() {
                         label: p.enabled ? "Disable" : "Enable",
                         onClick: () => toggle(p),
                         disabled: b("toggle"),
+                      },
+                      {
+                        label: "Propose change (open PR)",
+                        onClick: () => propose(p),
+                        disabled: b("propose"),
                       },
                       {
                         label: "Delete",

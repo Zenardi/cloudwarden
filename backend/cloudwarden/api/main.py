@@ -25,6 +25,7 @@ from ..analysis.savings import ENVIRONMENT_RECLAIM_FACTORS
 from ..authz import audit, oidc, rbac, teams
 from ..config import get_settings
 from ..custodian import engine as custodian
+from ..custodian import gitwriteback
 from ..custodian.engine import CustodianRunner
 from ..custodian.eventmode import handle_event
 from ..events.assetdb import apply_asset_event
@@ -609,6 +610,16 @@ def get_gcp_client() -> gcp_provider.ResourceManagerClient | None:
     return None
 
 
+def get_git_provider() -> gitwriteback.GitProvider | None:
+    """Injection seam for the Git write-back provider (M14.8, policy-as-PR).
+
+    Returns ``None`` so the live provider (real git + GitHub/GitLab PR API, built from
+    settings) is used. Tests override this with a fake provider so proposing a change
+    touches no git and no network.
+    """
+    return None
+
+
 @app.post("/api/policies/validate")
 def validate_policy(
     body: ValidateRequest,
@@ -936,6 +947,52 @@ def sync_policies(
     from ..custodian import gitops
 
     return gitops.sync_policies(runner=runner)
+
+
+@app.post(
+    "/api/policies/{policy_id}/propose",
+    dependencies=[Depends(rbac.require_permission("policy:propose"))],
+)
+def propose_policy(
+    policy_id: int,
+    request: Request,
+    provider: Annotated[gitwriteback.GitProvider | None, Depends(get_git_provider)] = None,
+) -> dict[str, Any]:
+    """Propose a stored policy's current state as a **pull request** on the policy git
+    repo (M14.8) — closing the GitOps loop (writes were read-only before).
+
+    Serializes the policy to its canonical repo YAML, creates a ``cloudwarden/policy-…``
+    branch, commits, pushes, and opens a PR via the injected provider — **never writing
+    the default branch directly**; returns the PR URL. RBAC-guarded (``policy:propose``)
+    and audited. ``404`` if the policy is missing; ``400`` on misconfig / an unsafe
+    target (missing token/repo, default-branch collision); ``502`` if the provider fails.
+    """
+    principal = rbac.principal_from_request(request)
+    client = provider if provider is not None else gitwriteback.default_provider()
+    with session_scope() as session:
+        policy = repo.get_policy(session, policy_id)
+        if policy is None:
+            raise HTTPException(status_code=404, detail="policy not found")
+        try:
+            result = gitwriteback.propose_policy_change(policy, client, actor=principal)
+        except gitwriteback.WriteBackConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except gitwriteback.WriteBackProviderError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        audit.record(
+            session,
+            actor=principal,
+            action="policy.propose",
+            target_type="policy",
+            target_id=str(policy_id),
+            after={"pr_url": result.pr_url, "branch": result.branch, "path": result.path},
+        )
+    return {
+        "pr_url": result.pr_url,
+        "branch": result.branch,
+        "base_branch": result.base_branch,
+        "path": result.path,
+    }
 
 
 @app.post(
