@@ -1019,6 +1019,30 @@ Three supply-chain / credential gates catch tampering and leaks pre-merge
   is excepted, with justification). Run the identical gate locally before
   committing with `make secrets`.
 
+## Observability (metrics, tracing & structured logs)
+
+Operable in production out of the box (M13.4) — zero-config, all always-on:
+
+- **Metrics** — `GET /metrics` exposes Prometheus counters for **policy
+  executions** (`cloudwarden_policy_executions_total`, labelled by terminal
+  status) and **remediation actions** (`cloudwarden_remediation_actions_total`, by
+  action type + status), plus a policy-execution duration histogram. Point a
+  Prometheus scrape at it.
+- **Readiness vs liveness** — `GET /health` is **liveness** (the process is up);
+  `GET /ready` is **readiness** — it probes the database (`SELECT 1`) and returns
+  **`200` when reachable, `503` when not**, so a Kubernetes/orchestrator readiness
+  gate stops routing traffic to a pod whose DB is down.
+- **Structured logs** — every log line is JSON carrying a per-request
+  **correlation id**. Send `X-Correlation-ID` on a request to thread your own id
+  through the logs (it is echoed back on the response); otherwise one is minted.
+- **Tracing** — execution runs (`POST /api/runs`) are wrapped in
+  **OpenTelemetry** spans. No exporter is configured by default, so spans stay
+  in-process (no network egress) until you wire one up.
+
+Implemented in [`backend/cloudwarden/observability.py`](backend/cloudwarden/observability.py)
+(deliberately free of `cloudwarden` internal imports, so metrics/tracing/logging
+are safe to call from storage, remediation and the API alike).
+
 ## License
 
 TBD.

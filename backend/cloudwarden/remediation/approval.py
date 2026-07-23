@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from .. import observability
 from ..config import get_settings
 from ..storage import schema
 from . import executor, guardrails
@@ -190,7 +191,10 @@ def approve_action(session: Session, action_id: int, *, actor: str | None = None
     if actor:
         action.actor = actor
     session.flush()
-    return _execute_policy_action(session, action)
+    result = _execute_policy_action(session, action)
+    # M13.4: count the remediation action by type + its terminal status for /metrics.
+    observability.record_remediation_action(action.action_type, action.status)
+    return result
 
 
 def reject_action(session: Session, action_id: int, *, actor: str | None = None) -> dict[str, Any]:
@@ -200,6 +204,8 @@ def reject_action(session: Session, action_id: int, *, actor: str | None = None)
     if actor:
         action.actor = actor
     action.executed_at = datetime.now(UTC)
+    # M13.4: a rejected action is still a decision — count it for /metrics.
+    observability.record_remediation_action(action.action_type, action.status)
     return _result(action)
 
 

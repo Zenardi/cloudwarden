@@ -27,6 +27,24 @@ All notable changes to this project are documented here. Format loosely follows
   100% coverage on the gated modules).
 
 ### Added
+- **Observability: metrics, tracing & structured logs (#54, M13.4).** Adds the
+  operability layer behind the governance platform. **Metrics:** a `GET /metrics`
+  endpoint exposes Prometheus counters for **policy executions**
+  (`cloudwarden_policy_executions_total`, by terminal status) and **remediation
+  actions** (`cloudwarden_remediation_actions_total`, by action type + status),
+  plus a policy-execution duration histogram. **Readiness:** `GET /ready` returns
+  `200` when the database is reachable and `503` when it is not — distinct from
+  `/health` liveness — so an orchestrator stops routing traffic to a pod whose DB
+  is down. **Structured logs:** every log line is single-line JSON carrying a
+  per-request **correlation id** (accepted from / echoed as `X-Correlation-ID`).
+  **Tracing:** execution runs (`POST /api/runs`) are wrapped in **OpenTelemetry**
+  spans; no exporter is configured by default, so spans stay in-process (no network
+  egress) until one is wired up. New zero-config `cloudwarden/observability.py`
+  (no internal imports → safe to use from storage/remediation/API);
+  `prometheus-client` + `opentelemetry-api`/`-sdk` pinned in `requirements.txt` and
+  folded into the hash-pinned `requirements.lock`. TDD-first:
+  `backend/tests/test_observability.py` (21 tests) covers the counters, both
+  `/ready` states, the JSON formatter + correlation id, and span creation.
 - **SBOM, dependency pinning & secret scanning (#53, M13.3).** Closes the
   supply-chain and credential gaps. **SBOM:** a new `supply-chain` CI job runs
   [syft](https://github.com/anchore/syft) over the built backend image and uploads
