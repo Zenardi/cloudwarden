@@ -42,6 +42,7 @@ from ..models import (
     BudgetCreate,
     BudgetUpdate,
     CollectionCreate,
+    EvaluateIacRequest,
     NotificationChannelIn,
     NotificationChannelUpdate,
     NotificationTemplateIn,
@@ -626,6 +627,27 @@ def validate_policy(
     except Exception as exc:  # noqa: BLE001 - degrade to 400, never surface a 500
         raise HTTPException(status_code=400, detail=f"validation failed: {exc}") from exc
     return ValidateResult(valid=bool(result.get("valid")), errors=list(result.get("errors") or []))
+
+
+@app.post(
+    "/api/policies/evaluate-iac",
+    dependencies=[Depends(rbac.require_permission("policy:run"))],
+)
+def evaluate_iac(body: EvaluateIacRequest) -> dict[str, Any]:
+    """Shift-left (M14.6): evaluate enabled policies against a Terraform **plan** so a
+    violation is caught before anything is provisioned. Accepts ``{"plan": <plan json>}``,
+    runs the authored policies through the offline c7n matcher, and returns the matches
+    with resource addresses + severity. RBAC-guarded (``policy:run``); a malformed plan is
+    bad input → ``422``, never a ``500``."""
+    from ..custodian import shiftleft
+
+    with session_scope() as session:
+        policies = repo.list_policies(session, enabled_only=True)
+    try:
+        result = shiftleft.evaluate_plan(body.plan, policies)
+    except shiftleft.ShiftLeftError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return shiftleft.result_public(result)
 
 
 @app.get("/api/custodian/schema")

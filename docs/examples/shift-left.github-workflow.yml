@@ -1,0 +1,53 @@
+# Shift-left IaC policy evaluation (CloudWarden M14.6)
+#
+# Drop this into `.github/workflows/` in a Terraform repo. It renders a plan, exports
+# it to JSON, and runs your CloudWarden policies against it — failing the PR *before*
+# anything is provisioned when a plan violates a policy.
+#
+# The evaluation is offline (`FINOPS_MOCK=1`): it needs no cloud credentials, only the
+# plan JSON and your enabled policies (synced from GitOps or seeded in the DB).
+name: shift-left-policy
+
+on:
+  pull_request:
+    paths:
+      - "**/*.tf"
+
+jobs:
+  evaluate-iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # Render the plan and export it as JSON (no apply, no cloud writes).
+      - name: Terraform plan → JSON
+        run: |
+          terraform init -input=false
+          terraform plan -out=tfplan.binary -input=false
+          terraform show -json tfplan.binary > tfplan.json
+
+      # Evaluate the plan against CloudWarden's enabled policies. The CLI exits non-zero
+      # on a violation (honouring --fail-on), which fails the job and blocks the merge.
+      - name: CloudWarden — evaluate IaC
+        env:
+          FINOPS_MOCK: "1"
+          # Point at your policy source (GitOps repo synced on boot) or a seeded DB.
+          GITOPS_REPO_URL: ${{ vars.CLOUDWARDEN_GITOPS_REPO_URL }}
+          DATABASE_URL: postgresql+psycopg://finops:finops@localhost:5432/finops
+        run: |
+          pip install cloudwarden  # or: docker run ghcr.io/zenardi/cloudwarden-backend
+          cloudwarden initdb
+          cloudwarden evaluate-iac tfplan.json --fail-on high
+
+      # Alternatively, evaluate via the API against a running CloudWarden instance:
+      #
+      #   curl -sf -X POST "$CLOUDWARDEN_URL/api/policies/evaluate-iac" \
+      #     -H "Content-Type: application/json" \
+      #     -H "X-Principal: ${{ vars.CLOUDWARDEN_PRINCIPAL }}" \
+      #     --data "$(jq -c '{plan: .}' tfplan.json)" \
+      #     | jq -e '.violations == 0'   # non-zero exit when violations > 0

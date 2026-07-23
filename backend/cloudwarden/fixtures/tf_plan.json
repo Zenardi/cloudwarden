@@ -1,0 +1,61 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "azurerm_storage_account.insecure",
+          "type": "azurerm_storage_account",
+          "name": "insecure",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": {
+            "name": "stinsecuredemo",
+            "account_tier": "Standard",
+            "enable_https_traffic_only": false,
+            "min_tls_version": "TLS1_0",
+            "tags": {}
+          }
+        },
+        {
+          "address": "azurerm_storage_account.secure",
+          "type": "azurerm_storage_account",
+          "name": "secure",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": {
+            "name": "stsecuredemo",
+            "account_tier": "Standard",
+            "enable_https_traffic_only": true,
+            "min_tls_version": "TLS1_2",
+            "tags": { "owner": "web-team" }
+          }
+        },
+        {
+          "address": "azurerm_resource_group.app",
+          "type": "azurerm_resource_group",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/azurerm",
+          "values": { "name": "rg-app", "location": "eastus" }
+        }
+      ],
+      "child_modules": [
+        {
+          "address": "module.network",
+          "resources": [
+            {
+              "address": "module.network.azurerm_network_security_group.open",
+              "type": "azurerm_network_security_group",
+              "name": "open",
+              "provider_name": "registry.terraform.io/hashicorp/azurerm",
+              "values": {
+                "name": "nsg-open",
+                "location": "eastus",
+                "allow_public_ssh": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

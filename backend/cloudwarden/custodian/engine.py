@@ -146,6 +146,30 @@ class LiveCustodianRunner:
         }
 
 
+_terraform_registered: bool | None = None
+
+
+def register_terraform() -> bool:
+    """Best-effort registration of c7n's Terraform/IaC provider (shift-left, M14.6).
+
+    Enables the live ``terraform.*`` resource path when the optional c7n IaC provider
+    (``c7n_left`` / ``tfparse``) is installed. Returns ``True`` if available, ``False``
+    otherwise — in which case shift-left falls back to the offline azure filter path in
+    :mod:`.shiftleft` (:func:`match_resources`). Cached and **never raises**: a missing
+    optional dependency must never break an evaluation."""
+    global _terraform_registered
+    if _terraform_registered is not None:
+        return _terraform_registered
+    try:
+        import importlib
+
+        importlib.import_module("c7n_left")  # registers terraform.* resource types
+        _terraform_registered = True
+    except Exception:  # noqa: BLE001 - optional IaC provider; absence is expected offline
+        _terraform_registered = False
+    return _terraform_registered
+
+
 def _mock_run_result(spec: dict, dry_run: bool) -> dict:
     """Shape a matched-resource result from the recorded fixture (offline)."""
     fixture = load_fixture(_FIXTURE_NAME)

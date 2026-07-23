@@ -136,6 +136,42 @@ Policies whose spec declares event mode participate in real-time enforcement whe
 a matching cloud change arrives. See
 [12 · Real-Time Enforcement](12-real-time-enforcement.md).
 
+## Shift-left (pre-provision / CI) — M14.6
+
+Push/pull/event all run *after* provisioning — a violation is only caught once the
+resource exists and bills. **Shift-left** evaluation runs the **same authored policies**
+against an **IaC plan** (a Terraform `terraform show -json` plan) so a policy violation
+fails the **PR/CI before anything is created**.
+
+How it works (`custodian/shiftleft.py`):
+
+1. **Parse** the plan (`parse_plan`) into flat resource dicts — walking child modules,
+   lifting each attribute to the top level so c7n `value` filters apply, and keeping the
+   Terraform **address** for reporting. A malformed plan raises a clean error (CLI exit 2
+   / API `422`), never a stack trace.
+2. **Map** each Terraform type to a c7n type (`azurerm_storage_account` → `azure.storage`).
+   An **unmapped** type is *skipped* (reported, never an error) — coverage grows over time.
+3. **Evaluate**: for each enabled policy, select the plan resources it targets and run the
+   policy's filters through the **offline c7n matcher** (`engine.match_resources` — the
+   same local filter machinery a dry-run uses; the one mockable seam, injectable for
+   tests). Each match carries the policy, the resource **address**, a **severity** (from
+   the policy's `metadata.severity`, default `medium`), and a rationale.
+
+The worst severity maps to a **CI exit code**: any violation fails the build, or with
+`--fail-on <severity>` only findings **at or above** that severity block (lower ones are
+reported but non-blocking). Evaluation is fully offline (`FINOPS_MOCK=1`) — no cloud, no
+credentials, no live Terraform. The optional live c7n IaC provider (`c7n_left`/`tfparse`)
+is registered best-effort when installed (`engine.register_terraform`), otherwise the
+offline path is used.
+
+**Surfaced as:**
+
+| Where | What |
+|-------|------|
+| `cloudwarden evaluate-iac <plan.json> [--fail-on <sev>]` | CLI — prints violations, exits non-zero to gate CI |
+| `POST /api/policies/evaluate-iac` | API — `{"plan": <plan json>}` → matches + severity (RBAC `policy:run`); malformed → `422` |
+| [`docs/examples/shift-left.github-workflow.yml`](examples/shift-left.github-workflow.yml) | copy-paste GitHub Action: `terraform show -json` → `evaluate-iac` |
+
 ## Policy packs
 
 Pre-built, versioned bundles of policies (e.g. tag-compliance, cost-hygiene,

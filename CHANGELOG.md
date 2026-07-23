@@ -6,6 +6,25 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Shift-left IaC policy evaluation (#139, M14.6).** Every governance control ran *after*
+  provisioning — a violation was caught only once the resource existed and billed. A new
+  `custodian/shiftleft.py` runs the **same authored c7n policies** against a **Terraform
+  plan** (`terraform show -json`) so a violation fails the **PR/CI before anything is
+  created**. It `parse_plan`s the plan into flat resource dicts (walking child modules,
+  keeping the Terraform address), maps each Terraform type to a c7n type
+  (`azurerm_storage_account` → `azure.storage`; **unmapped types are skipped**, reported
+  not errored), and evaluates each enabled policy's filters through the **offline c7n
+  matcher** (`engine.match_resources` — the same local machinery a dry-run uses; the one
+  mockable seam, injectable in tests), so it runs **fully offline** (`FINOPS_MOCK=1`) — no
+  cloud, credentials, or live Terraform. Each match carries the policy, resource address,
+  severity (from `metadata.severity`, default `medium`), and rationale; the worst severity
+  maps to a **CI exit code** (`--fail-on <severity>` gates which findings block). A
+  malformed plan is a **clean error** (CLI exit 2 / API `422`), never a stack trace. Ships
+  as a CLI (`cloudwarden evaluate-iac <plan.json>`), `POST /api/policies/evaluate-iac`
+  (RBAC `policy:run`), and a copy-paste GitHub Action
+  (`docs/examples/shift-left.github-workflow.yml`). The optional live c7n IaC provider
+  (`c7n_left`/`tfparse`) is registered best-effort when present
+  (`engine.register_terraform`). Strict TDD, 100% coverage on the new module, ruff clean.
 - **Showback / chargeback by tag → team (#138, M14.5).** CloudWarden enforced a
   cost-allocation tag but never reported spend by it. A new `analysis/allocation.py`
   groups spend by an arbitrary tag key (`CostCenter` / `Owner` / `Team` / `env`), maps

@@ -201,6 +201,18 @@ class ValidateRequest(BaseModel):
     spec: dict = Field(default_factory=dict)
 
 
+class EvaluateIacRequest(BaseModel):
+    """Inbound shape for the shift-left IaC evaluation endpoint (M14.6).
+
+    ``plan`` is a parsed Terraform plan JSON (``terraform show -json``). Permissive
+    (defaults to ``{}``) so a malformed plan returns a clean ``422`` from the evaluator
+    rather than a framework validation error. ``fail_on`` is the optional severity gate.
+    """
+
+    plan: dict = Field(default_factory=dict)
+    fail_on: str | None = None
+
+
 class ValidateResult(BaseModel):
     """Outcome of validating a policy spec: ``valid`` plus any error strings."""
 

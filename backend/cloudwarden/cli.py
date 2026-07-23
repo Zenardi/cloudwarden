@@ -51,6 +51,50 @@ def run_policies_cmd(
     typer.echo(f"policy run complete: {result}")
 
 
+@app.command(name="evaluate-iac")
+def evaluate_iac_cmd(
+    plan: str = typer.Argument(..., help="Path to a Terraform plan JSON (terraform show -json)"),
+    fail_on: str = typer.Option(
+        None,
+        "--fail-on",
+        help="Only fail (exit 1) at/above this severity: low|medium|high|critical",
+    ),
+) -> None:
+    """Shift-left: evaluate enabled policies against a Terraform plan; exit non-zero on
+    a violation so a bad plan blocks the PR/CI **before** anything is provisioned."""
+    _setup_logging()
+    import json
+
+    from .custodian import shiftleft
+    from .storage import repository as repo
+    from .storage.db import init_db, session_scope
+
+    try:
+        with open(plan, encoding="utf-8") as handle:
+            plan_json = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        typer.echo(f"error: cannot read plan {plan!r}: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    init_db()
+    with session_scope() as session:
+        policies = repo.list_policies(session, enabled_only=True)
+
+    try:
+        result = shiftleft.evaluate_plan(plan_json, policies)
+    except shiftleft.ShiftLeftError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    for match in result.matches:
+        typer.echo(f"{match.severity.upper():<8} {match.policy}  {match.resource_address}")
+    typer.echo(
+        f"{len(result.matches)} violation(s) across {result.evaluated} resource(s); "
+        f"{len(result.skipped)} unmapped type(s) skipped"
+    )
+    raise typer.Exit(code=result.exit_code(fail_on))
+
+
 @app.command()
 def scheduler() -> None:
     """Run the pipeline and policy execution on their own intervals."""
