@@ -6,6 +6,26 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Policy-as-PR GitOps write-back (#141, M14.8).** GitOps sync was **read-only** —
+  policies flowed *from* git into CloudWarden (boot + local fallback), but a policy
+  edited in the UI never flowed back. This closes the loop: a new
+  `custodian/gitwriteback.py` **serializes** a policy to its canonical repo YAML and
+  proposes it as a **pull request**. Serialization round-trips with the read-sync layout
+  via a **shared repo-layout mapping** (`gitops.policy_record_from_doc` / `repo_policy_path`),
+  so a re-import produces the identical policy — **no drift**. Proposing creates a
+  `cloudwarden/policy-<name>-<version>` branch, commits the file at
+  `<GITOPS_POLICY_PATH>/<name>.yml`, pushes, and opens a PR via an **injectable provider
+  client** (git + GitHub/GitLab API) — so the suite runs with **no network**. It
+  **refuses to target the default branch** (nothing is pushed to the default branch
+  directly — the reviewed PR is the source of truth); a provider failure surfaces
+  cleanly **with no partial state** (nothing audited unless the PR opened); a missing
+  token/repo is a clear `400`. The provider **token is read from config and never logged**
+  (passed to the client out-of-band, never stored on a loggable request/result object).
+  New `POST /api/policies/{id}/propose` (RBAC `policy:propose`, **audited** —
+  actor/policy/PR URL), a **"Propose change (open PR)"** policy-row action surfacing the
+  PR link, and config `GITOPS_WRITEBACK_REPO_URL` / `GITOPS_WRITEBACK_BRANCH_PREFIX` /
+  `GITOPS_WRITEBACK_TOKEN` / `GITOPS_PROVIDER`. Strict TDD, 100% coverage on the new
+  module, ruff clean.
 - **Configuration drift detection (#140, M14.7).** "Drift" previously meant only
   policy-version drift — there was no way to know a resource changed away from its
   intended state. The AssetDB already stores full resource `config` (JSONB) and change

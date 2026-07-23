@@ -248,6 +248,46 @@ don't bump their version). **Invalid files are skipped and reported, never fatal
 so you can iterate the repo safely. The endpoint never 500s on git/validation
 failure.
 
+## GitOps write-back (policy-as-PR)
+
+Sync above is **read-only** — policies flow *from* git into CloudWarden, but a policy
+edited in the UI never flowed back. Write-back closes the loop: proposing a policy
+opens a **pull request** against the policy repo. Nothing is pushed to the default
+branch directly — the reviewed PR stays the source of truth, preserving the GitOps
+model.
+
+```bash
+POST /api/policies/{id}/propose      # RBAC policy:propose, audited
+# → { pr_url, branch, base_branch, path }
+```
+
+Configure the target repo + credentials (the token is **read from config and never
+logged**):
+
+```
+GITOPS_WRITEBACK_REPO_URL=https://github.com/org/finops-policies.git  # blank → GITOPS_REPO_URL
+GITOPS_WRITEBACK_BRANCH_PREFIX=cloudwarden/policy-
+GITOPS_WRITEBACK_TOKEN=<PAT with repo/api scope>   # blank → proposing returns 400
+GITOPS_PROVIDER=github                              # github | gitlab
+```
+
+Proposing (1) serializes the policy to its **canonical repo YAML** — the same layout
+the read-sync imports, so it **round-trips with no drift** on re-import; (2) creates a
+`cloudwarden/policy-<name>-<version>` branch, commits the file at
+`<GITOPS_POLICY_PATH>/<name>.yml`, and pushes via an **injectable provider client**
+(git + GitHub/GitLab API; mocked in tests, so the suite runs with no network); (3)
+opens a PR with a templated body (policy, resource, author) and returns its URL.
+
+**Safety guarantees.** It **refuses to target the default branch** (a proposal must
+open a PR from a new branch). A missing token/repo is a clear `400` (never a silent or
+partial write). A provider/network failure surfaces as `502` **with no partial state**
+— nothing is audited unless the PR actually opened. Every successful proposal is
+**audited** (`policy.propose` — actor, policy, PR URL). The provider token is passed to
+the client out-of-band and never stored on a loggable object.
+
+In the UI, each policy row's **Actions ▸ Propose change (open PR)** runs the flow and
+surfaces the resulting PR link.
+
 ## Posture & health
 
 Governance produces two rollups (both filterable by `?provider=`):

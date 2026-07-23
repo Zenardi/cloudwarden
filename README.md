@@ -27,7 +27,9 @@ backbone:
   account** (pull mode) or **react to change events in real time**, **shift-left**
   the same policies against a **Terraform plan in CI** (fail the PR before anything
   is provisioned, M14.6), detect **configuration drift** against a per-resource
-  desired-state baseline (M14.7), and review the full **execution history**. A
+  desired-state baseline (M14.7), **propose UI-authored policy edits back to git as a
+  pull request** (policy-as-PR write-back — never touching the default branch, M14.8),
+  and review the full **execution history**. A
   cross-cloud **AssetDB** tracks every resource
   (config, relationships, change history), with **posture and execution-health
   that filter and group by cloud provider** — one pane over every cloud.
@@ -967,6 +969,7 @@ Vault / column-encryption backing is the intended hardening step.
 | `LOG_ANALYTICS_WORKSPACE_ID` | enables memory-based downsize rules |
 | `GITOPS_REPO_URL` / `GITOPS_BRANCH` / `GITOPS_POLICY_PATH` | GitOps policy sync source (blank URL → local fallback) |
 | `GITOPS_LOCAL_PATH` | Local policy dir when no repo URL (blank → bundled `cloudwarden/policies/`) |
+| `GITOPS_WRITEBACK_REPO_URL` / `GITOPS_WRITEBACK_BRANCH_PREFIX` / `GITOPS_WRITEBACK_TOKEN` / `GITOPS_PROVIDER` | Policy-as-PR write-back (M14.8): propose UI edits as a PR (blank token disables; never logged) |
 
 Full list: `.env.example`.
 

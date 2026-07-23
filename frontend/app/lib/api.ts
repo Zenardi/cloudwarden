@@ -153,6 +153,23 @@ export const listPolicyVersions = (id: number): Promise<PolicyVersion[]> =>
 export const diffPolicyVersions = (id: number, from: number, to: number): Promise<PolicyDiff> =>
   apiGet<PolicyDiff>(`/api/policies/${id}/versions/diff?from_version=${from}&to_version=${to}`);
 
+/** The result of proposing a policy change as a pull request (M14.8). */
+export interface PolicyProposal {
+  pr_url: string;
+  branch: string;
+  base_branch: string;
+  path: string;
+}
+
+/**
+ * Propose a policy's current state as a PR against the policy git repo (M14.8,
+ * RBAC `policy:propose`). Never writes the default branch directly — opens a branch,
+ * commits the canonical YAML, and returns the PR URL. Requires the write-back token
+ * to be configured server-side (otherwise a clear 400).
+ */
+export const proposePolicyChange = (id: number): Promise<PolicyProposal> =>
+  apiPost<PolicyProposal>(`/api/policies/${id}/propose`);
+
 export interface PolicyExecution {
   execution_id: string;
   policy_id: number;

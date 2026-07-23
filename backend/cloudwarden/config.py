@@ -185,6 +185,16 @@ class Settings(BaseSettings):
     gitops_policy_path: str = "policies"  # path within the repo holding policy YAML
     gitops_local_path: str = ""  # empty → cloudwarden/policies (bundled defaults)
 
+    # --- GitOps policy write-back (M14.8) ---
+    # Closes the loop: a policy edited in the UI can open a PR against the policy repo.
+    # Nothing is pushed to the default branch directly — the reviewed PR stays the
+    # source of truth. Empty repo URL falls back to gitops_repo_url. The token is a
+    # provider PAT (git push + PR API); it is read from config and NEVER logged.
+    gitops_writeback_repo_url: str = ""  # empty → reuse gitops_repo_url
+    gitops_writeback_branch_prefix: str = "cloudwarden/policy-"
+    gitops_writeback_token: str = ""  # provider PAT — never logged
+    gitops_provider: str = "github"  # github | gitlab
+
     # --- Remediation guardrails ---
     remediation_enabled: bool = False
     allowed_resource_groups: str = ""
