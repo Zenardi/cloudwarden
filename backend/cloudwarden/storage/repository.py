@@ -853,6 +853,94 @@ def set_pack_enabled(session: Session, name: str, enabled: bool) -> dict[str, An
 
 
 # --------------------------------------------------------------------------- #
+# Compliance framework overlays (M14.13)
+# --------------------------------------------------------------------------- #
+def _installed_framework_public(rec: schema.InstalledFramework) -> dict[str, Any]:
+    return {
+        "name": rec.name,
+        "version": rec.version,
+        "title": rec.title,
+        "description": rec.description,
+        "control_count": rec.control_count,
+        "mapped_count": rec.mapped_count,
+        "gap_count": rec.gap_count,
+        "installed_at": rec.installed_at.isoformat() if rec.installed_at else None,
+        "updated_at": rec.updated_at.isoformat() if rec.updated_at else None,
+    }
+
+
+def upsert_installed_framework(
+    session: Session,
+    *,
+    name: str,
+    version: str,
+    title: str = "",
+    description: str = "",
+    control_count: int = 0,
+    mapped_count: int = 0,
+    gap_count: int = 0,
+) -> dict[str, Any]:
+    """Record (or update) an installed framework overlay keyed by ``name`` — idempotent.
+
+    Re-installing updates the tracked ``version`` and counts in place (no duplicate
+    row). Mirrors :func:`upsert_installed_pack`, but a framework maps to existing
+    policies so it carries no ``collection_id``.
+    """
+    rec = session.get(schema.InstalledFramework, name)
+    if rec is None:
+        rec = schema.InstalledFramework(name=name)
+        session.add(rec)
+    rec.version = version
+    rec.title = title
+    rec.description = description
+    rec.control_count = control_count
+    rec.mapped_count = mapped_count
+    rec.gap_count = gap_count
+    session.flush()
+    return _installed_framework_public(rec)
+
+
+def get_installed_framework(session: Session, name: str) -> dict[str, Any] | None:
+    rec = session.get(schema.InstalledFramework, name)
+    return _installed_framework_public(rec) if rec is not None else None
+
+
+def list_installed_frameworks(session: Session) -> list[dict[str, Any]]:
+    recs = (
+        session.query(schema.InstalledFramework)
+        .order_by(schema.InstalledFramework.name.asc())
+        .all()
+    )
+    return [_installed_framework_public(r) for r in recs]
+
+
+def replace_framework_controls(
+    session: Session, framework: str, controls: list[dict[str, Any]]
+) -> int:
+    """Replace a framework's control→policy mapping rows wholesale (idempotent install).
+
+    ``controls`` is a list of ``{control_id, title, policy_name|None, ordinal}``. A
+    mapped control contributes one row per policy; an unmapped (gap) control one row
+    with ``policy_name=None``. Returns the number of rows written.
+    """
+    session.query(schema.FrameworkControl).filter(
+        schema.FrameworkControl.framework == framework
+    ).delete(synchronize_session=False)
+    session.add_all(
+        schema.FrameworkControl(
+            framework=framework,
+            control_id=c["control_id"],
+            title=c.get("title") or "",
+            policy_name=c.get("policy_name"),
+            ordinal=c.get("ordinal") or 0,
+        )
+        for c in controls
+    )
+    session.flush()
+    return len(controls)
+
+
+# --------------------------------------------------------------------------- #
 # RBAC: roles, permissions, role bindings (M11.1)
 # --------------------------------------------------------------------------- #
 def _role_permissions(session: Session, role_id: int) -> list[str]:
@@ -3558,6 +3646,33 @@ def governance_posture(session: Session, *, provider: str | None = None) -> dict
         "by_control": by_control,
         "by_provider": by_provider,
     }
+
+
+def policy_posture_by_name(session: Session) -> list[dict[str, Any]]:
+    """Per-**policy-name** compliance rollup across subscriptions (M14.13).
+
+    Aggregates ``v_governance_posture`` (latest execution per policy & subscription)
+    up to the policy name — the grain the framework overlays map to. Each row is
+    ``{policy_name, compliant, non_compliant, resources_matched, evaluated,
+    last_execution_at, last_status}``: ``non_compliant`` counts the subscriptions
+    where the policy currently flags a resource (so ``> 0`` means the policy is
+    non-compliant *somewhere*), ``resources_matched`` sums those, ``last_execution_at``
+    is the most-recent run. A never-run policy is absent (empty state = no rows).
+    """
+    return _rows(
+        session,
+        "SELECT gp.policy_name AS policy_name, "
+        "COUNT(*) FILTER (WHERE gp.compliant)     AS compliant, "
+        "COUNT(*) FILTER (WHERE gp.non_compliant) AS non_compliant, "
+        "COALESCE(SUM(gp.resources_matched), 0)   AS resources_matched, "
+        "COUNT(*)                                 AS evaluated, "
+        "MAX(gp.last_execution_at)                AS last_execution_at, "
+        "(ARRAY_AGG(gp.last_status ORDER BY gp.last_execution_at DESC NULLS LAST))[1] "
+        "AS last_status "
+        "FROM v_governance_posture gp "
+        "GROUP BY gp.policy_name "
+        "ORDER BY gp.policy_name ASC",
+    )
 
 
 # The execution-health measures at the *execution* grain (executions aliased ``e``).

@@ -1,0 +1,34 @@
+name: iso27001
+version: 1.0.0
+title: ISO/IEC 27001:2022 (Annex A)
+description: >-
+  An overlay mapping a subset of ISO/IEC 27001:2022 Annex A controls to
+  CloudWarden's existing policy library. Per-control posture rolls up the mapped
+  policies' latest results; unmapped controls are flagged as coverage gaps and
+  never counted as compliant.
+controls:
+  - id: A.8.20
+    title: Networks security
+    description: Secure networks — restrict administrative access from untrusted zones.
+    policies:
+      - cis-6-1-nsg-restrict-rdp
+      - cis-6-2-nsg-restrict-ssh
+  - id: A.8.22
+    title: Segregation of networks
+    description: Default-deny segregation of data services from public networks.
+    policies:
+      - cis-3-8-storage-default-deny
+  - id: A.8.24
+    title: Use of cryptography
+    description: Protect information in transit and at rest with cryptography.
+    policies:
+      - cis-3-1-storage-secure-transfer
+      - cis-7-3-disk-cmk-encryption
+  - id: A.8.16
+    title: Monitoring activities
+    description: Monitor networks, systems and applications for anomalous behaviour.
+    policies: []
+  - id: A.8.13
+    title: Information backup
+    description: Maintain and test backups of information, software and systems.
+    policies: []

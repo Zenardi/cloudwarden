@@ -316,6 +316,51 @@ POST /api/packs/{name}/enabled        { enabled: true|false }
 Install is idempotent — re-installing the same version is a no-op. After install,
 bind the resulting collection to an account-group.
 
+## Compliance frameworks & auditor evidence — M14.13
+
+A **framework overlay** maps the controls of a compliance framework (SOC 2, ISO
+27001, PCI DSS, NIST 800-53) onto the policies you already run — a thin layer *over*
+the policy library, not a new set of policies. Overlays ship under
+`packs/frameworks/*.yaml` and version like a pack:
+
+```yaml
+name: soc2
+version: 1.0.0
+title: SOC 2 (Trust Services Criteria)
+controls:
+  - id: CC6.1
+    title: Logical access — restrict network exposure
+    policies: [cis-6-1-nsg-restrict-rdp, cis-6-2-nsg-restrict-ssh]
+  - id: CC7.2
+    title: Detection — anomaly & threat monitoring
+    policies: []            # no mapped policy → a coverage GAP
+```
+
+Per-control posture rolls up the mapped policies' **latest** results:
+
+| Status | Meaning |
+|--------|---------|
+| `compliant` | every mapped policy has run and matched nothing |
+| `non_compliant` | at least one mapped policy currently flags a resource |
+| `not_evaluated` | mapped, but some mapped policy has never run (never green by omission) |
+| `gap` | the control maps to **no** policy at all — an honest coverage gap, **never** counted compliant |
+
+```bash
+GET  /api/governance/frameworks                       # installable overlays + counts
+GET  /api/governance/frameworks/{id}/posture          # per-control status + totals/coverage
+GET  /api/governance/frameworks/{id}/evidence?format=csv|json   # auditor bundle (streamed)
+POST /api/governance/frameworks/{id}/install          # record version + mappings (idempotent)
+```
+
+The **evidence bundle** flattens control → policy → matched resources → status with
+the run timestamps an auditor asks for. It **reconciles** with the posture endpoint
+(the same per-control status decides both), and a gap control still emits a row
+flagged `is_gap` so coverage gaps are never silently absent. Installing an overlay
+records its version in `installed_frameworks` and its control→policy mappings in
+`framework_controls`, which back the `v_framework_posture` view and the Grafana
+**Framework posture by control** panel. Discovery/posture/evidence work whether or
+not the overlay is installed; install adds versioning + the SQL/Grafana rollup.
+
 ## GitOps sync
 
 Keep policies in a Git repo and sync them in. Configure:

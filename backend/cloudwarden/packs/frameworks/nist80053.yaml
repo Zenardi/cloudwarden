@@ -1,0 +1,39 @@
+name: nist80053
+version: 1.0.0
+title: NIST SP 800-53 Rev. 5
+description: >-
+  An overlay mapping a subset of NIST SP 800-53 Rev. 5 controls (System &
+  Communications Protection, Access Control, Audit) to CloudWarden's existing
+  policy library. Per-control posture rolls up the mapped policies' latest
+  results; unmapped controls are flagged as coverage gaps, never compliant.
+controls:
+  - id: SC-7
+    title: Boundary protection
+    description: Monitor and control communications at external and key internal boundaries.
+    policies:
+      - cis-6-1-nsg-restrict-rdp
+      - cis-6-2-nsg-restrict-ssh
+      - cis-3-8-storage-default-deny
+  - id: SC-8
+    title: Transmission confidentiality and integrity
+    description: Protect the confidentiality/integrity of transmitted information.
+    policies:
+      - cis-3-1-storage-secure-transfer
+  - id: SC-28
+    title: Protection of information at rest
+    description: Protect the confidentiality of information at rest with cryptography.
+    policies:
+      - cis-7-3-disk-cmk-encryption
+  - id: AC-4
+    title: Information flow enforcement
+    description: Enforce approved authorizations for information flow (default-deny).
+    policies:
+      - cis-3-8-storage-default-deny
+  - id: AU-6
+    title: Audit record review, analysis and reporting
+    description: Review and analyze audit records for indications of inappropriate activity.
+    policies: []
+  - id: SI-4
+    title: System monitoring
+    description: Monitor the system to detect attacks and indicators of potential attacks.
+    policies: []

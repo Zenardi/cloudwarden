@@ -34,6 +34,7 @@ from ..events.ingestion import (
     normalize_event,
     verify_event_grid_key,
 )
+from ..governance import frameworks as fw
 from ..models import (
     AccountGroupCreate,
     AssetQuery,
@@ -2010,6 +2011,78 @@ def governance_export(fmt: str = Query("csv", alias="format")) -> StreamingRespo
         media_type=media_type,
         headers=headers,
     )
+
+
+# Compliance framework overlays & auditor evidence (M14.13) --------------------
+@app.get("/api/governance/frameworks")
+def list_frameworks() -> list[dict[str, Any]]:
+    """List installable compliance framework overlays (M14.13).
+
+    Returns each shipped overlay's ``{name, version, title, description,
+    control_count, mapped_count, gap_count}`` — SOC 2, ISO 27001, PCI DSS and NIST
+    800-53, discovered through the pack registry. A pure file read (no DB); never an
+    error.
+    """
+    return packs.list_frameworks()
+
+
+@app.get("/api/governance/frameworks/{framework_id}/posture")
+def framework_posture(framework_id: str) -> dict[str, Any]:
+    """Per-control compliance posture for a framework overlay (M14.13).
+
+    Rolls the mapped policies' latest results up to each control — ``compliant`` /
+    ``non_compliant`` / ``not_evaluated`` / ``gap`` — plus a ``totals`` block with
+    the coverage ratio. Controls with no mapped policy are honest **gaps**, never
+    counted compliant. ``404`` for an unknown framework.
+    """
+    with session_scope() as session:
+        posture = fw.framework_posture(session, framework_id)
+    if posture is None:
+        raise HTTPException(status_code=404, detail=f"unknown framework: {framework_id}")
+    return posture
+
+
+@app.get("/api/governance/frameworks/{framework_id}/evidence")
+def framework_evidence(
+    framework_id: str, fmt: str = Query("json", alias="format")
+) -> StreamingResponse:
+    """Stream a timestamped auditor evidence bundle (M14.13).
+
+    Flattens control → policy → matched resources → status with run timestamps, one
+    row per control-policy (a gap control still emits a flagged row). ``?format=csv``
+    yields a header + rows; ``?format=json`` a JSON array. Any other format → ``400``;
+    an unknown framework → ``404``. Reconciles with the posture endpoint (same
+    per-control status).
+    """
+    if fmt not in reporting.EXPORT_FORMATS:
+        raise HTTPException(status_code=400, detail=f"unsupported format: {fmt!r}")
+    if fw.load_framework(framework_id) is None:
+        raise HTTPException(status_code=404, detail=f"unknown framework: {framework_id}")
+    with session_scope() as session:
+        rows = fw.evidence_rows(session, framework_id)
+    media_type = "text/csv" if fmt == "csv" else "application/json"
+    headers = {"Content-Disposition": f'attachment; filename="{framework_id}-evidence.{fmt}"'}
+    return StreamingResponse(
+        reporting.stream_records(rows, fw.EVIDENCE_COLUMNS, fmt),
+        media_type=media_type,
+        headers=headers,
+    )
+
+
+@app.post(
+    "/api/governance/frameworks/{framework_id}/install",
+    dependencies=[Depends(rbac.require_permission("pack:install"))],
+)
+def install_framework(framework_id: str) -> dict[str, Any]:
+    """Install/version a framework overlay via the pack registry (M14.13).
+
+    Records the overlay's version and control→policy mappings (for the Grafana
+    per-framework panel) — idempotent. ``404`` for an unknown framework.
+    """
+    report = packs.install_framework(framework_id)
+    if not report["ok"]:
+        raise HTTPException(status_code=404, detail=report["error"])
+    return report
 
 
 @app.post("/api/assets/query")

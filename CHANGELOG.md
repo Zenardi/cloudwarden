@@ -6,6 +6,26 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Compliance framework overlays & auditor evidence export (#146, M14.13).** The CIS Azure
+  pack mapped controls to policies, but there was no **framework overlay** (SOC 2 / ISO 27001
+  / PCI DSS / NIST 800-53) and no **auditor evidence export**. This ships versioned, installable
+  overlays under `packs/frameworks/*.yaml` — each framework's controls map onto the policies you
+  already run (a layer *over* the policy library, not new policies). `governance/frameworks.py`
+  rolls each control up from its mapped policies' **latest** results: `compliant` (all mapped
+  policies ran and matched nothing), `non_compliant` (a mapped policy flags a resource),
+  `not_evaluated` (mapped but some policy never ran — never green by omission) or **`gap`** (no
+  mapped policy at all — an honest coverage gap, **never** counted compliant). The **evidence
+  bundle** (`GET /api/governance/frameworks/{id}/evidence?format=csv|json`, streamed) flattens
+  control → policy → matched resources → status with run timestamps — the artifact an auditor
+  asks for — and **reconciles** with the posture endpoint (same per-control status decides both),
+  emitting a flagged row even for gap controls so gaps are never silently absent. Frameworks
+  install/version via the pack registry (`POST /api/governance/frameworks/{id}/install`), recording
+  their control→policy mappings into `framework_controls` behind the new `v_framework_posture`
+  view and a Grafana **Framework posture by control** panel. New read APIs — `GET /api/governance/
+  frameworks[/{id}/posture]` — plus a framework selector, per-control posture, gap indicators and
+  evidence export on the **Compliance** page. Strict TDD (7 named cases + edge/negative), new
+  modules at **100 % line coverage**, ruff clean, **no new dependencies** (Trivy surface unchanged),
+  verified end-to-end in **mock mode** (`FINOPS_MOCK=1`).
 - **Kubernetes cost & governance — AKS/EKS/GKE (#145, M14.12).** Managed Kubernetes was a
   blind spot — clusters appeared as opaque compute with no namespace/workload visibility.
   This adds a `discover_kubernetes` capability per provider (behind the same `CloudProvider`

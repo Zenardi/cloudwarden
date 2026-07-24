@@ -24,7 +24,8 @@ _TABLES = (
     "ai_summaries, account_groups, account_group_members, bindings, event_log, "
     "subscriptions, "
     "policies, policy_versions, policy_collections, "
-    "collection_policies, installed_packs, policy_executions, policy_matches, "
+    "collection_policies, installed_packs, installed_frameworks, framework_controls, "
+    "policy_executions, policy_matches, "
     "notification_templates, notification_channels, binding_notifications, "
     "roles, permissions, role_bindings, teams, team_members, audit_log"
 )

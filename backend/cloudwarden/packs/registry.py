@@ -35,6 +35,7 @@ from typing import Any
 import yaml
 
 from ..custodian.engine import CustodianRunner, validate_policy
+from ..governance import frameworks as _frameworks
 from ..storage import repository as repo
 from ..storage.db import session_scope
 
@@ -190,4 +191,88 @@ def install_pack(
         report["policies"] = [p["name"] for p in policies]
 
     report["ok"] = True
+    return report
+
+
+# --------------------------------------------------------------------------- #
+# Compliance framework overlays (M14.13) — versioned via the same registry.
+# --------------------------------------------------------------------------- #
+def list_frameworks(frameworks_dir: Path | None = None) -> list[dict[str, Any]]:
+    """List installable compliance framework overlays (delegates to the loader)."""
+    return _frameworks.list_frameworks(frameworks_dir)
+
+
+def get_framework(name: str, frameworks_dir: Path | None = None) -> dict[str, Any] | None:
+    """Return the full parsed framework overlay, or ``None`` if unknown."""
+    return _frameworks.load_framework(name, frameworks_dir)
+
+
+def install_framework(name: str, frameworks_dir: Path | None = None) -> dict[str, Any]:
+    """Install a framework overlay: record its version + control→policy mappings.
+
+    Never raises — returns ``{ok, framework, version, controls, mapped, gaps,
+    error}``. Unlike a pack, a framework maps to **existing** policies, so nothing
+    new is materialized: the overlay's version is recorded in ``installed_frameworks``
+    and its control mappings replace any prior rows in ``framework_controls`` (so the
+    Grafana per-framework posture view can read them). Re-installing is idempotent.
+    ``ok`` is ``False`` (and nothing is written) for an unknown framework.
+    """
+    report: dict[str, Any] = {
+        "ok": False,
+        "framework": name,
+        "version": None,
+        "controls": 0,
+        "mapped": 0,
+        "gaps": 0,
+        "error": None,
+    }
+
+    fwk = _frameworks.load_framework(name, frameworks_dir)
+    if fwk is None:
+        report["error"] = f"unknown framework: {name}"
+        return report
+
+    controls = fwk["controls"]
+    gaps = sum(1 for c in controls if not c["policies"])
+    mapped = len(controls) - gaps
+    version = str(fwk.get("version") or "")
+
+    mapping_rows: list[dict[str, Any]] = []
+    for ordinal, control in enumerate(controls):
+        if control["policies"]:
+            for policy_name in control["policies"]:
+                mapping_rows.append(
+                    {
+                        "control_id": control["id"],
+                        "title": control["title"],
+                        "policy_name": policy_name,
+                        "ordinal": ordinal,
+                    }
+                )
+        else:
+            mapping_rows.append(
+                {
+                    "control_id": control["id"],
+                    "title": control["title"],
+                    "policy_name": None,
+                    "ordinal": ordinal,
+                }
+            )
+
+    with session_scope() as session:
+        repo.upsert_installed_framework(
+            session,
+            name=name,
+            version=version,
+            title=fwk.get("title") or name,
+            description=fwk.get("description") or "",
+            control_count=len(controls),
+            mapped_count=mapped,
+            gap_count=gaps,
+        )
+        repo.replace_framework_controls(session, name, mapping_rows)
+
+    report.update(
+        {"ok": True, "version": version, "controls": len(controls), "mapped": mapped, "gaps": gaps}
+    )
     return report

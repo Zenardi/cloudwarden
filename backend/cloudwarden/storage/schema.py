@@ -186,6 +186,57 @@ class InstalledPack(Base):
     )
 
 
+class InstalledFramework(Base):
+    """A compliance framework overlay installed via the pack registry (M14.13).
+
+    A *framework overlay* maps controls (SOC 2 / ISO 27001 / PCI / NIST) to
+    **existing** policies — it creates no policies, so unlike :class:`InstalledPack`
+    it has no ``collection_id``. This row records the installed ``version`` and the
+    control/gap counts; the per-control policy mappings land in
+    :class:`FrameworkControl` (which cascades from here) so a per-framework posture
+    can be queried in SQL (Grafana). Re-installing the same overlay upserts by name.
+    """
+
+    __tablename__ = "installed_frameworks"
+
+    name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    version: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(256), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    control_count: Mapped[int] = mapped_column(Integer, default=0)
+    mapped_count: Mapped[int] = mapped_column(Integer, default=0)
+    gap_count: Mapped[int] = mapped_column(Integer, default=0)
+    installed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class FrameworkControl(Base):
+    """One control → policy mapping row of an installed framework overlay (M14.13).
+
+    A control maps to zero-or-more policies: a mapped control has one row per policy
+    (``policy_name`` set); an unmapped control (a coverage **gap**) has a single row
+    with ``policy_name = NULL``. ``v_framework_posture`` joins these to the live
+    ``v_governance_posture`` so per-control posture (and gaps) are queryable in SQL.
+    Reinstalling replaces a framework's rows wholesale, so no unique constraint is
+    needed. Deleting the parent :class:`InstalledFramework` cascades these away.
+    """
+
+    __tablename__ = "framework_controls"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    framework: Mapped[str] = mapped_column(
+        String(128), ForeignKey("installed_frameworks.name", ondelete="CASCADE"), index=True
+    )
+    control_id: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(256), default="")
+    policy_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Role(Base):
     """A named RBAC role (M11.1) — e.g. ``admin`` / ``editor`` / ``viewer``.
 

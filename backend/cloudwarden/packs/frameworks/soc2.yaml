@@ -1,0 +1,39 @@
+name: soc2
+version: 1.0.0
+title: SOC 2 (Trust Services Criteria)
+description: >-
+  An overlay mapping the SOC 2 Trust Services Criteria (Common Criteria +
+  Confidentiality/Availability) to CloudWarden's existing policy library. Each
+  control lists the policies whose latest results attest it; controls with no
+  mapped policy are honest coverage gaps, never reported as compliant.
+controls:
+  - id: CC6.1
+    title: Logical access — restrict network exposure of admin surfaces
+    description: >-
+      Restrict inbound administrative access (RDP/SSH) from the public internet.
+    policies:
+      - cis-6-1-nsg-restrict-rdp
+      - cis-6-2-nsg-restrict-ssh
+  - id: CC6.6
+    title: Boundary protection — deny by default at the network edge
+    description: Default-deny network access to storage and other data services.
+    policies:
+      - cis-3-8-storage-default-deny
+  - id: CC6.7
+    title: Encryption in transit
+    description: Require secure transfer (TLS) for data moving to/from storage.
+    policies:
+      - cis-3-1-storage-secure-transfer
+  - id: C1.1
+    title: Confidentiality — encryption at rest
+    description: Encrypt managed disks with a customer-managed key (CMK).
+    policies:
+      - cis-7-3-disk-cmk-encryption
+  - id: CC7.2
+    title: Detection — anomaly & threat monitoring
+    description: Continuous monitoring/alerting on anomalous activity.
+    policies: []
+  - id: A1.2
+    title: Availability — backup & recovery
+    description: Recoverability of data and configuration after disruption.
+    policies: []

@@ -747,6 +747,72 @@ export const getGovernancePosture = (provider?: string): Promise<Posture> => {
 };
 
 // --------------------------------------------------------------------------- //
+// Compliance framework overlays & auditor evidence (M14.13)
+// --------------------------------------------------------------------------- //
+
+/** Per-control posture state: gap = no mapped policy (never counted compliant). */
+export type FrameworkControlStatus = "compliant" | "non_compliant" | "not_evaluated" | "gap";
+
+/** One installable framework overlay (SOC 2 / ISO 27001 / PCI / NIST). */
+export interface FrameworkSummary {
+  name: string;
+  version: string;
+  title: string;
+  description: string;
+  control_count: number;
+  mapped_count: number;
+  gap_count: number;
+}
+
+export interface FrameworkControlPosture {
+  id: string;
+  title: string;
+  description: string;
+  status: FrameworkControlStatus;
+  gap: boolean;
+  mapped_policy_count: number;
+  evaluated_policies: number;
+  resources_matched: number;
+  last_execution_at?: string | null;
+  policies: {
+    policy_name: string;
+    evaluated: boolean;
+    status: string;
+    resources_matched: number;
+    last_execution_at?: string | null;
+  }[];
+}
+
+export interface FrameworkPosture {
+  framework: string;
+  version: string;
+  title: string;
+  controls: FrameworkControlPosture[];
+  totals: {
+    controls: number;
+    compliant: number;
+    non_compliant: number;
+    not_evaluated: number;
+    gap: number;
+    mapped: number;
+    unmapped: number;
+    coverage: number;
+  };
+}
+
+/** List installable compliance framework overlays. */
+export const getFrameworks = (): Promise<FrameworkSummary[]> =>
+  apiGet<FrameworkSummary[]>("/api/governance/frameworks");
+
+/** Per-control posture for one framework overlay. */
+export const getFrameworkPosture = (id: string): Promise<FrameworkPosture> =>
+  apiGet<FrameworkPosture>(`/api/governance/frameworks/${encodeURIComponent(id)}/posture`);
+
+/** Download URL for a framework's timestamped auditor evidence bundle (csv/json). */
+export const frameworkEvidenceUrl = (id: string, format: "csv" | "json" = "csv"): string =>
+  `${API_BASE}/api/governance/frameworks/${encodeURIComponent(id)}/evidence?format=${format}`;
+
+// --------------------------------------------------------------------------- //
 // Audit log (M11.4): append-only trail of mutating governance actions
 // --------------------------------------------------------------------------- //
 

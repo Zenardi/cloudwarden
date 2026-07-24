@@ -5,7 +5,7 @@
   "timezone": "",
   "editable": true,
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "refresh": "",
   "time": { "from": "now-30d", "to": "now" },
   "templating": {
@@ -18,6 +18,22 @@
         "datasource": { "type": "postgres", "uid": "finops_pg" },
         "definition": "SELECT DISTINCT provider FROM v_governance_posture ORDER BY 1",
         "query": "SELECT DISTINCT provider FROM v_governance_posture ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": true,
+        "allValue": "%",
+        "multi": false,
+        "current": { "text": "All", "value": "$__all" },
+        "options": []
+      },
+      {
+        "name": "framework",
+        "label": "Framework",
+        "description": "Compliance framework overlay (M14.13). Populated once a framework is installed.",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "finops_pg" },
+        "definition": "SELECT DISTINCT framework FROM v_framework_posture ORDER BY 1",
+        "query": "SELECT DISTINCT framework FROM v_framework_posture ORDER BY 1",
         "refresh": 2,
         "sort": 1,
         "includeAll": true,
@@ -160,6 +176,66 @@
       "targets": [
         { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
           "rawSql": "SELECT subscription_id, provider, COUNT(*) FILTER (WHERE compliant) AS compliant, COUNT(*) FILTER (WHERE non_compliant) AS non_compliant, COALESCE(SUM(resources_matched), 0) AS violations, COUNT(*) AS evaluated FROM v_governance_posture WHERE provider LIKE '$provider' GROUP BY subscription_id, provider ORDER BY non_compliant DESC, subscription_id ASC" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Coverage gaps ($framework)",
+      "description": "Controls with NO mapped policy (M14.13) — flagged as gaps, never counted compliant. Install a framework to populate.",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 39 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE is_gap), 0) AS \"Coverage gaps\" FROM v_framework_posture WHERE framework LIKE '$framework'" }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Non-compliant controls ($framework)",
+      "description": "Controls where a mapped policy currently flags a resource (M14.13).",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 39 },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "orange" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT COALESCE(COUNT(*) FILTER (WHERE status = 'non_compliant'), 0) AS \"Non-compliant\" FROM v_framework_posture WHERE framework LIKE '$framework'" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Framework posture by control ($framework)",
+      "description": "Per-control compliance for the selected framework overlay (M14.13): each control rolls up its mapped policies' latest results; a gap = no mapped policy (never compliant). Install a framework via POST /api/governance/frameworks/{id}/install to populate.",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 45 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Status" }, "properties": [
+            { "id": "mappings", "value": [ { "type": "value", "options": {
+              "compliant": { "color": "green", "index": 0 },
+              "non_compliant": { "color": "red", "index": 1 },
+              "not_evaluated": { "color": "yellow", "index": 2 },
+              "gap": { "color": "red", "index": 3 } } } ] },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "color", "value": { "mode": "fixed" } }
+          ] },
+          { "matcher": { "id": "byName", "options": "Violations" }, "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "color", "value": { "mode": "thresholds" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }
+          ] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [ { "displayName": "Ordinal", "desc": false } ] },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "postgres", "uid": "finops_pg" }, "editorMode": "code", "format": "table", "rawQuery": true,
+          "rawSql": "SELECT ordinal AS \"Ordinal\", control_id AS \"Control\", title AS \"Title\", status AS \"Status\", mapped_policies AS \"Policies\", evaluated_policies AS \"Evaluated\", violations AS \"Violations\", is_gap AS \"Gap\" FROM v_framework_posture WHERE framework LIKE '$framework' ORDER BY ordinal ASC, control_id ASC" }
       ]
     }
   ]

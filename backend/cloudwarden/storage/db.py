@@ -259,6 +259,51 @@ SELECT
 FROM policy_executions e
 LEFT JOIN subscriptions s ON s.subscription_id = e.subscription_id
 GROUP BY COALESCE(s.provider, 'azure');
+
+-- Per-framework, per-control compliance posture (M14.13). Joins an installed
+-- framework overlay's control->policy mappings (framework_controls) to the live
+-- v_governance_posture. A control's status mirrors the API rollup: a gap when it
+-- maps to no policy (policy_name IS NULL), non_compliant when any mapped policy
+-- flags a resource, compliant only when EVERY mapped policy has run and matched
+-- nothing, else not_evaluated. Drives the Grafana per-framework panel. Empty until
+-- a framework is installed (rows appear on install).
+CREATE OR REPLACE VIEW v_framework_posture AS
+WITH control_policy AS (
+    SELECT
+        fc.framework,
+        fc.control_id,
+        fc.title,
+        fc.ordinal,
+        fc.policy_name,
+        gp.non_compliant,
+        gp.resources_matched,
+        gp.last_execution_at
+    FROM framework_controls fc
+    LEFT JOIN policies p ON p.name = fc.policy_name
+    LEFT JOIN v_governance_posture gp ON gp.policy_id = p.id
+)
+SELECT
+    cp.framework                                                     AS framework,
+    cp.control_id                                                    AS control_id,
+    MIN(cp.title)                                                    AS title,
+    MIN(cp.ordinal)                                                  AS ordinal,
+    bool_and(cp.policy_name IS NULL)                                 AS is_gap,
+    COUNT(DISTINCT cp.policy_name)                                   AS mapped_policies,
+    COUNT(DISTINCT cp.policy_name) FILTER (WHERE cp.non_compliant IS NOT NULL)
+                                                                     AS evaluated_policies,
+    COUNT(*) FILTER (WHERE cp.non_compliant)                         AS noncompliant_pairs,
+    COALESCE(SUM(cp.resources_matched), 0)                           AS violations,
+    MAX(cp.last_execution_at)                                        AS last_execution_at,
+    CASE
+        WHEN bool_and(cp.policy_name IS NULL) THEN 'gap'
+        WHEN COUNT(*) FILTER (WHERE cp.non_compliant) > 0 THEN 'non_compliant'
+        WHEN COUNT(DISTINCT cp.policy_name) > 0
+             AND COUNT(DISTINCT cp.policy_name) FILTER (WHERE cp.non_compliant IS NOT NULL)
+                 = COUNT(DISTINCT cp.policy_name) THEN 'compliant'
+        ELSE 'not_evaluated'
+    END                                                              AS status
+FROM control_policy cp
+GROUP BY cp.framework, cp.control_id;
 """
 
 

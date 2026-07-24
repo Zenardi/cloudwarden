@@ -35,7 +35,10 @@ backbone:
   — to **block a non-compliant resource at creation** (what-if preview + dry-run-first apply,
   M14.10), collect **AWS & GCP cost with Azure-parity** so budgets/anomaly/forecast/showback
   go cross-cloud (M14.11), extend FinOps **into managed Kubernetes** (AKS/EKS/GKE) with
-  namespace cost allocation and workload right-sizing / idle detection (M14.12), and review
+  namespace cost allocation and workload right-sizing / idle detection (M14.12), overlay
+  **compliance frameworks** (SOC 2 / ISO 27001 / PCI / NIST) that roll policy results up per
+  control — flagging **unmapped controls as coverage gaps** — and export a **timestamped
+  auditor evidence bundle** (M14.13), and review
   the full **execution history**. A
   cross-cloud **AssetDB** tracks every resource
   (config, relationships, change history), with **posture and execution-health

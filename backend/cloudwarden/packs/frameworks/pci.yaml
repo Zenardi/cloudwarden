@@ -1,0 +1,38 @@
+name: pci
+version: 1.0.0
+title: PCI DSS v4.0
+description: >-
+  An overlay mapping a subset of PCI DSS v4.0 requirements to CloudWarden's
+  existing policy library. Per-requirement posture rolls up the mapped policies'
+  latest results; requirements with no mapped policy are flagged as coverage gaps
+  and never reported as compliant.
+controls:
+  - id: '1.2'
+    title: Network security controls restrict inbound access
+    description: Restrict inbound administrative access (RDP/SSH) from untrusted networks.
+    policies:
+      - cis-6-1-nsg-restrict-rdp
+      - cis-6-2-nsg-restrict-ssh
+  - id: '1.3'
+    title: Restrict access to the cardholder data environment
+    description: Default-deny network access to systems holding cardholder data.
+    policies:
+      - cis-3-8-storage-default-deny
+  - id: '4.2'
+    title: Strong cryptography for PAN in transit
+    description: Protect cardholder data with strong cryptography during transmission.
+    policies:
+      - cis-3-1-storage-secure-transfer
+  - id: '3.5'
+    title: Protect stored account data
+    description: Render stored PAN unreadable — encryption at rest with managed keys.
+    policies:
+      - cis-7-3-disk-cmk-encryption
+  - id: '10.2'
+    title: Audit logs record access to system components
+    description: Log and retain access events to support forensics.
+    policies: []
+  - id: '11.5'
+    title: Detect and respond to network intrusions
+    description: Intrusion-detection/change-detection over the CDE.
+    policies: []

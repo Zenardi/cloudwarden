@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  FrameworkControlStatus,
+  FrameworkPosture,
+  FrameworkSummary,
+  frameworkEvidenceUrl,
+  getFrameworkPosture,
+  getFrameworks,
   getGovernancePosture,
   getPolicyMatchedResources,
   MatchedResource,
@@ -17,7 +23,22 @@ function ts(value?: string | null): string {
   return value.replace("T", " ").slice(0, 19);
 }
 
+// Map a control status to a badge class + label (gaps stand out — honest, not green).
+const STATUS_META: Record<FrameworkControlStatus, { cls: string; label: string }> = {
+  compliant: { cls: "badge", label: "Compliant" },
+  non_compliant: { cls: "badge rejected", label: "Non-compliant" },
+  not_evaluated: { cls: "badge", label: "Not evaluated" },
+  gap: { cls: "badge rejected", label: "Gap — unmapped" },
+};
+
 export default function Compliance() {
+  // Framework overlay view (M14.13) ---------------------------------------- //
+  const [frameworks, setFrameworks] = useState<FrameworkSummary[]>([]);
+  const [frameworkId, setFrameworkId] = useState("");
+  const [framework, setFramework] = useState<FrameworkPosture | null>(null);
+  const [fwErr, setFwErr] = useState("");
+
+  // Policy drill-down (M9.1/M9.3) ------------------------------------------ //
   const [provider, setProvider] = useState("all");
   const [policies, setPolicies] = useState<PosturePolicy[]>([]);
   const [byProvider, setByProvider] = useState<PostureProvider[]>([]);
@@ -26,6 +47,26 @@ export default function Compliance() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [drilling, setDrilling] = useState(false);
+
+  useEffect(() => {
+    getFrameworks()
+      .then((list) => {
+        setFrameworks(list);
+        if (list.length > 0) setFrameworkId((cur) => cur || list[0].name);
+      })
+      .catch((e) => setFwErr(String(e)));
+  }, []);
+
+  useEffect(() => {
+    if (!frameworkId) return;
+    setFramework(null);
+    getFrameworkPosture(frameworkId)
+      .then((p) => {
+        setFramework(p);
+        setFwErr("");
+      })
+      .catch((e) => setFwErr(String(e)));
+  }, [frameworkId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,14 +104,112 @@ export default function Compliance() {
     }
   }, []);
 
+  const totals = framework?.totals;
+
   return (
     <>
       <h1>Compliance</h1>
       <p className="sub">
+        Frame posture against a <strong>compliance framework</strong> (SOC&nbsp;2, ISO&nbsp;27001,
+        PCI&nbsp;DSS, NIST&nbsp;800-53): each control rolls up its mapped policies&apos; latest
+        results, controls with <strong>no mapped policy are flagged as gaps</strong> (never green by
+        omission), and the <strong>evidence bundle</strong> exports control&nbsp;→&nbsp;policy&nbsp;→
+        matched&nbsp;resources with run timestamps — the artifact an auditor asks for.
+      </p>
+
+      {/* Framework overlay ----------------------------------------------- */}
+      <form className="history-controls" onSubmit={(e) => e.preventDefault()}>
+        <div className="field">
+          <label htmlFor="f-framework">Framework</label>
+          <select
+            id="f-framework"
+            value={frameworkId}
+            onChange={(e) => setFrameworkId(e.target.value)}
+          >
+            {frameworks.map((f) => (
+              <option key={f.name} value={f.name}>
+                {f.title} (v{f.version})
+              </option>
+            ))}
+          </select>
+        </div>
+        {frameworkId && (
+          <div className="field" style={{ alignSelf: "end" }}>
+            <span style={{ display: "flex", gap: ".5rem" }}>
+              <a className="btn" href={frameworkEvidenceUrl(frameworkId, "csv")}>
+                Evidence (CSV)
+              </a>
+              <a className="btn" href={frameworkEvidenceUrl(frameworkId, "json")}>
+                Evidence (JSON)
+              </a>
+            </span>
+          </div>
+        )}
+      </form>
+
+      {fwErr && <div className="err">{fwErr}</div>}
+
+      {totals && (
+        <p className="sub" style={{ marginTop: 0 }}>
+          <span className="badge">{totals.compliant} compliant</span>{" "}
+          <span className={totals.non_compliant > 0 ? "badge rejected" : "badge"}>
+            {totals.non_compliant} non-compliant
+          </span>{" "}
+          <span className="badge">{totals.not_evaluated} not evaluated</span>{" "}
+          <span className={totals.gap > 0 ? "badge rejected" : "badge"}>{totals.gap} gaps</span>{" "}
+          <span className="muted">
+            coverage {Math.round(totals.coverage * 100)}% ({totals.mapped}/{totals.controls} controls
+            mapped)
+          </span>
+        </p>
+      )}
+
+      {framework && (
+        <table style={{ marginBottom: "1.5rem" }}>
+          <thead>
+            <tr>
+              <th>Control</th>
+              <th>Title</th>
+              <th>Status</th>
+              <th>Policies</th>
+              <th>Violations</th>
+              <th>Last run</th>
+            </tr>
+          </thead>
+          <tbody>
+            {framework.controls.map((c) => {
+              const meta = STATUS_META[c.status];
+              return (
+                <tr key={c.id}>
+                  <td>
+                    <strong>{c.id}</strong>
+                  </td>
+                  <td title={c.description}>{c.title}</td>
+                  <td>
+                    <span className={meta.cls}>{meta.label}</span>
+                  </td>
+                  <td className="muted">
+                    {c.gap ? "—" : `${c.evaluated_policies}/${c.mapped_policy_count}`}
+                  </td>
+                  <td>
+                    <span className={c.resources_matched > 0 ? "badge rejected" : "badge"}>
+                      {c.resources_matched}
+                    </span>
+                  </td>
+                  <td className="muted">{ts(c.last_execution_at)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {/* Policy drill-down ----------------------------------------------- */}
+      <h2>Policies &amp; flagged resources</h2>
+      <p className="sub">
         Drill from a <strong>policy</strong> into the <strong>resources it has flagged</strong>, then
-        through to each resource&apos;s <strong>asset detail</strong> — investigate non-compliance à
-        la Stacklet&apos;s compliance explorer. Counts come from the governance posture (latest
-        execution per policy &amp; subscription).
+        through to each resource&apos;s <strong>asset detail</strong>. Counts come from the governance
+        posture (latest execution per policy &amp; subscription).
       </p>
 
       <form className="history-controls" onSubmit={(e) => e.preventDefault()}>
