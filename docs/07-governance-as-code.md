@@ -249,6 +249,57 @@ An **expiring-soon** notification fires **once** per waiver when it is within
 `WAIVER_EXPIRING_WITHIN_DAYS` of expiry, through `WAIVER_ALERT_CHANNEL` (empty = record
 silently). A justification is mandatory and the expiry must be in the future.
 
+## Preventive guardrails — M14.10
+
+Every control so far is **detective + remediation** — it observes and fixes, but nothing
+*prevents* a non-compliant resource from being created. Preventive guardrails close the
+loop **detect → remediate → prevent** by translating a subset of authored intent into the
+cloud's own **native deny construct**, enforced *at creation time*.
+
+A policy **opts in** by declaring a guardrail on its first policy body:
+
+```yaml
+policies:
+  - name: require-environment-tag
+    resource: azure.vm
+    metadata:
+      guardrail:
+        kind: required_tag          # required_tag | allowed_locations | allowed_skus | deny_public_ip
+        params: {tag: Environment}
+```
+
+The capability subset and what each provider can express natively:
+
+| Kind | Azure Policy | AWS SCP | GCP Org Policy |
+|------|:---:|:---:|:---:|
+| `required_tag` | ✅ `tags[...] exists false → deny` | ✅ `Null aws:RequestTag/... → Deny` | ❌ not expressible |
+| `allowed_locations` | ✅ `not location in [...] → deny` | ✅ `aws:RequestedRegion → Deny` | ✅ `constraints/gcp.resourceLocations` |
+| `allowed_skus` | ✅ `sku.name not in [...] → deny` | ❌ not expressible | ❌ not expressible |
+| `deny_public_ip` | ✅ deny `publicIPAddresses` | ✅ deny `AssociatePublicIpAddress` | ✅ `constraints/compute.vmExternalIpAccess` |
+
+A policy that declares **no** guardrail, or a kind the target provider **cannot** express,
+returns an explicit **not-expressible** result — surfaced with a reason, **never a silent
+no-op**.
+
+```bash
+# 1. Preview (what-if): the native definition + affected scope, NO mutation.
+POST /api/guardrails/preview   { "policy_id": 12, "provider": "azure", "scope": "sub-123" }
+
+# 2. Apply — dry-run-first, gated by the SAME remediation guardrails as write remediation.
+POST /api/guardrails/apply     { "policy_id": 12, "provider": "azure", "dry_run": true }
+```
+
+**Safety model.** `apply` performs a real write **only** when the policy is expressible
+**and** the remediation guardrails permit it — `REMEDIATION_ENABLED=true` **and** a
+non-empty `ALLOWED_RESOURCE_GROUPS` (plus the write-scoped service principal). Otherwise it
+is forced to a **dry-run** and the cloud is never touched. A provider error is **surfaced**
+on the result (never a 500), and **every** preview and apply is **audited**
+(`guardrail:preview` / `guardrail:apply`). Both endpoints are RBAC-guarded
+(`guardrail:preview` / `guardrail:apply`). Translators sit behind a `preventive_translator`
+capability on the `CloudProvider` abstraction, and cloud write clients are injectable — so
+the whole path is verifiable with no live cloud. The **Guardrails** page walks translate →
+what-if → dry-run apply.
+
 ## Policy packs
 
 Pre-built, versioned bundles of policies (e.g. tag-compliance, cost-hygiene,

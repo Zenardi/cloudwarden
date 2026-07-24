@@ -49,3 +49,11 @@ class CloudProvider(Protocol):
 
     def build_session(self, account_id: str) -> Any:
         """Build a live Cloud Custodian session for an account (live path only)."""
+
+    def preventive_translator(self) -> Any:
+        """Return this provider's preventive-guardrail translator module (M14.10).
+
+        The optional capability that maps authored intent to a native **deny** construct
+        (Azure Policy / AWS SCP / GCP Org Policy). The module exposes ``PROVIDER``,
+        ``SUPPORTED_KINDS``, ``translate(intent)`` and ``scope(intent, *, target)``.
+        """

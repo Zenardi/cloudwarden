@@ -1,0 +1,21 @@
+{
+  "provider": "azure",
+  "kind": "required_tag",
+  "displayName": "Require tag 'Environment'",
+  "policyType": "Custom",
+  "mode": "Indexed",
+  "metadata": {
+    "source": "cloudwarden",
+    "policyName": "require-environment-tag"
+  },
+  "policyRule": {
+    "if": {
+      "field": "tags['Environment']",
+      "exists": "false"
+    },
+    "then": {
+      "effect": "deny"
+    }
+  },
+  "parameters": {}
+}

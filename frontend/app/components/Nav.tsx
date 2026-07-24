@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 type IconName =
   | "overview" | "costs" | "recommendations" | "budgets" | "policies" | "collections"
-  | "bindings" | "compliance" | "waivers" | "remediation" | "runs" | "executions"
+  | "bindings" | "compliance" | "waivers" | "guardrails" | "remediation" | "runs" | "executions"
   | "events" | "assets" | "subscriptions" | "accountGroups" | "notifications"
   | "audit" | "chevronLeft" | "close" | "menu";
 
@@ -71,6 +71,12 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M4 8a1 1 0 011-1h14a1 1 0 011 1v2a2 2 0 000 4v2a1 1 0 01-1 1H5a1 1 0 01-1-1v-2a2 2 0 000-4z" />
       <path d="M12 8v8" />
+    </>
+  ),
+  guardrails: (
+    <>
+      <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
+      <path d="M9.5 12l2 2 3.5-4" />
     </>
   ),
   runs: (
@@ -173,6 +179,7 @@ const GROUPS: NavGroup[] = [
       { href: "/bindings", label: "Bindings", icon: "bindings" },
       { href: "/compliance", label: "Compliance", icon: "compliance" },
       { href: "/waivers", label: "Waivers", icon: "waivers" },
+      { href: "/guardrails", label: "Guardrails", icon: "guardrails" },
       { href: "/remediation", label: "Remediation", icon: "remediation" },
     ],
   },

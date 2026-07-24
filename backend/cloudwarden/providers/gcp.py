@@ -186,6 +186,12 @@ class GcpProvider:
 
         return Session(project_id=account_id)
 
+    def preventive_translator(self) -> Any:
+        """The GCP Organization Policy translator for preventive guardrails (M14.10)."""
+        from .preventive import gcp_orgpolicy
+
+        return gcp_orgpolicy
+
     # --- M12.3: onboarding, execution, ingestion -------------------------- #
     def validate_project(
         self,

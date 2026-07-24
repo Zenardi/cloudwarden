@@ -6,6 +6,27 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Preventive guardrails — Azure Policy / AWS SCP / GCP Org Policy (#143, M14.10).**
+  CloudWarden's controls were **detective + remediation** — they observe and fix, but
+  nothing *prevented* a non-compliant resource from being created. This completes the loop
+  **detect → remediate → prevent**: a policy that opts in (via `spec.policies[0].metadata.guardrail`
+  = `{kind, params}`) is translated into a provider's native **deny** construct — an **Azure
+  Policy** (`policyRule`), an **AWS Service Control Policy** (`Statement`), or a **GCP
+  Organization Policy** (`listPolicy`). The capability subset is **required-tags /
+  allowed-locations / allowed-SKUs / deny-public-IP**; each translator declares the kinds
+  it can express (Azure all four; AWS all but SKUs; GCP only locations + public-IP), and a
+  kind a provider **cannot** express — or a policy with no guardrail intent — returns an
+  explicit **not-expressible** result, **never a silent no-op**. `build_preview` is a
+  **what-if** (native definition + affected scope, no mutation); `apply` is **dry-run-first**
+  and gated by the **same remediation guardrails** (`REMEDIATION_ENABLED` + resource-group
+  allow-list + the write-scoped SP) — a real write happens only when they pass, calls the
+  injected write client exactly once, **surfaces any provider error** (never a 500), and is
+  **always audited**. New `providers/preventive/{azure_policy,aws_scp,gcp_orgpolicy}.py`
+  translators behind a `preventive_translator` capability on the `CloudProvider` abstraction
+  + registry, `POST /api/guardrails/preview` + `/api/guardrails/apply` (RBAC
+  `guardrail:preview` / `guardrail:apply`, audited), and a **Guardrails** page (translate →
+  what-if → dry-run apply). Cloud clients are injected — no live cloud in tests. Strict TDD,
+  **100% coverage** on the new package, ruff clean.
 - **Exemptions / waivers workflow (#142, M14.9).** The only way to exempt a resource
   was a static `finops:exclude` tag or an RG allow-list — not time-boxed, not approved,
   not audited. This adds a **first-class waiver**: a scoped, justified, approved,

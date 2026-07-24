@@ -1,0 +1,31 @@
+{
+  "provider": "aws",
+  "kind": "allowed_locations",
+  "Version": "2012-10-17",
+  "metadata": {
+    "source": "cloudwarden",
+    "policyName": "allowed-regions"
+  },
+  "Statement": [
+    {
+      "Sid": "CloudWardenDenyUnapprovedRegions",
+      "Effect": "Deny",
+      "NotAction": [
+        "iam:*",
+        "organizations:*",
+        "sts:*",
+        "route53:*",
+        "support:*"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "aws:RequestedRegion": [
+            "us-east-1",
+            "us-west-2"
+          ]
+        }
+      }
+    }
+  ]
+}

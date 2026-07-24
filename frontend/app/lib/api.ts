@@ -913,3 +913,46 @@ export const approveWaiver = (id: number): Promise<Waiver> =>
 
 export const rejectWaiver = (id: number): Promise<Waiver> =>
   apiPost<Waiver>(`/api/waivers/${id}/reject`);
+
+// --- Preventive guardrails (M14.10) -----------------------------------------
+export const GUARDRAIL_PROVIDERS = ["azure", "aws", "gcp"] as const;
+export type GuardrailProvider = (typeof GUARDRAIL_PROVIDERS)[number];
+
+export interface GuardrailScope {
+  native: string;
+  level: string;
+  target: string;
+  [key: string]: any;
+}
+
+export interface GuardrailPreview {
+  policy: string | null;
+  provider: string;
+  expressible: boolean;
+  kind: string | null;
+  definition: Record<string, any> | null;
+  scope: GuardrailScope | null;
+  reason: string | null;
+  mutating: boolean;
+}
+
+export interface GuardrailApplyResult extends GuardrailPreview {
+  applied: boolean;
+  dry_run: boolean;
+  blocked: boolean;
+  result: any;
+  error: string | null;
+}
+
+export interface GuardrailRequestInput {
+  policy_id: number;
+  provider?: GuardrailProvider;
+  scope?: string | null;
+  dry_run?: boolean;
+}
+
+export const previewGuardrail = (body: GuardrailRequestInput): Promise<GuardrailPreview> =>
+  apiPost<GuardrailPreview>("/api/guardrails/preview", body);
+
+export const applyGuardrail = (body: GuardrailRequestInput): Promise<GuardrailApplyResult> =>
+  apiPost<GuardrailApplyResult>("/api/guardrails/apply", body);

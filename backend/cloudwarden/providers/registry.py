@@ -39,3 +39,12 @@ def get(name: str) -> CloudProvider:
 def names() -> list[str]:
     """Return the sorted names of all registered providers."""
     return sorted(_PROVIDERS)
+
+
+def preventive_translator(name: str):
+    """Return the preventive-guardrail translator module for provider ``name`` (M14.10).
+
+    Delegates to the provider's optional ``preventive_translator`` capability. Raises
+    :class:`UnknownProviderError` (via :func:`get`) for an unregistered provider name.
+    """
+    return get(name).preventive_translator()

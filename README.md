@@ -30,8 +30,10 @@ backbone:
   desired-state baseline (M14.7), **propose UI-authored policy edits back to git as a
   pull request** (policy-as-PR write-back — never touching the default branch, M14.8),
   grant **scoped, approved, expiring waivers** that record a match as *waived* instead of
-  enforcing it — re-surfacing the finding the moment they expire (M14.9), and review the
-  full **execution history**. A
+  enforcing it — re-surfacing the finding the moment they expire (M14.9), translate a policy
+  into a provider's **native preventive guardrail** — Azure Policy / AWS SCP / GCP Org Policy
+  — to **block a non-compliant resource at creation** (what-if preview + dry-run-first apply,
+  M14.10), and review the full **execution history**. A
   cross-cloud **AssetDB** tracks every resource
   (config, relationships, change history), with **posture and execution-health
   that filter and group by cloud provider** — one pane over every cloud.

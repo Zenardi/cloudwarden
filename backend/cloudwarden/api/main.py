@@ -45,6 +45,7 @@ from ..models import (
     CollectionCreate,
     DriftBaselineRequest,
     EvaluateIacRequest,
+    GuardrailRequest,
     NotificationChannelIn,
     NotificationChannelUpdate,
     NotificationTemplateIn,
@@ -59,6 +60,7 @@ from ..notify.dispatch import KNOWN_TRANSPORTS
 from ..packs import registry as packs
 from ..providers import aws as aws_provider
 from ..providers import gcp as gcp_provider
+from ..providers import preventive
 from ..providers import registry as providers_registry
 from ..remediation import approval as remediation
 from ..resilience import REGISTRY
@@ -806,6 +808,77 @@ def reject_waiver_endpoint(waiver_id: int, request: Request) -> dict[str, Any]:
     """Reject a pending waiver → ``rejected``. RBAC-guarded (``waiver:approve``) and audited;
     ``404`` if unknown, ``409`` if already decided."""
     return _decide_waiver(waiver_id, request, decide=waivers.reject_waiver, action="waiver:reject")
+
+
+# --- Preventive guardrails (M14.10) -------------------------------------------
+def _guardrail_policy(session: Any, policy_id: int) -> dict[str, Any]:
+    """Load the authored policy for a guardrail request, or ``404``."""
+    policy = repo.get_policy(session, policy_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail=f"unknown policy: {policy_id}")
+    return policy
+
+
+@app.post(
+    "/api/guardrails/preview",
+    dependencies=[Depends(rbac.require_permission("guardrail:preview"))],
+)
+def preview_guardrail(body: GuardrailRequest, request: Request) -> dict[str, Any]:
+    """Preview (what-if) the native deny construct an authored policy maps to — the native
+    definition + the affected scope, without mutating anything. A policy that cannot be
+    expressed returns ``expressible=False`` + a reason (never a silent no-op). RBAC-guarded
+    (``guardrail:preview``) and audited; ``404`` unknown policy, ``400`` unknown provider."""
+    principal = rbac.principal_from_request(request)
+    with session_scope() as session:
+        policy = _guardrail_policy(session, body.policy_id)
+        try:
+            result = preventive.build_preview(policy, body.provider, scope=body.scope)
+        except providers_registry.UnknownProviderError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        audit.record(
+            session,
+            actor=principal,
+            action="guardrail:preview",
+            target_type="guardrail",
+            target_id=f"{body.provider}:{policy['name']}",
+            after={
+                "provider": body.provider,
+                "kind": result["kind"],
+                "expressible": result["expressible"],
+            },
+        )
+    return result
+
+
+@app.post(
+    "/api/guardrails/apply",
+    dependencies=[Depends(rbac.require_permission("guardrail:apply"))],
+)
+def apply_guardrail(body: GuardrailRequest, request: Request) -> dict[str, Any]:
+    """Apply a preventive guardrail — **dry-run-first** and gated by the same remediation
+    guardrails (``REMEDIATION_ENABLED`` + resource-group allow-list + write SP). A real
+    write happens only when the guardrails permit it; otherwise it previews as a dry-run
+    and never touches the cloud. RBAC-guarded (``guardrail:apply``) and audited; ``404``
+    unknown policy, ``400`` unknown provider, ``502`` on a provider failure."""
+    principal = rbac.principal_from_request(request)
+    settings = get_settings()
+    with session_scope() as session:
+        policy = _guardrail_policy(session, body.policy_id)
+        try:
+            result = preventive.apply(
+                session,
+                policy=policy,
+                provider=body.provider,
+                settings=settings,
+                scope=body.scope,
+                dry_run=body.dry_run,
+                actor=principal,
+            )
+        except providers_registry.UnknownProviderError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except preventive.PreventiveError as exc:  # pragma: no cover - live write client only
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return result
 
 
 @app.get("/api/custodian/schema")

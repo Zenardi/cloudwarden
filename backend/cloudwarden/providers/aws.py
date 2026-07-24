@@ -188,6 +188,12 @@ class AwsProvider:
 
         return SessionFactory(region=DEFAULT_REGION)()
 
+    def preventive_translator(self) -> Any:
+        """The AWS Service Control Policy translator for preventive guardrails (M14.10)."""
+        from .preventive import aws_scp
+
+        return aws_scp
+
     # --- M12.2: onboarding, execution, ingestion -------------------------- #
     def validate_account(
         self,

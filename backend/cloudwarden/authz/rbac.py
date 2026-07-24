@@ -54,6 +54,8 @@ WRITE_PERMISSIONS: tuple[str, ...] = (
     "drift:write",
     "waiver:request",
     "waiver:approve",
+    "guardrail:preview",
+    "guardrail:apply",
 )
 
 # Administrative permissions (managing RBAC itself, and teams — M11.2) — admin only.

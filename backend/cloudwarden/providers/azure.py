@@ -64,3 +64,9 @@ class AzureProvider:
         from c7n_azure.session import Session
 
         return Session(subscription_id=account_id)
+
+    def preventive_translator(self) -> Any:
+        """The Azure Policy translator for preventive guardrails (M14.10)."""
+        from .preventive import azure_policy
+
+        return azure_policy

@@ -1,0 +1,16 @@
+{
+  "provider": "gcp",
+  "kind": "allowed_locations",
+  "constraint": "constraints/gcp.resourceLocations",
+  "metadata": {
+    "source": "cloudwarden",
+    "policyName": "allowed-locations"
+  },
+  "listPolicy": {
+    "allowedValues": [
+      "us-central1",
+      "us-east1"
+    ],
+    "inheritFromParent": false
+  }
+}

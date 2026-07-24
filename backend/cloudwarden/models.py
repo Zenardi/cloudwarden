@@ -237,6 +237,21 @@ class WaiverRequest(BaseModel):
     scope_value: str | None = None
 
 
+class GuardrailRequest(BaseModel):
+    """Inbound shape for previewing/applying a preventive guardrail (M14.10).
+
+    ``policy_id`` names the authored policy to translate into a native deny construct;
+    ``provider`` selects the target cloud (``azure`` / ``aws`` / ``gcp``); ``scope`` is
+    the optional target (subscription / OU-root / organization). ``dry_run`` applies to
+    the apply endpoint only (dry-run-first): a real apply also requires the remediation
+    guardrails to permit a live write."""
+
+    policy_id: int
+    provider: str = "azure"
+    scope: str | None = None
+    dry_run: bool = True
+
+
 class ValidateResult(BaseModel):
     """Outcome of validating a policy spec: ``valid`` plus any error strings."""
 
