@@ -1880,6 +1880,7 @@ def upsert_cost_snapshots(session: Session, rows: list[m.CostRow]) -> int:
             "meter_category": c.meter_category or "",
             "cost_type": c.cost_type or "Amortized",
             "subscription_id": c.subscription_id,
+            "provider": c.provider or "azure",
             "resource_type": c.resource_type,
             "resource_group": c.resource_group,
             "location": c.location,
@@ -1890,7 +1891,7 @@ def upsert_cost_snapshots(session: Session, rows: list[m.CostRow]) -> int:
         }
         for c in dedup.values()
     ]
-    step = _rows_per_statement(columns=12)  # cost_snapshots row = 12 bound params (+ tags)
+    step = _rows_per_statement(columns=13)  # cost_snapshots row = 13 bound params (+ tags)
     for start in range(0, len(payload), step):
         chunk = payload[start : start + step]
         stmt = pg_insert(schema.CostSnapshot).values(chunk)
@@ -1900,6 +1901,7 @@ def upsert_cost_snapshots(session: Session, rows: list[m.CostRow]) -> int:
                 "cost": stmt.excluded.cost,
                 "currency": stmt.excluded.currency,
                 "subscription_id": stmt.excluded.subscription_id,
+                "provider": stmt.excluded.provider,
                 "resource_type": stmt.excluded.resource_type,
                 "resource_group": stmt.excluded.resource_group,
                 "location": stmt.excluded.location,
@@ -3274,18 +3276,17 @@ def latest_run(session: Session) -> dict[str, Any] | None:
 def _cost_scope(days: int, provider: str | None) -> tuple[str, dict[str, Any]]:
     """WHERE fragment + bound params scoping ``cost_snapshots`` to a day window
     and (optionally) one cloud (#116). The window uses ``make_interval`` (as in
-    #113); the provider filter maps through ``subscriptions.provider``. Both are
-    bound parameters — injection-safe. ``provider`` None/"" means all clouds."""
+    #113); the provider filter reads the native ``cost_snapshots.provider`` column
+    (M14.11) so a cost row is attributable to its cloud without a subscriptions
+    join. Both are bound parameters — injection-safe. ``provider`` None/"" means
+    all clouds."""
     sql = (
         " WHERE cost_type = 'Amortized' "
         "AND usage_date >= CURRENT_DATE - make_interval(days => :days)"
     )
     params: dict[str, Any] = {"days": days}
     if provider:
-        sql += (
-            " AND subscription_id IN "
-            "(SELECT subscription_id FROM subscriptions WHERE provider = :provider)"
-        )
+        sql += " AND provider = :provider"
         params["provider"] = provider
     return sql, params
 
@@ -3398,10 +3399,7 @@ def cost_monthly(session: Session, months: int = 6, provider: str | None = None)
     )
     params: dict[str, Any] = {"back": months - 1}
     if provider:
-        where += (
-            " AND subscription_id IN "
-            "(SELECT subscription_id FROM subscriptions WHERE provider = :provider)"
-        )
+        where += " AND provider = :provider"  # native cost_snapshots.provider (M14.11)
         params["provider"] = provider
     rows = _rows(
         session,

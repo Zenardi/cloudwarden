@@ -45,7 +45,8 @@ def test_orchestrator_records_failure(db, monkeypatch) -> None:
     def boom(*a, **k):
         raise RuntimeError("collector down")
 
-    monkeypatch.setattr(orch, "collect_cost", boom)
+    # Cost collection is provider-dispatched since M14.11; the seam is _collect_cost.
+    monkeypatch.setattr(orch, "_collect_cost", boom)
     with pytest.raises(RuntimeError):
         orch.run_pipeline(mock=True)
     with session_scope() as s:

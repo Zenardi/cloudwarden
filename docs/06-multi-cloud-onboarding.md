@@ -133,14 +133,17 @@ Once an account is onboarded (any cloud):
 |-|-------|-----|-----|
 | Account identifier | subscription GUID | 12-digit account id | project id |
 | Validation | connection test | STS `get_caller_identity` | RM `get_project` |
-| Cost pipeline | full (cost/metrics/advisor/AI) | asset ingestion | asset ingestion |
+| Cost collection | Cost Management Query API | Cost Explorer (M14.11) | BigQuery Billing Export (M14.11) |
+| Metrics / Advisor / right-sizing | full | — (Azure-centric) | — (Azure-centric) |
 | Policy resource types | `azure.*` | `aws.*` | `gcp.*` |
 | Live policy engine | `c7n-azure` (bundled) | `c7n` core | `c7n-gcp` (optional extra) |
 
-> **Cost/FinOps note:** the cost, metrics, and rightsizing pipeline is
-> Azure-centric today. AWS/GCP participate fully in **AssetDB and governance**
-> (assets, policies, posture, execution health); their FinOps cost analytics are
-> a future extension.
+> **Cost/FinOps note:** cost collection is **tri-cloud** since M14.11 — each provider
+> emits the identical normalized `CostRow`, so budgets, anomaly, forecasting and
+> showback work across Azure, AWS and GCP. Utilization metrics, Advisor and the
+> right-sizing rules remain Azure-centric. See
+> [08 · FinOps](08-finops-cost-recommendations.md#multi-cloud-cost-collection-m1411)
+> for the per-cloud sources and required permissions.
 
 See [07 · Governance-as-Code](07-governance-as-code.md) to run policies against
 onboarded accounts, and [15 · Demo Data](15-demo-data.md) for a script that

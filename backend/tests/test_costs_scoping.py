@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import datetime as dt
 
-# provider -> its subscription id (the cost→provider mapping goes through subscriptions).
+# provider -> its subscription id. Since M14.11 the provider filter reads the native
+# cost_snapshots.provider column, but each cost row still carries its subscription id.
 SUBS = {"azure": "sub-az", "aws": "sub-aws", "gcp": "sub-gcp"}
 
 
@@ -39,6 +40,7 @@ def _seed_costs(rows: list[tuple[int, float, str, str, str]]) -> None:
                     meter_category="Compute",
                     cost_type="Amortized",
                     subscription_id=SUBS[prov],
+                    provider=prov,
                     resource_type=rtype,
                     location=loc,
                     cost=cost,

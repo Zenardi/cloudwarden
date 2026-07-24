@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     gcp_project_id: str = ""
     gcp_default_region: str = "us-central1"
     gcp_service_account_json: str | None = None
+    # BigQuery table the standard usage-cost billing export lands in (M14.11 cost
+    # parity). ``project.dataset.table`` — read by the live GCP cost collector.
+    gcp_billing_export_table: str = ""
 
     # --- Memory metrics (optional) ---
     log_analytics_workspace_id: str | None = None

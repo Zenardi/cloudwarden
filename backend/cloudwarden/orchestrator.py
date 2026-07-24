@@ -29,7 +29,6 @@ from .azure.activity_metrics import collect_activity_metrics
 from .azure.activitylog import collect_activity_log
 from .azure.advisor import collect_advisor
 from .azure.context import AccountContext
-from .azure.cost import collect_cost
 from .azure.inventory import collect_inventory
 from .azure.logs import collect_memory
 from .azure.metrics import collect_metrics
@@ -96,6 +95,41 @@ def _enrich_cost(cost_rows: list[CostRow], resources: list[ResourceRecord]) -> N
             c.tags = dict(res.tags)
 
 
+def _collect_cost(
+    account: AccountContext | None, *, client: Any = None, settings: Any = None
+) -> list[CostRow]:
+    """Dispatch cost collection to the account's provider collector (M14.11).
+
+    Resolves the owning cloud from the account context (defaulting to Azure for the
+    single-account/env path) and calls that provider's ``collect_cost`` capability,
+    so an AWS/GCP account collects AWS/GCP cost — each row already tagged with its
+    provider — instead of always running the Azure Cost Management query.
+    """
+    from .providers import registry
+
+    name = account.provider if account is not None else "azure"
+    return registry.get(name).collect_cost(account=account, client=client)
+
+
+def collect_costs(
+    accounts: list[AccountContext], *, clients: dict[str, Any] | None = None
+) -> list[CostRow]:
+    """Fan cost collection across onboarded accounts by provider (M14.11).
+
+    One collector per account, dispatched by its cloud; a single account's failure
+    is logged and skipped so it never sinks the rest of the fan-out (the same
+    per-item isolation ``run_all_subscriptions`` applies). ``clients`` optionally
+    injects a per-provider cloud client (tests pass fakes; live builds its own)."""
+    clients = clients or {}
+    rows: list[CostRow] = []
+    for account in accounts:
+        try:
+            rows.extend(_collect_cost(account, client=clients.get(account.provider)))
+        except Exception:  # noqa: BLE001 - per-account isolation, never fail the fan-out
+            logger.warning("cost collection failed for %s", account.account_id, exc_info=True)
+    return rows
+
+
 def run_pipeline(
     mock: bool | None = None, subscription: AccountContext | None = None
 ) -> dict[str, Any]:
@@ -131,7 +165,9 @@ def run_pipeline(
             resources += collect_ml_computes(resources, subscription=subscription)
         except Exception:  # noqa: BLE001 - ML compute discovery is best-effort
             logger.warning("ml compute collection failed", exc_info=True)
-        cost_rows = collect_cost(subscription=subscription)
+        # Cost collection is provider-dispatched (M14.11): an AWS/GCP account runs its
+        # own collector (rows pre-tagged with provider); Azure keeps the Query API path.
+        cost_rows = _collect_cost(subscription)
         _enrich_cost(cost_rows, resources)
         metric_samples = collect_metrics(resources, subscription=subscription)
         if not settings.finops_mock and settings.log_analytics_workspace_id:

@@ -6,6 +6,22 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **AWS & GCP cost analytics parity (#144, M14.11).** Governance was tri-cloud but the
+  FinOps **cost/right-sizing pipeline was Azure-only** — the single largest parity gap.
+  This adds a `collect_cost` capability per provider behind the `CloudProvider` abstraction:
+  **AWS** via Cost Explorer (`get_cost_and_usage`, amortized, grouped by RESOURCE_ID +
+  SERVICE with the region parsed straight from each ARN — the same 2-dimension cap the Azure
+  Query API has) and **GCP** via the BigQuery Billing Export (resource + service + region +
+  day, with export `labels` mapped onto tags for showback). Both emit the **identical**
+  normalized `CostRow` shape Azure does (a cross-provider parity test asserts it), each row
+  self-tagged with its `provider`, so budgets / anomaly / forecast / showback become
+  cross-cloud with no downstream changes. The orchestrator **fans cost collection across
+  onboarded accounts by provider** (`collect_costs`, per-account failure isolation);
+  `cost_snapshots` gained a native **`provider`** column (added + backfilled to `azure`), and
+  the `/api/costs/*` provider filter + Grafana **Cloud** template variable now read it
+  directly. Boto / BigQuery clients are **injected** — no live AWS/GCP in tests; pagination
+  (`NextPageToken` / page tokens) and 429/throttle retries mirror the Azure collector's
+  resilience. Strict TDD, **100% coverage** on both new collectors, ruff clean.
 - **Preventive guardrails — Azure Policy / AWS SCP / GCP Org Policy (#143, M14.10).**
   CloudWarden's controls were **detective + remediation** — they observe and fix, but
   nothing *prevented* a non-compliant resource from being created. This completes the loop

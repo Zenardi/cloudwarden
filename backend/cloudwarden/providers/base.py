@@ -57,3 +57,14 @@ class CloudProvider(Protocol):
         (Azure Policy / AWS SCP / GCP Org Policy). The module exposes ``PROVIDER``,
         ``SUPPORTED_KINDS``, ``translate(intent)`` and ``scope(intent, *, target)``.
         """
+
+    def collect_cost(
+        self, *, account: AccountContext | None = None, client: Any | None = None
+    ) -> list[Any]:
+        """Collect normalized cost rows for an account (M14.11 cost parity).
+
+        Each provider returns the **same** :class:`~cloudwarden.models.CostRow` shape
+        (amortized by default), so budgets/anomaly/forecast/showback are provider-
+        agnostic. ``client`` is an injectable cloud client (boto Cost Explorer /
+        BigQuery billing reader); tests pass a fake so nothing touches a live cloud.
+        """

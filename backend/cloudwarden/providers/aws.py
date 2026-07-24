@@ -194,6 +194,12 @@ class AwsProvider:
 
         return aws_scp
 
+    def collect_cost(self, *, account: Any | None = None, client: Any | None = None) -> list[Any]:
+        """Collect amortized AWS cost rows via Cost Explorer (M14.11)."""
+        from . import aws_cost
+
+        return aws_cost.collect_cost(client=client, account=account)
+
     # --- M12.2: onboarding, execution, ingestion -------------------------- #
     def validate_account(
         self,

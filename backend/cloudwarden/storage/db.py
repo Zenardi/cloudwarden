@@ -279,6 +279,9 @@ def _try_exec(engine: Engine, sql: str) -> None:
 # field on a long-lived table (e.g. subscriptions) needs an explicit, safe ALTER.
 _COLUMN_ADDITIONS = [
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS environment VARCHAR(32)",
+    # M14.11: cost rows gained an owning-cloud tag. Backfill existing (Azure) rows.
+    "ALTER TABLE cost_snapshots ADD COLUMN IF NOT EXISTS provider VARCHAR(32) "
+    "NOT NULL DEFAULT 'azure'",
 ]
 
 

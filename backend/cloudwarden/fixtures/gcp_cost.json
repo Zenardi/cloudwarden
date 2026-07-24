@@ -1,0 +1,68 @@
+{
+  "_comment": "Recorded GCP BigQuery Billing Export query result (M14.11). The SELECT aggregates the standard-usage-cost export by resource + service + region + day, aliasing columns to the normalized shape below. BigQuery has no 2-dimension cap, so region and labels come straight from the export. Resource names embed the placeholder project example-project-123456, retargeted to the onboarded project on ingest. `cost` is the net (amortized) cost.",
+  "rows": [
+    {
+      "usage_date": "2026-07-20",
+      "resource_name": "//compute.googleapis.com/projects/example-project-123456/zones/us-central1-a/instances/web-01",
+      "service": "Compute Engine",
+      "region": "us-central1",
+      "cost": 8.2044,
+      "currency": "USD",
+      "labels": {"env": "prod", "team": "web"}
+    },
+    {
+      "usage_date": "2026-07-20",
+      "resource_name": "//compute.googleapis.com/projects/example-project-123456/zones/us-central1-b/instances/batch-idle-01",
+      "service": "Compute Engine",
+      "region": "us-central1",
+      "cost": 4.1100,
+      "currency": "USD",
+      "labels": {"env": "dev"}
+    },
+    {
+      "usage_date": "2026-07-20",
+      "resource_name": "//compute.googleapis.com/projects/example-project-123456/zones/us-central1-a/disks/data-01",
+      "service": "Compute Engine",
+      "region": "us-central1",
+      "cost": 0.5300,
+      "currency": "USD",
+      "labels": {}
+    },
+    {
+      "usage_date": "2026-07-20",
+      "resource_name": "//sqladmin.googleapis.com/projects/example-project-123456/instances/finops-orders",
+      "service": "Cloud SQL",
+      "region": "us-central1",
+      "cost": 6.7800,
+      "currency": "USD",
+      "labels": {"env": "prod"}
+    },
+    {
+      "usage_date": "2026-07-20",
+      "resource_name": "//storage.googleapis.com/projects/example-project-123456/buckets/finops-artifacts-example-project-123456",
+      "service": "Cloud Storage",
+      "region": "us",
+      "cost": 0.9200,
+      "currency": "USD",
+      "labels": {"env": "prod"}
+    },
+    {
+      "usage_date": "2026-07-21",
+      "resource_name": "//compute.googleapis.com/projects/example-project-123456/zones/us-central1-a/instances/web-01",
+      "service": "Compute Engine",
+      "region": "us-central1",
+      "cost": 8.3300,
+      "currency": "USD",
+      "labels": {"env": "prod", "team": "web"}
+    },
+    {
+      "usage_date": "2026-07-21",
+      "resource_name": "//sqladmin.googleapis.com/projects/example-project-123456/instances/finops-orders",
+      "service": "Cloud SQL",
+      "region": "us-central1",
+      "cost": 6.8100,
+      "currency": "USD",
+      "labels": {"env": "prod"}
+    }
+  ]
+}

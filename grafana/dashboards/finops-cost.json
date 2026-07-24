@@ -5,10 +5,27 @@
   "timezone": "",
   "editable": true,
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "refresh": "",
   "time": { "from": "now-30d", "to": "now" },
-  "templating": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "provider",
+        "label": "Cloud",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "finops_pg" },
+        "definition": "SELECT DISTINCT provider FROM cost_snapshots ORDER BY 1",
+        "query": "SELECT DISTINCT provider FROM cost_snapshots ORDER BY 1",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": false,
+        "allValue": "%",
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      }
+    ]
+  },
   "annotations": { "list": [] },
   "panels": [
     {
@@ -31,7 +48,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COALESCE(SUM(cost),0) AS \"Total\" FROM v_cost_by_type"
+          "rawSql": "SELECT COALESCE(SUM(cost),0) AS \"Total\" FROM cost_snapshots WHERE cost_type = 'Amortized' AND usage_date >= CURRENT_DATE - INTERVAL '30 days' AND provider LIKE '$provider'"
         }
       ]
     },
@@ -54,7 +71,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT resource_type AS metric, cost AS value FROM v_cost_by_type ORDER BY cost DESC"
+          "rawSql": "SELECT resource_type AS metric, SUM(cost) AS value FROM cost_snapshots WHERE cost_type = 'Amortized' AND usage_date >= CURRENT_DATE - INTERVAL '30 days' AND provider LIKE '$provider' GROUP BY resource_type ORDER BY value DESC"
         }
       ]
     },
@@ -77,7 +94,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT location, cost FROM v_cost_by_region ORDER BY cost DESC"
+          "rawSql": "SELECT location, SUM(cost) AS cost FROM cost_snapshots WHERE cost_type = 'Amortized' AND usage_date >= CURRENT_DATE - INTERVAL '30 days' AND provider LIKE '$provider' GROUP BY location ORDER BY cost DESC"
         }
       ]
     },
@@ -102,7 +119,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT usage_date::timestamp AS time, SUM(cost) AS \"Amortized cost\" FROM cost_snapshots WHERE cost_type = 'Amortized' GROUP BY usage_date ORDER BY 1"
+          "rawSql": "SELECT usage_date::timestamp AS time, SUM(cost) AS \"Amortized cost\" FROM cost_snapshots WHERE cost_type = 'Amortized' AND provider LIKE '$provider' GROUP BY usage_date ORDER BY 1"
         }
       ]
     },
@@ -232,6 +249,30 @@
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT tag_value, SUM(cost) AS cost FROM v_cost_by_tag WHERE tag_key = 'owner' GROUP BY tag_value ORDER BY cost DESC"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "piechart",
+      "title": "Cost by cloud (30d, Amortized)",
+      "description": "Amortized spend per cloud over 30 days (M14.11). Reads the native cost_snapshots.provider column; always shows every cloud regardless of the Cloud filter.",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 61 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true },
+        "pieType": "donut",
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "finops_pg" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT provider AS metric, SUM(cost) AS value FROM cost_snapshots WHERE cost_type = 'Amortized' AND usage_date >= CURRENT_DATE - INTERVAL '30 days' GROUP BY provider ORDER BY value DESC"
         }
       ]
     }

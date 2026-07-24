@@ -192,6 +192,12 @@ class GcpProvider:
 
         return gcp_orgpolicy
 
+    def collect_cost(self, *, account: Any | None = None, client: Any | None = None) -> list[Any]:
+        """Collect amortized GCP cost rows via the BigQuery Billing Export (M14.11)."""
+        from . import gcp_cost
+
+        return gcp_cost.collect_cost(client=client, account=account)
+
     # --- M12.3: onboarding, execution, ingestion -------------------------- #
     def validate_project(
         self,

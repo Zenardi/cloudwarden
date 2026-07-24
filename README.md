@@ -33,7 +33,8 @@ backbone:
   enforcing it — re-surfacing the finding the moment they expire (M14.9), translate a policy
   into a provider's **native preventive guardrail** — Azure Policy / AWS SCP / GCP Org Policy
   — to **block a non-compliant resource at creation** (what-if preview + dry-run-first apply,
-  M14.10), and review the full **execution history**. A
+  M14.10), collect **AWS & GCP cost with Azure-parity** so budgets/anomaly/forecast/showback
+  go cross-cloud (M14.11), and review the full **execution history**. A
   cross-cloud **AssetDB** tracks every resource
   (config, relationships, change history), with **posture and execution-health
   that filter and group by cloud provider** — one pane over every cloud.
@@ -42,10 +43,11 @@ backbone:
   recommendations** from CPU / RAM / I/O metrics, and — once approved — **execute
   guarded remediation**.
 
-Governance and AssetDB span **Azure, AWS and GCP**; the FinOps cost/right-sizing
-pipeline is **Azure-first** today (AWS/GCP cost analytics are on the roadmap).
-Data comes from each cloud's native APIs (Azure: **Cost Management**, **Monitor**,
-**Resource Graph**, **Advisor**), is persisted to **Postgres/TimescaleDB**, and is
+Governance, AssetDB **and cost collection** span **Azure, AWS and GCP** (tri-cloud
+cost parity, M14.11); utilization metrics, Advisor and the right-sizing rules stay
+Azure-centric for now. Data comes from each cloud's native APIs (Azure: **Cost
+Management**, **Monitor**, **Resource Graph**, **Advisor**; AWS: **Cost Explorer**;
+GCP: **BigQuery Billing Export**), is persisted to **Postgres/TimescaleDB**, and is
 surfaced on **Grafana** and a **Next.js** UI — with a **pluggable AI** layer
 (Anthropic by default; any OpenAI-compatible/local model). It runs fully offline
 with recorded fixtures (`FINOPS_MOCK=1`), so **no cloud credentials are required**
@@ -942,7 +944,8 @@ For remediation (Phase 5), additionally set the write SP (`AZURE_REMEDIATION_*`)
 `REMEDIATION_ENABLED=true`, and `ALLOWED_RESOURCE_GROUPS`. Remediation defaults
 to **dry-run**; resources tagged `finops:exclude=true` are never touched.
 
-**AWS & GCP** (governance + AssetDB; cost analytics stay Azure-first). Onboard on
+**AWS & GCP** (governance + AssetDB + **cost analytics**, M14.11 — AWS Cost Explorer,
+GCP BigQuery Billing Export; set `GCP_BILLING_EXPORT_TABLE` for GCP). Onboard on
 the **Subscriptions** page or via the API — `POST /api/aws/accounts` (STS-validated)
 and `POST /api/gcp/projects` (Resource-Manager-validated) — then ingest their
 resources with the matching `…/ingest` endpoints. Set `AWS_*` / `GCP_*` in `.env`

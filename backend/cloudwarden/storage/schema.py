@@ -564,6 +564,14 @@ class CostSnapshot(Base):
     meter_category: Mapped[str] = mapped_column(String(128), primary_key=True, default="")
     cost_type: Mapped[str] = mapped_column(String(16), primary_key=True, default="Amortized")
     subscription_id: Mapped[str | None] = mapped_column(String(64))
+    # Owning cloud (M14.11 multi-cloud cost parity). ``server_default='azure'``
+    # backfills pre-existing Azure cost rows so ``?provider=`` filtering (and the
+    # Grafana provider template) work directly off the fact table, without a
+    # subscriptions join. Not part of the natural key: resource ids are globally
+    # unique across clouds, so provider is a descriptive tag, not an identity column.
+    provider: Mapped[str] = mapped_column(
+        String(32), default="azure", server_default="azure", index=True
+    )
     resource_type: Mapped[str | None] = mapped_column(String(256), index=True)
     resource_group: Mapped[str | None] = mapped_column(String(256))
     location: Mapped[str | None] = mapped_column(String(64), index=True)

@@ -45,6 +45,7 @@ def _seed_cost(
                 meter_category="Compute",
                 cost_type="Amortized",
                 subscription_id=sub_id,
+                provider=provider,
                 resource_type="vm",
                 location="eastus",
                 cost=cost,

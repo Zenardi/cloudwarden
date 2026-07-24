@@ -54,6 +54,10 @@ class CostRow(BaseModel):
     usage_date: date
     resource_id: str | None = None
     subscription_id: str | None = None
+    # Owning cloud (M14.11 multi-cloud cost parity). Every collector stamps its
+    # own cloud so a cost row is self-describing; defaults to ``azure`` for the
+    # pre-existing Azure path (mirrors the server_default backfill on the table).
+    provider: str = "azure"
     resource_type: str | None = None
     resource_group: str | None = None
     location: str | None = None

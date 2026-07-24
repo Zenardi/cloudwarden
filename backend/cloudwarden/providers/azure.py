@@ -70,3 +70,9 @@ class AzureProvider:
         from .preventive import azure_policy
 
         return azure_policy
+
+    def collect_cost(self, *, account: Any | None = None, client: Any | None = None) -> list[Any]:
+        """Collect amortized Azure cost rows via the Cost Management Query API (M14.11)."""
+        from ..azure.cost import collect_cost
+
+        return collect_cost(client=client, subscription=account)

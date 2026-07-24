@@ -1,9 +1,11 @@
 # 8 · FinOps: Cost & Recommendations
 
 The FinOps side collects cost + utilization, detects idle/oversized resources,
-estimates savings, and writes an AI executive summary. This pipeline is
-**Azure-centric** today (AWS/GCP participate in AssetDB and governance, not yet in
-cost analytics).
+estimates savings, and writes an AI executive summary. **Cost collection is
+tri-cloud** (M14.11): Azure, AWS and GCP each expose a `collect_cost` capability
+behind the `CloudProvider` seam and emit the identical normalized `CostRow`, so
+budgets / anomaly / forecast / showback are provider-agnostic. Utilization
+metrics, Advisor and right-sizing rules remain Azure-centric for now.
 
 ## The cost pipeline
 
@@ -34,6 +36,30 @@ Cost is amortized over `COST_LOOKBACK_DAYS` (default 30) and surfaced as:
 | `GET /api/costs/by-type` | Cost by resource type (pie) |
 | `GET /api/costs/by-region` | Cost by region (bar) |
 | `GET /api/costs/by-resource?limit=N` | Top resources table |
+
+Every `/api/costs/*` endpoint accepts `?provider=azure|aws|gcp` (empty/`all` → all
+clouds), filtering on the native `cost_snapshots.provider` column. The Grafana cost
+dashboard exposes the same as a **Cloud** template variable.
+
+## Multi-cloud cost collection (M14.11)
+
+Each provider returns the **same** `CostRow` (amortized by default) so nothing
+downstream is cloud-specific. Collectors are fixture-backed in `FINOPS_MOCK=1` and
+talk to **injected** cloud clients otherwise — no live AWS/GCP in tests. The
+orchestrator fans collection across onboarded accounts by provider
+(`orchestrator.collect_costs`), isolating a single account's failure.
+
+| Cloud | Source | Grouping | Region | Tags | Required permission |
+|-------|--------|----------|--------|------|---------------------|
+| Azure | Cost Management Query API | ResourceId + ServiceName (2-dim cap) | enriched from inventory | enriched from inventory | Cost Management Reader |
+| AWS | Cost Explorer `get_cost_and_usage` (amortized) | RESOURCE_ID + SERVICE (2-dim cap) | parsed from the ARN | enriched from inventory | `ce:GetCostAndUsage` + resource-level cost enabled |
+| GCP | BigQuery Billing Export (standard usage cost) | resource + service + region + day | from the export | from export `labels` | BigQuery Data Viewer + Job User on the export dataset |
+
+Point GCP at its export table with `GCP_BILLING_EXPORT_TABLE=project.dataset.table`.
+Pagination (`NextPageToken` / page tokens) and 429/throttle retries mirror the Azure
+collector's resilience. AWS/GCP resource ids are globally unique, so a cost row is
+self-describing; the pipeline still enriches `resource_type`/tags from inventory where
+the cost source can't supply them (as Azure does).
 
 ## Recommendation rules & thresholds
 
