@@ -166,6 +166,12 @@ class Settings(BaseSettings):
     # Notification channel *name* new drift findings alert through; empty = record silently.
     drift_alert_channel: str = ""
 
+    # --- Exemptions / waivers (M14.9) ---
+    # Warn when an active waiver is within this many days of its expiry.
+    waiver_expiring_within_days: int = 7
+    # Notification channel *name* expiring-soon waivers alert through; empty = record silently.
+    waiver_alert_channel: str = ""
+
     # --- Analysis windows & thresholds ---
     metric_lookback_days: int = 14
     cost_lookback_days: int = 30

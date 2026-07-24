@@ -1069,3 +1069,38 @@ class DriftFinding(Base):
             "resource_id", "baseline_version", "changes_hash", name="uq_drift_finding"
         ),
     )
+
+
+class Waiver(Base):
+    """A scoped, justified, approved, **expiring** exception to a policy (M14.9).
+
+    A waiver suppresses enforcement for the resources a policy matches within its scope:
+    the whole policy (``scope_type='policy'``), one resource (``'resource'`` +
+    ``scope_value`` = resource id), a resource group (``'resource_group'`` + RG name) or a
+    tag (``'tag'`` + ``key=value``). ``state`` walks ``pending`` → ``active`` (on approval)
+    → ``expired`` (a reconcile pass once ``expires_at`` passes) — or ``rejected``. Only an
+    ``active`` **and** unexpired waiver suppresses; ``requester``/``approver`` capture who
+    asked and who granted, and ``justification`` is mandatory. ``notified_expiring`` dedupes
+    the expiring-soon alert so it fires **once**. Rows cascade-delete with the policy.
+    """
+
+    __tablename__ = "waivers"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    policy_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("policies.id", ondelete="CASCADE"), index=True
+    )
+    scope_type: Mapped[str] = mapped_column(String(32), default="policy")
+    scope_value: Mapped[str | None] = mapped_column(String(512))
+    justification: Mapped[str] = mapped_column(Text)
+    requester: Mapped[str | None] = mapped_column(String(256), index=True)
+    approver: Mapped[str | None] = mapped_column(String(256))
+    state: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notified_expiring: Mapped[bool] = mapped_column(Boolean, default=False)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

@@ -177,6 +177,12 @@ def insert_policy_matches(session: Session, execution_id: str, matches: list[m.P
     return len(matches)
 
 
+def get_policy_match(session: Session, match_id: int) -> dict[str, Any] | None:
+    """Fetch one policy match by id (used to surface its waiver/enforcement status)."""
+    rec = session.get(schema.PolicyMatch, match_id)
+    return _policy_match_public(rec) if rec is not None else None
+
+
 def get_policy_execution(session: Session, execution_id: str) -> dict[str, Any] | None:
     rec = session.get(schema.PolicyExecution, execution_id)
     return _policy_execution_public(rec) if rec is not None else None
@@ -3074,6 +3080,175 @@ def ensure_drift_template(session: Session) -> int:
         subject=service.DEFAULT_DRIFT_SUBJECT,
         body=service.DEFAULT_DRIFT_BODY,
         description="Default configuration drift alert (M14.7)",
+    )
+    return created["id"]
+
+
+# --------------------------------------------------------------------------- #
+# Waivers (M14.9) — scoped, expiring policy exceptions
+# --------------------------------------------------------------------------- #
+_WAIVER_TEMPLATE_NAME = "waiver-expiring"
+
+
+def _waiver_public(rec: schema.Waiver) -> dict[str, Any]:
+    """Serialize a waiver row (datetimes kept as objects — FastAPI ISO-encodes them)."""
+    return {
+        "id": rec.id,
+        "policy_id": rec.policy_id,
+        "scope_type": rec.scope_type,
+        "scope_value": rec.scope_value,
+        "justification": rec.justification,
+        "requester": rec.requester,
+        "approver": rec.approver,
+        "state": rec.state,
+        "expires_at": rec.expires_at,
+        "approved_at": rec.approved_at,
+        "notified_expiring": rec.notified_expiring,
+        "created_at": rec.created_at,
+        "updated_at": rec.updated_at,
+    }
+
+
+def create_waiver(
+    session: Session,
+    *,
+    policy_id: int,
+    justification: str,
+    expires_at: datetime,
+    scope_type: str = "policy",
+    scope_value: str | None = None,
+    requester: str | None = None,
+    state: str = "pending",
+) -> dict[str, Any]:
+    """Insert a waiver (``pending`` by default). Scope/justification validated upstream."""
+    rec = schema.Waiver(
+        policy_id=policy_id,
+        justification=justification,
+        expires_at=expires_at,
+        scope_type=scope_type,
+        scope_value=scope_value,
+        requester=requester,
+        state=state,
+    )
+    session.add(rec)
+    session.flush()
+    return _waiver_public(rec)
+
+
+def get_waiver(session: Session, waiver_id: int) -> dict[str, Any] | None:
+    rec = session.get(schema.Waiver, waiver_id)
+    return _waiver_public(rec) if rec is not None else None
+
+
+def list_waivers(
+    session: Session,
+    *,
+    policy_id: int | None = None,
+    state: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Waivers newest-first, optionally filtered by policy and/or state."""
+    query = session.query(schema.Waiver)
+    if policy_id is not None:
+        query = query.filter(schema.Waiver.policy_id == policy_id)
+    if state is not None:
+        query = query.filter(schema.Waiver.state == state)
+    query = query.order_by(schema.Waiver.id.desc()).limit(limit)
+    return [_waiver_public(r) for r in query.all()]
+
+
+def active_waivers_for(session: Session, policy_id: int) -> list[dict[str, Any]]:
+    """Every ``active`` waiver for a policy.
+
+    Expiry is *not* filtered here — a not-yet-reconciled expired row still has state
+    ``active``; the caller resolves it against a deterministic ``now`` (see
+    :func:`cloudwarden.authz.waivers.is_active`) so match-time suppression stays testable."""
+    recs = (
+        session.query(schema.Waiver)
+        .filter(schema.Waiver.policy_id == policy_id, schema.Waiver.state == "active")
+        .all()
+    )
+    return [_waiver_public(r) for r in recs]
+
+
+def set_waiver_state(
+    session: Session,
+    waiver_id: int,
+    *,
+    state: str,
+    approver: str | None = None,
+    approved_at: datetime | None = None,
+) -> dict[str, Any] | None:
+    """Transition a waiver's ``state`` (and, on approval, its ``approver``/``approved_at``).
+
+    Returns the updated row, or ``None`` for an unknown id."""
+    rec = session.get(schema.Waiver, waiver_id)
+    if rec is None:
+        return None
+    rec.state = state
+    if approver is not None:
+        rec.approver = approver
+    if approved_at is not None:
+        rec.approved_at = approved_at
+    session.flush()
+    return _waiver_public(rec)
+
+
+def mark_waiver_notified(session: Session, waiver_id: int) -> bool:
+    """Flag a waiver's expiring-soon alert as sent (dedupe marker)."""
+    rec = session.get(schema.Waiver, waiver_id)
+    if rec is None:
+        return False
+    rec.notified_expiring = True
+    session.flush()
+    return True
+
+
+def waivers_expiring_between(
+    session: Session, *, after: datetime, cutoff: datetime
+) -> list[dict[str, Any]]:
+    """Active, not-yet-notified waivers whose expiry falls in ``(after, cutoff]``."""
+    recs = (
+        session.query(schema.Waiver)
+        .filter(
+            schema.Waiver.state == "active",
+            schema.Waiver.notified_expiring.is_(False),
+            schema.Waiver.expires_at > after,
+            schema.Waiver.expires_at <= cutoff,
+        )
+        .order_by(schema.Waiver.expires_at.asc())
+        .all()
+    )
+    return [_waiver_public(r) for r in recs]
+
+
+def waivers_due_to_expire(session: Session, *, now: datetime) -> list[dict[str, Any]]:
+    """Active waivers already past ``expires_at`` — the auto-expire reconcile set."""
+    recs = (
+        session.query(schema.Waiver)
+        .filter(schema.Waiver.state == "active", schema.Waiver.expires_at <= now)
+        .all()
+    )
+    return [_waiver_public(r) for r in recs]
+
+
+def ensure_waiver_template(session: Session) -> int:
+    """Get (or lazily create) the shared default waiver-expiring notification template."""
+    from ..notify import service
+
+    existing = (
+        session.query(schema.NotificationTemplate)
+        .filter(schema.NotificationTemplate.name == _WAIVER_TEMPLATE_NAME)
+        .one_or_none()
+    )
+    if existing is not None:
+        return existing.id
+    created = create_notification_template(
+        session,
+        name=_WAIVER_TEMPLATE_NAME,
+        subject=service.DEFAULT_WAIVER_SUBJECT,
+        body=service.DEFAULT_WAIVER_BODY,
+        description="Default waiver expiring-soon alert (M14.9)",
     )
     return created["id"]
 

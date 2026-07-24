@@ -45,6 +45,9 @@ __all__ = [
     "build_drift_context",
     "DEFAULT_DRIFT_SUBJECT",
     "DEFAULT_DRIFT_BODY",
+    "build_waiver_context",
+    "DEFAULT_WAIVER_SUBJECT",
+    "DEFAULT_WAIVER_BODY",
     "notify",
 ]
 
@@ -239,6 +242,43 @@ def build_drift_context(
         "first_change": paths[0] if paths else "",
         "events": events,
         "caller": caller,
+    }
+
+
+# Waiver expiring-soon alert (M14.9). Placeholders below are build_waiver_context's keys.
+DEFAULT_WAIVER_SUBJECT = "[Waiver] '{{ policy_name }}' exception expires in {{ days_left }} day(s)"
+DEFAULT_WAIVER_BODY = (
+    "The waiver (#{{ waiver_id }}) exempting {{ scope_type }} '{{ scope_value }}' from policy "
+    "'{{ policy_name }}' expires on {{ expires_at }} ({{ days_left }} day(s) left). Requested by "
+    "{{ requester }}. When it expires the finding re-surfaces and enforcement resumes."
+)
+
+
+def build_waiver_context(
+    *,
+    waiver_id: int,
+    policy_name: str,
+    scope_type: str,
+    scope_value: str | None,
+    expires_at: Any,
+    days_left: int,
+    requester: str | None = None,
+) -> dict[str, Any]:
+    """Assemble the template context for an expiring-soon waiver (M14.9).
+
+    Exposes the waiver id + owning policy, its scope (``scope_type``/``scope_value``, with a
+    convenience ``scope`` string), the expiry (ISO-formatted) and ``days_left``, and the
+    requester. Consumed by :data:`DEFAULT_WAIVER_BODY` and any custom template."""
+    expiry = expires_at.isoformat() if hasattr(expires_at, "isoformat") else str(expires_at or "")
+    return {
+        "waiver_id": waiver_id,
+        "policy_name": policy_name,
+        "scope_type": scope_type,
+        "scope_value": scope_value or "",
+        "scope": f"{scope_type}:{scope_value}" if scope_value else scope_type,
+        "expires_at": expiry,
+        "days_left": days_left,
+        "requester": requester or "",
     }
 
 

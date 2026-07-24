@@ -52,6 +52,8 @@ WRITE_PERMISSIONS: tuple[str, ...] = (
     "recommendation:decide",
     "budget:write",
     "drift:write",
+    "waiver:request",
+    "waiver:approve",
 )
 
 # Administrative permissions (managing RBAC itself, and teams — M11.2) — admin only.

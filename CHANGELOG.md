@@ -6,6 +6,25 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Exemptions / waivers workflow (#142, M14.9).** The only way to exempt a resource
+  was a static `finops:exclude` tag or an RG allow-list — not time-boxed, not approved,
+  not audited. This adds a **first-class waiver**: a scoped, justified, approved,
+  **expiring** exception. A new `authz/waivers.py` resolves each policy match against
+  active waivers — `is_active` (state **and** expiry) + `scope_covers` (whole policy /
+  resource / resource-group / `key=value` tag). The lifecycle is a strict state machine:
+  **request** (`pending`) → **approve** (`active`, RBAC `waiver:approve`) → **expire**
+  (auto-reconciled once `expires_at` passes) — or **reject**. At execution
+  (`queue_policy_action`) a covered match is recorded as **`waived`** on the `PolicyMatch`
+  (with the waiver id) and **never queued for enforcement**; an **expired / pending /
+  out-of-scope** waiver does **not** suppress, so the finding stays enforceable and
+  **re-surfaces automatically** the moment a waiver expires. Every request / approve /
+  reject / expiry is **audited**; an **expiring-soon** notification fires **once** per
+  waiver through the configured channel. New `Waiver` model + repository CRUD /
+  `active_waivers_for`, `GET/POST /api/waivers` + `POST /api/waivers/{id}/approve|reject`
+  (RBAC `waiver:request` / `waiver:approve`, audited), a **Waivers** page (request /
+  approve / reject, state badges) with a **waived** match badge, and config
+  `WAIVER_EXPIRING_WITHIN_DAYS` / `WAIVER_ALERT_CHANNEL`. Strict TDD, 100% coverage on
+  the new module, ruff clean.
 - **Policy-as-PR GitOps write-back (#141, M14.8).** GitOps sync was **read-only** —
   policies flowed *from* git into CloudWarden (boot + local fallback), but a policy
   edited in the UI never flowed back. This closes the loop: a new
