@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from .. import observability
+from ..authz import waivers
 from ..config import get_settings
 from ..storage import schema
 from . import executor, guardrails
@@ -36,6 +37,7 @@ class AlreadyDecided(Exception):
 
 def _result(action: schema.RemediationAction) -> dict[str, Any]:
     message = (action.result or {}).get("message") if action.result else None
+    waiver_id = (action.params or {}).get("waiver_id")
     return {
         "action_id": action.id,
         "recommendation_id": action.recommendation_id,
@@ -47,6 +49,9 @@ def _result(action: schema.RemediationAction) -> dict[str, Any]:
         "status": action.status,
         "message": message,
         "error": action.error,
+        # M14.9: a match suppressed by an active waiver is recorded as ``waived`` with its id.
+        "waived": action.status == "waived",
+        "waiver_id": waiver_id,
     }
 
 
@@ -165,6 +170,38 @@ def queue_policy_action(
     execution = session.get(schema.PolicyExecution, match.execution_id)
     policy_id = execution.policy_id if execution else None
     source = "binding" if (execution and execution.binding_id) else "policy"
+
+    # M14.9: an active, in-scope waiver suppresses enforcement — the match is recorded as
+    # ``waived`` (with the waiver id), never queued pending. Expired / pending / out-of-scope
+    # waivers do not suppress, so the finding stays enforceable.
+    resource = session.get(schema.Resource, match.resource_id)
+    tags = resource.tags if resource else {}
+    waiver = waivers.waiver_for_match(
+        session, policy_id=policy_id, resource_id=match.resource_id, tags=tags
+    )
+    if waiver is not None:
+        match.action_taken = "waived"
+        match.action_result = {"waived": True, "waiver_id": waiver["id"]}
+        row = schema.RemediationAction(
+            policy_match_id=policy_match_id,
+            source=source,
+            policy_id=policy_id,
+            action_type=spec["type"],
+            params={
+                "action": spec,
+                "resource_id": match.resource_id,
+                "resource_type": match.resource_type,
+                "waiver_id": waiver["id"],
+            },
+            dry_run=dry_run,
+            actor=actor,
+            status="waived",
+            result={"waived": True, "waiver_id": waiver["id"]},
+        )
+        session.add(row)
+        session.flush()
+        return _result(row)
+
     row = schema.RemediationAction(
         policy_match_id=policy_match_id,
         source=source,

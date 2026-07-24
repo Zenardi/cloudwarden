@@ -209,6 +209,46 @@ Toggled by `DRIFT_DETECTION_ENABLED` (default on); new findings alert through
 `DRIFT_ALERT_CHANNEL` (empty = record silently). Azure-first behind the `CloudProvider`
 abstraction.
 
+## Exemptions / waivers — M14.9
+
+A **waiver** is a first-class, scoped, justified, approved, **expiring** exception to a
+policy — the governed alternative to a static `finops:exclude` tag or an RG allow-list.
+
+**Scope.** A waiver targets a policy plus an optional grain:
+
+| `scope_type` | `scope_value` | covers |
+| --- | --- | --- |
+| `policy` | — | every resource the policy matches |
+| `resource` | a resource id | that one resource |
+| `resource_group` | an RG name | resources in that group (case-insensitive) |
+| `tag` | `key=value` | resources carrying that tag |
+
+**Lifecycle** (a strict state machine — every transition audited):
+
+```
+request → pending ──approve──▶ active ──(expires_at passes)──▶ expired
+                  └──reject──▶ rejected
+```
+
+Only an **active AND unexpired** waiver suppresses. At execution
+(`queue_policy_action`) each match is resolved against the policy's active waivers
+(`authz.waivers.waiver_for_match`); a covered match is recorded as **`waived`** on the
+`PolicyMatch` — with the waiver id — and **never queued for enforcement**. An
+**expired / pending / out-of-scope** waiver does **not** suppress, so the finding stays
+enforceable and **re-surfaces automatically** the moment a waiver expires.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/waivers` | list waivers (filter by `policy_id` / `state`) |
+| `POST /api/waivers` | request a waiver (RBAC `waiver:request`, audited) → `pending` |
+| `POST /api/waivers/{id}/approve` | approve (RBAC `waiver:approve`, audited) → `active` |
+| `POST /api/waivers/{id}/reject` | reject (RBAC `waiver:approve`, audited) → `rejected` |
+| **Waivers** page | request / approve / reject with state badges; matched resources show a **waived** badge |
+
+An **expiring-soon** notification fires **once** per waiver when it is within
+`WAIVER_EXPIRING_WITHIN_DAYS` of expiry, through `WAIVER_ALERT_CHANNEL` (empty = record
+silently). A justification is mandatory and the expiry must be in the future.
+
 ## Policy packs
 
 Pre-built, versioned bundles of policies (e.g. tag-compliance, cost-hygiene,

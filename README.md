@@ -29,7 +29,9 @@ backbone:
   is provisioned, M14.6), detect **configuration drift** against a per-resource
   desired-state baseline (M14.7), **propose UI-authored policy edits back to git as a
   pull request** (policy-as-PR write-back — never touching the default branch, M14.8),
-  and review the full **execution history**. A
+  grant **scoped, approved, expiring waivers** that record a match as *waived* instead of
+  enforcing it — re-surfacing the finding the moment they expire (M14.9), and review the
+  full **execution history**. A
   cross-cloud **AssetDB** tracks every resource
   (config, relationships, change history), with **posture and execution-health
   that filter and group by cloud provider** — one pane over every cloud.
@@ -970,6 +972,7 @@ Vault / column-encryption backing is the intended hardening step.
 | `GITOPS_REPO_URL` / `GITOPS_BRANCH` / `GITOPS_POLICY_PATH` | GitOps policy sync source (blank URL → local fallback) |
 | `GITOPS_LOCAL_PATH` | Local policy dir when no repo URL (blank → bundled `cloudwarden/policies/`) |
 | `GITOPS_WRITEBACK_REPO_URL` / `GITOPS_WRITEBACK_BRANCH_PREFIX` / `GITOPS_WRITEBACK_TOKEN` / `GITOPS_PROVIDER` | Policy-as-PR write-back (M14.8): propose UI edits as a PR (blank token disables; never logged) |
+| `WAIVER_EXPIRING_WITHIN_DAYS` / `WAIVER_ALERT_CHANNEL` | Waivers (M14.9): warn when an active waiver is within N days of expiry, via the named channel (blank = silent) |
 
 Full list: `.env.example`.
 

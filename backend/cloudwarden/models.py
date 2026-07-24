@@ -222,6 +222,21 @@ class DriftBaselineRequest(BaseModel):
     resource_id: str
 
 
+class WaiverRequest(BaseModel):
+    """Inbound shape for requesting a policy waiver (M14.9).
+
+    ``policy_id`` is the policy to exempt; ``justification`` is mandatory (validated
+    non-blank server-side); ``expires_at`` must be in the future. ``scope_type`` narrows
+    the exemption — ``policy`` (whole policy), ``resource`` / ``resource_group`` / ``tag``
+    with ``scope_value`` (a resource id, an RG name, or a ``key=value`` pair)."""
+
+    policy_id: int
+    justification: str
+    expires_at: datetime
+    scope_type: str = "policy"  # policy | resource | resource_group | tag
+    scope_value: str | None = None
+
+
 class ValidateResult(BaseModel):
     """Outcome of validating a policy spec: ``valid`` plus any error strings."""
 

@@ -64,6 +64,18 @@ POST /api/remediation/{action_id}/reject?actor=you
 
 `approve`/`reject` return 409 if the action was already decided.
 
+## Waivers suppress enforcement (M14.9)
+
+A resource covered by an **active, in-scope waiver** ([governance-as-code](07-governance-as-code.md#exemptions--waivers--m149))
+is never enforced. When a match is queued (`queue_policy_action`), it is first resolved
+against the policy's active waivers: a covered match is recorded as **`waived`** on the
+`PolicyMatch` (with the waiver id) instead of `pending` — visible, audited, **never
+silently dropped**, and never executed. An **expired / pending / out-of-scope** waiver
+does **not** suppress, so the finding stays enforceable and re-surfaces the moment the
+waiver expires. Waivers are a distinct control from the block-by-default guardrails: a
+guardrail blocks a real *write* at execution; a waiver removes the *finding* from
+enforcement entirely for its scoped, time-boxed, approved window.
+
 ## Unified audit
 
 Every approved/rejected action — from recommendations, policies, or bindings — is

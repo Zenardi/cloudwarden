@@ -863,3 +863,53 @@ export const deleteBudget = (id: number): Promise<{ id: number; deleted: boolean
 
 export const getBudgetStatus = (id: number): Promise<BudgetStatus> =>
   apiGet<BudgetStatus>(`/api/budgets/${id}/status`);
+
+// --- Waivers (M14.9) ---------------------------------------------------------
+/** Scope grains a waiver may target. */
+export const WAIVER_SCOPES = ["policy", "resource", "resource_group", "tag"] as const;
+export type WaiverScope = (typeof WAIVER_SCOPES)[number];
+export type WaiverState = "pending" | "active" | "rejected" | "expired";
+
+export interface Waiver {
+  id: number;
+  policy_id: number;
+  scope_type: WaiverScope;
+  scope_value: string | null;
+  justification: string;
+  requester?: string | null;
+  approver?: string | null;
+  state: WaiverState;
+  expires_at: string;
+  approved_at?: string | null;
+  notified_expiring?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface WaiverRequestInput {
+  policy_id: number;
+  justification: string;
+  expires_at: string;
+  scope_type?: WaiverScope;
+  scope_value?: string | null;
+}
+
+export const listWaivers = (params?: {
+  policy_id?: number;
+  state?: string;
+}): Promise<{ waivers: Waiver[] }> => {
+  const q = new URLSearchParams();
+  if (params?.policy_id != null) q.set("policy_id", String(params.policy_id));
+  if (params?.state) q.set("state", params.state);
+  const qs = q.toString();
+  return apiGet<{ waivers: Waiver[] }>(`/api/waivers${qs ? `?${qs}` : ""}`);
+};
+
+export const requestWaiver = (body: WaiverRequestInput): Promise<Waiver> =>
+  apiPost<Waiver>("/api/waivers", body);
+
+export const approveWaiver = (id: number): Promise<Waiver> =>
+  apiPost<Waiver>(`/api/waivers/${id}/approve`);
+
+export const rejectWaiver = (id: number): Promise<Waiver> =>
+  apiPost<Waiver>(`/api/waivers/${id}/reject`);

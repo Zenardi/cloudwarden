@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .. import observability, reporting
 from ..analysis.savings import ENVIRONMENT_RECLAIM_FACTORS
-from ..authz import audit, oidc, rbac, teams
+from ..authz import audit, oidc, rbac, teams, waivers
 from ..config import get_settings
 from ..custodian import engine as custodian
 from ..custodian import gitwriteback
@@ -53,6 +53,7 @@ from ..models import (
     PolicyUpdate,
     ValidateRequest,
     ValidateResult,
+    WaiverRequest,
 )
 from ..notify.dispatch import KNOWN_TRANSPORTS
 from ..packs import registry as packs
@@ -709,6 +710,102 @@ def rebaseline_drift(body: DriftBaselineRequest, request: Request) -> dict[str, 
             after=baseline,
         )
     return baseline
+
+
+# --- Exemptions / waivers (M14.9) ---------------------------------------------
+@app.get("/api/waivers")
+def list_waivers_endpoint(
+    policy_id: int | None = Query(default=None),
+    state: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    """Recorded policy waivers, newest-first. Filter by ``policy_id`` / ``state``
+    (``pending`` / ``active`` / ``rejected`` / ``expired``)."""
+    with session_scope() as session:
+        rows = repo.list_waivers(session, policy_id=policy_id, state=state, limit=limit)
+    return {"waivers": rows}
+
+
+@app.post("/api/waivers", dependencies=[Depends(rbac.require_permission("waiver:request"))])
+def request_waiver_endpoint(body: WaiverRequest, request: Request) -> dict[str, Any]:
+    """Request a policy waiver (created ``pending``). RBAC-guarded (``waiver:request``) and
+    audited; ``404`` if the policy is unknown, ``400`` for a blank justification or a past
+    expiry."""
+    principal = rbac.principal_from_request(request)
+    with session_scope() as session:
+        if repo.get_policy(session, body.policy_id) is None:
+            raise HTTPException(status_code=404, detail=f"unknown policy: {body.policy_id}")
+        try:
+            waiver = waivers.request_waiver(
+                session,
+                policy_id=body.policy_id,
+                justification=body.justification,
+                expires_at=body.expires_at,
+                scope_type=body.scope_type,
+                scope_value=body.scope_value,
+                requester=principal,
+            )
+        except waivers.WaiverError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        audit.record(
+            session,
+            actor=principal,
+            action="waiver:request",
+            target_type="waiver",
+            target_id=str(waiver["id"]),
+            after={
+                "policy_id": waiver["policy_id"],
+                "scope_type": waiver["scope_type"],
+                "scope_value": waiver["scope_value"],
+                "state": waiver["state"],
+            },
+        )
+    return waiver
+
+
+def _decide_waiver(waiver_id: int, request: Request, *, decide: Any, action: str) -> dict[str, Any]:
+    """Shared approve/reject flow: transition the waiver, mapping errors + auditing."""
+    principal = rbac.principal_from_request(request)
+    with session_scope() as session:
+        before = repo.get_waiver(session, waiver_id)
+        try:
+            waiver = decide(session, waiver_id, approver=principal)
+        except waivers.WaiverNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except waivers.WaiverAlreadyDecided as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        audit.record(
+            session,
+            actor=principal,
+            action=action,
+            target_type="waiver",
+            target_id=str(waiver_id),
+            before={"state": before["state"]} if before else {},
+            after={"state": waiver["state"]},
+        )
+    return waiver
+
+
+@app.post(
+    "/api/waivers/{waiver_id}/approve",
+    dependencies=[Depends(rbac.require_permission("waiver:approve"))],
+)
+def approve_waiver_endpoint(waiver_id: int, request: Request) -> dict[str, Any]:
+    """Approve a pending waiver → ``active``. RBAC-guarded (``waiver:approve``) and audited;
+    ``404`` if unknown, ``409`` if already decided."""
+    return _decide_waiver(
+        waiver_id, request, decide=waivers.approve_waiver, action="waiver:approve"
+    )
+
+
+@app.post(
+    "/api/waivers/{waiver_id}/reject",
+    dependencies=[Depends(rbac.require_permission("waiver:approve"))],
+)
+def reject_waiver_endpoint(waiver_id: int, request: Request) -> dict[str, Any]:
+    """Reject a pending waiver → ``rejected``. RBAC-guarded (``waiver:approve``) and audited;
+    ``404`` if unknown, ``409`` if already decided."""
+    return _decide_waiver(waiver_id, request, decide=waivers.reject_waiver, action="waiver:reject")
 
 
 @app.get("/api/custodian/schema")

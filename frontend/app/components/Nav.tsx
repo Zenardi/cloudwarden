@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 type IconName =
   | "overview" | "costs" | "recommendations" | "budgets" | "policies" | "collections"
-  | "bindings" | "compliance" | "remediation" | "runs" | "executions"
+  | "bindings" | "compliance" | "waivers" | "remediation" | "runs" | "executions"
   | "events" | "assets" | "subscriptions" | "accountGroups" | "notifications"
   | "audit" | "chevronLeft" | "close" | "menu";
 
@@ -66,6 +66,12 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   remediation: (
     <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.1-3.1a6 6 0 01-7.9 7.9l-6.3 6.3a2.1 2.1 0 01-3-3l6.3-6.3a6 6 0 017.9-7.9z" />
+  ),
+  waivers: (
+    <>
+      <path d="M4 8a1 1 0 011-1h14a1 1 0 011 1v2a2 2 0 000 4v2a1 1 0 01-1 1H5a1 1 0 01-1-1v-2a2 2 0 000-4z" />
+      <path d="M12 8v8" />
+    </>
   ),
   runs: (
     <>
@@ -166,6 +172,7 @@ const GROUPS: NavGroup[] = [
       { href: "/collections", label: "Collections", icon: "collections" },
       { href: "/bindings", label: "Bindings", icon: "bindings" },
       { href: "/compliance", label: "Compliance", icon: "compliance" },
+      { href: "/waivers", label: "Waivers", icon: "waivers" },
       { href: "/remediation", label: "Remediation", icon: "remediation" },
     ],
   },
