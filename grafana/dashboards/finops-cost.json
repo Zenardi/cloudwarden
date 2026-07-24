@@ -5,7 +5,7 @@
   "timezone": "",
   "editable": true,
   "schemaVersion": 39,
-  "version": 6,
+  "version": 7,
   "refresh": "",
   "time": { "from": "now-30d", "to": "now" },
   "templating": {
@@ -273,6 +273,26 @@
           "format": "table",
           "rawQuery": true,
           "rawSql": "SELECT provider AS metric, SUM(cost) AS value FROM cost_snapshots WHERE cost_type = 'Amortized' AND usage_date >= CURRENT_DATE - INTERVAL '30 days' GROUP BY provider ORDER BY value DESC"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "barchart",
+      "title": "Kubernetes — cost by namespace (30d, allocated)",
+      "description": "Managed-cluster node cost allocated to namespaces by requested resources (M14.12). Reads provider='kubernetes' / cost_type='Allocated' rows and sums the daily allocation over 30 days per cluster+namespace; independent of the Cloud filter (K8s is its own provider dimension).",
+      "datasource": { "type": "postgres", "uid": "finops_pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 69 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "orientation": "horizontal", "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "finops_pg" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT (tags->>'cluster') || '/' || (tags->>'namespace') AS metric, SUM(cost) AS value FROM cost_snapshots WHERE provider = 'kubernetes' AND cost_type = 'Allocated' AND usage_date >= CURRENT_DATE - INTERVAL '30 days' GROUP BY 1 ORDER BY value DESC"
         }
       ]
     }

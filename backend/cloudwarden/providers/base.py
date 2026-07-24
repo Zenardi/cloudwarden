@@ -68,3 +68,14 @@ class CloudProvider(Protocol):
         agnostic. ``client`` is an injectable cloud client (boto Cost Explorer /
         BigQuery billing reader); tests pass a fake so nothing touches a live cloud.
         """
+
+    def discover_kubernetes(
+        self, *, account: AccountContext | None = None, client: Any | None = None
+    ) -> list[Any]:
+        """Discover this cloud's managed Kubernetes clusters (M14.12 K8s parity).
+
+        Returns :class:`~cloudwarden.models.KubeCluster` objects (EKS/AKS/GKE) so the
+        orchestrator can enumerate namespaces/workloads, allocate node cost and
+        right-size workloads behind one seam. ``client`` is an injectable control-plane
+        client; tests pass a fake so nothing touches a live cloud.
+        """

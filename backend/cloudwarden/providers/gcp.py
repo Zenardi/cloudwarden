@@ -198,6 +198,14 @@ class GcpProvider:
 
         return gcp_cost.collect_cost(client=client, account=account)
 
+    def discover_kubernetes(
+        self, *, account: Any | None = None, client: Any | None = None
+    ) -> list[Any]:
+        """Discover GKE clusters for K8s cost & governance (M14.12)."""
+        from ..k8s import discovery
+
+        return discovery.discover_clusters(provider=self.name, account=account, client=client)
+
     # --- M12.3: onboarding, execution, ingestion -------------------------- #
     def validate_project(
         self,

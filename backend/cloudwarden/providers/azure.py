@@ -76,3 +76,11 @@ class AzureProvider:
         from ..azure.cost import collect_cost
 
         return collect_cost(client=client, subscription=account)
+
+    def discover_kubernetes(
+        self, *, account: Any | None = None, client: Any | None = None
+    ) -> list[Any]:
+        """Discover AKS clusters for K8s cost & governance (M14.12)."""
+        from ..k8s import discovery
+
+        return discovery.discover_clusters(provider=self.name, account=account, client=client)

@@ -115,6 +115,39 @@ curl -X POST http://localhost:8000/api/gcp/projects/finops-demo-prod/ingest
 **Dry-run a GCP policy:** `POST /api/gcp/policies/dryrun` with
 `{project_id, region, spec}`.
 
+## Kubernetes (M14.12)
+
+Managed Kubernetes (AKS/EKS/GKE) is discovered **behind the cloud it runs in** — there
+is no separate onboarding step. Cluster discovery, namespace/workload inventory and
+usage sit behind the same injectable-client seam as cost collection, so mock mode
+replays recorded fixtures and **no live cluster is required**.
+
+**Collect** — discover clusters for the K8s-capable clouds and persist inventory +
+namespace cost allocation:
+
+```bash
+curl -X POST 'http://localhost:8000/api/k8s/collect?provider=all'
+# → { k8s_clusters: N, k8s_assets: M, k8s_cost_rows: K }
+```
+
+**Read:**
+
+- `GET /api/k8s/clusters?provider=aws|azure|gcp|all` — discovered clusters + node cost.
+- `GET /api/k8s/namespaces?provider=…` — **namespace cost allocation** (node cost split
+  by requested resources; the partition reconciles to each cluster's node cost).
+- `GET /api/k8s/recommendations?provider=…` — **right-sizing** (over-provisioned
+  workloads) + **idle-namespace** flags — advisory, with method caveats.
+
+K8s resources land in AssetDB as their own `provider="kubernetes"` dimension
+(`k8s.cluster` / `k8s.namespace` / `k8s.workload`), tagged by cluster + namespace. The
+**Kubernetes** UI page and a Grafana **cost-by-namespace** panel visualize the allocation.
+
+**Required access (live):** read-only list access to the cloud control plane
+(EKS/AKS/GKE list-clusters), the cluster's kube API (list Deployments/StatefulSets/
+DaemonSets with pod resource requests), and a usage source (metrics-server or
+Prometheus). Mock mode needs none of these; the live SDK paths are stubbed (no extra
+dependencies).
+
 ## What onboarding enables
 
 Once an account is onboarded (any cloud):

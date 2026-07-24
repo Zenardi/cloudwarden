@@ -364,6 +364,37 @@ POST /api/recommendations/{rec_id}/remediate?dry_run=true&actor=you
 Remediation is gated by guardrails and (for real writes) `REMEDIATION_ENABLED` —
 see [09 · Remediation](09-remediation.md).
 
+## Kubernetes namespace cost & right-sizing (M14.12)
+
+Managed clusters (AKS/EKS/GKE) are discovered behind each cloud; their **node cost** is
+the pool CloudWarden allocates. See
+[06 · Onboarding](06-multi-cloud-onboarding.md#kubernetes-m1412) for the endpoints and the
+**Kubernetes** UI page / Grafana **cost-by-namespace** panel.
+
+**Namespace cost allocation.** Each cluster's monthly node cost is split across its
+namespaces **by requested resources** — CPU-request share and memory-request share
+blended 50/50. The result is a *partition*: the per-namespace costs reconcile exactly to
+the cluster node cost (`sum(cost) == node_monthly_cost`, `sum(share) == 1`), with any
+rounding residual placed on the largest namespace. Stored as `provider="kubernetes"` /
+`cost_type="Allocated"` cost rows — self-describing and deliberately **excluded** from the
+Amortized cloud-cost queries, so K8s allocation never double-counts into
+budgets/anomaly/forecast.
+
+**Workload right-sizing.** A workload whose observed usage sits under **both** its CPU and
+memory requests (below `K8S_OVERPROVISION_THRESHOLD`, default 50 %) is over-provisioned;
+the recommendation proposes lower per-pod requests at
+`observed usage × K8S_RIGHTSIZE_HEADROOM` (default +20 % headroom). Savings are
+**advisory** — K8s cost rolls up to the node, so a reclaim only materializes if freed
+capacity is scaled in — and every rec carries that caveat.
+
+**Idle namespaces.** A namespace whose observed workloads recorded ~0 usage (at/under
+`K8S_IDLE_THRESHOLD` cores/GiB) is flagged, with its allocated node cost as the advisory
+saving.
+
+**Signal-gated.** Right-sizing and idle detection fire **only** when usage was observed
+(`samples > 0`). A workload or namespace with no usage row is *unknown* — never flagged on
+the absence of data.
+
 ## Scheduled governance report
 
 Set `GOVERNANCE_REPORT_ENABLED=true` and run the scheduler to write a timestamped

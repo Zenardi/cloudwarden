@@ -1,0 +1,13 @@
+{
+  "_comment": "Recorded Kubernetes workload inventory (M14.12): namespace -> workload with aggregated per-pod resource requests/limits (cpu in cores, mem in GiB). Requests drive the namespace cost allocation; requests-vs-usage drives right-sizing.",
+  "workloads": [
+    {"cluster_id": "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks", "namespace": "web", "name": "frontend", "kind": "Deployment", "replicas": 3, "cpu_request": 0.5, "mem_request": 1.0, "cpu_limit": 1.0, "mem_limit": 2.0},
+    {"cluster_id": "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks", "namespace": "web", "name": "api", "kind": "Deployment", "replicas": 2, "cpu_request": 1.0, "mem_request": 2.0, "cpu_limit": 2.0, "mem_limit": 4.0},
+    {"cluster_id": "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks", "namespace": "batch", "name": "nightly-job", "kind": "Deployment", "replicas": 1, "cpu_request": 2.0, "mem_request": 4.0, "cpu_limit": 2.0, "mem_limit": 4.0},
+    {"cluster_id": "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks", "namespace": "data", "name": "cache", "kind": "StatefulSet", "replicas": 2, "cpu_request": 1.0, "mem_request": 4.0, "cpu_limit": 2.0, "mem_limit": 8.0},
+    {"cluster_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-aks/providers/Microsoft.ContainerService/managedClusters/prod-aks", "namespace": "ops", "name": "monitoring", "kind": "Deployment", "replicas": 2, "cpu_request": 0.5, "mem_request": 1.0, "cpu_limit": 1.0, "mem_limit": 2.0},
+    {"cluster_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-aks/providers/Microsoft.ContainerService/managedClusters/prod-aks", "namespace": "web", "name": "portal", "kind": "Deployment", "replicas": 3, "cpu_request": 1.0, "mem_request": 2.0, "cpu_limit": 2.0, "mem_limit": 4.0},
+    {"cluster_id": "//container.googleapis.com/projects/example-project-123456/locations/us-central1/clusters/prod-gke", "namespace": "ml", "name": "trainer", "kind": "Deployment", "replicas": 1, "cpu_request": 4.0, "mem_request": 16.0, "cpu_limit": 8.0, "mem_limit": 32.0},
+    {"cluster_id": "//container.googleapis.com/projects/example-project-123456/locations/us-central1/clusters/prod-gke", "namespace": "ml", "name": "inference", "kind": "Deployment", "replicas": 2, "cpu_request": 2.0, "mem_request": 8.0, "cpu_limit": 4.0, "mem_limit": 16.0}
+  ]
+}

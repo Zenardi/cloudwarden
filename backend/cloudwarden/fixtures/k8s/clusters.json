@@ -1,0 +1,38 @@
+{
+  "_comment": "Recorded managed-Kubernetes cluster discovery (M14.12). One cluster per cloud (EKS/AKS/GKE). node_monthly_cost is the compute-node bill of the cluster — the pool total that gets allocated to namespaces by requested resources. Placeholder account/subscription/project ids are retargeted to the onboarded account on ingest.",
+  "clusters": [
+    {
+      "cluster_id": "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks",
+      "name": "prod-eks",
+      "provider": "aws",
+      "region": "us-east-1",
+      "version": "1.29",
+      "node_count": 3,
+      "node_monthly_cost": 900.0,
+      "currency": "USD",
+      "account_id": "123456789012"
+    },
+    {
+      "cluster_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-aks/providers/Microsoft.ContainerService/managedClusters/prod-aks",
+      "name": "prod-aks",
+      "provider": "azure",
+      "region": "eastus",
+      "version": "1.29",
+      "node_count": 2,
+      "node_monthly_cost": 600.0,
+      "currency": "USD",
+      "account_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "cluster_id": "//container.googleapis.com/projects/example-project-123456/locations/us-central1/clusters/prod-gke",
+      "name": "prod-gke",
+      "provider": "gcp",
+      "region": "us-central1",
+      "version": "1.29",
+      "node_count": 3,
+      "node_monthly_cost": 750.0,
+      "currency": "USD",
+      "account_id": "example-project-123456"
+    }
+  ]
+}

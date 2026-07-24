@@ -49,6 +49,23 @@ class Settings(BaseSettings):
     # parity). ``project.dataset.table`` — read by the live GCP cost collector.
     gcp_billing_export_table: str = ""
 
+    # --- Kubernetes cost & governance (M14.12) ---
+    # Managed-cluster (AKS/EKS/GKE) discovery, namespace cost allocation and workload
+    # right-sizing. Verified in mock mode (FINOPS_MOCK=1) — no live cluster required.
+    k8s_governance_enabled: bool = True
+    # kubeconfig / in-cluster access for the live kube + control-plane clients (empty
+    # → in-cluster service account / cloud ADC). Live paths are out of mock scope.
+    kube_config_path: str = ""
+    # Usage source for actual cpu/mem (metrics-server | a Prometheus endpoint); empty → mock.
+    k8s_usage_source: str = ""
+    # A workload using at/under this fraction of BOTH its cpu and mem requests is a
+    # right-size candidate (only when usage was observed — signal-gated).
+    k8s_overprovision_threshold: float = 0.5
+    # Headroom multiplier applied to observed usage when proposing new requests.
+    k8s_rightsize_headroom: float = 1.2
+    # A namespace whose observed usage stays at/under this (cores / GiB) is idle.
+    k8s_idle_threshold: float = 0.05
+
     # --- Memory metrics (optional) ---
     log_analytics_workspace_id: str | None = None
 
