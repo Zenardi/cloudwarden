@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 type IconName =
-  | "overview" | "costs" | "recommendations" | "budgets" | "policies" | "collections"
+  | "overview" | "costs" | "recommendations" | "budgets" | "kubernetes" | "policies" | "collections"
   | "bindings" | "compliance" | "waivers" | "guardrails" | "remediation" | "runs" | "executions"
   | "events" | "assets" | "subscriptions" | "accountGroups" | "notifications"
   | "audit" | "chevronLeft" | "close" | "menu";
@@ -40,6 +40,12 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M3 7h15a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
       <path d="M3 7V6a2 2 0 012-2h11" />
       <circle cx="16.5" cy="12.5" r="1.5" />
+    </>
+  ),
+  kubernetes: (
+    <>
+      <path d="M12 2.6l8 4.6v9.6l-8 4.6-8-4.6V7.2z" />
+      <path d="M12 8v4l3.2 2M12 12l-3.2 2" />
     </>
   ),
   policies: <path d="M12 3l7 3v5c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z" />,
@@ -169,6 +175,7 @@ const GROUPS: NavGroup[] = [
       { href: "/showback", label: "Showback", icon: "budgets" },
       { href: "/recommendations", label: "Recommendations", icon: "recommendations" },
       { href: "/budgets", label: "Budgets", icon: "budgets" },
+      { href: "/k8s", label: "Kubernetes", icon: "kubernetes" },
     ],
   },
   {

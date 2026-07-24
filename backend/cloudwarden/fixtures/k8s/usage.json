@@ -1,0 +1,11 @@
+{
+  "_comment": "Recorded actual workload usage (M14.12), e.g. from metrics-server / Prometheus (cpu in cores, mem in GiB) over the analysis window. samples>0 means usage was observed; a workload with NO row here is 'unknown' — the right-sizing/idle detectors never flag on absence of data (signal-gated). prod-eks 'data/cache' is intentionally omitted to exercise that path.",
+  "usage": [
+    {"cluster_id": "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks", "namespace": "web", "workload": "frontend", "cpu_used": 1.2, "mem_used": 2.4, "samples": 100},
+    {"cluster_id": "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks", "namespace": "web", "workload": "api", "cpu_used": 0.3, "mem_used": 0.6, "samples": 100},
+    {"cluster_id": "arn:aws:eks:us-east-1:123456789012:cluster/prod-eks", "namespace": "batch", "workload": "nightly-job", "cpu_used": 0.0, "mem_used": 0.02, "samples": 100},
+    {"cluster_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-aks/providers/Microsoft.ContainerService/managedClusters/prod-aks", "namespace": "ops", "workload": "monitoring", "cpu_used": 0.2, "mem_used": 0.5, "samples": 100},
+    {"cluster_id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-aks/providers/Microsoft.ContainerService/managedClusters/prod-aks", "namespace": "web", "workload": "portal", "cpu_used": 2.4, "mem_used": 5.4, "samples": 100},
+    {"cluster_id": "//container.googleapis.com/projects/example-project-123456/locations/us-central1/clusters/prod-gke", "namespace": "ml", "workload": "inference", "cpu_used": 3.6, "mem_used": 14.0, "samples": 100}
+  ]
+}

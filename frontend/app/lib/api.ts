@@ -956,3 +956,61 @@ export const previewGuardrail = (body: GuardrailRequestInput): Promise<Guardrail
 
 export const applyGuardrail = (body: GuardrailRequestInput): Promise<GuardrailApplyResult> =>
   apiPost<GuardrailApplyResult>("/api/guardrails/apply", body);
+
+// --- Kubernetes cost & governance (M14.12) ----------------------------------
+/** A discovered managed Kubernetes cluster (AKS/EKS/GKE). */
+export interface KubeCluster {
+  cluster_id: string;
+  name: string;
+  provider: string; // owning cloud: aws (EKS) | azure (AKS) | gcp (GKE)
+  region?: string | null;
+  version?: string | null;
+  node_count: number;
+  node_monthly_cost: number;
+  currency: string;
+  account_id?: string | null;
+}
+
+/** One namespace's allocated slice of a cluster's node cost (monthly). */
+export interface NamespaceCost {
+  cluster_id: string;
+  namespace: string;
+  cpu_request: number; // cores
+  mem_request: number; // GiB
+  cost: number; // allocated node cost / month
+  share: number; // 0..1 of the cluster node cost
+  currency: string;
+}
+
+/** A K8s right-sizing / idle-namespace recommendation (advisory transport shape). */
+export interface K8sRecommendation {
+  resource_id: string;
+  category: string; // k8s_rightsize | k8s_idle_namespace
+  action: string;
+  current_sku?: string | null;
+  recommended_sku?: string | null;
+  risk: string;
+  confidence: number;
+  est_monthly_savings: number;
+  currency: string;
+  source: string;
+  rationale: string;
+  caveats: string[];
+  evidence: Record<string, any>;
+}
+
+function k8sScope(provider: string): string {
+  return provider && provider !== "all" ? `?provider=${encodeURIComponent(provider)}` : "";
+}
+
+/** Discovered managed Kubernetes clusters, optionally scoped to one cloud (M14.12). */
+export const getK8sClusters = (provider = "all"): Promise<KubeCluster[]> =>
+  apiGet<KubeCluster[]>(`/api/k8s/clusters${k8sScope(provider)}`);
+
+/** Namespace cost allocation — node cost split by requested resources (M14.12). */
+export const getK8sNamespaces = (provider = "all"): Promise<NamespaceCost[]> =>
+  apiGet<NamespaceCost[]>(`/api/k8s/namespaces${k8sScope(provider)}`);
+
+/** K8s workload right-sizing + idle-namespace recommendations (advisory, M14.12). */
+export const getK8sRecommendations = (provider = "all"): Promise<K8sRecommendation[]> =>
+  apiGet<K8sRecommendation[]>(`/api/k8s/recommendations${k8sScope(provider)}`);

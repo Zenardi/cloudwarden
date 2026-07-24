@@ -214,6 +214,54 @@ def costs_monthly(months: int = 6, provider: str = "all") -> dict[str, Any]:
         return repo.cost_monthly(session, months=months, provider=prov)
 
 
+_K8S_PROVIDERS = {"aws", "azure", "gcp"}
+
+
+def _k8s_provider_filter(provider: str) -> list[str] | None:
+    """Normalize/validate the K8s ``?provider=`` scope (M14.12); unknown → 400."""
+    normalized = (provider or "all").strip().lower()
+    if normalized in ("", "all"):
+        return None
+    if normalized in _K8S_PROVIDERS:
+        return [normalized]
+    raise HTTPException(status_code=400, detail=f"invalid provider: {provider}")
+
+
+@app.get("/api/k8s/clusters")
+def k8s_clusters(provider: str = "all") -> list[dict[str, Any]]:
+    """Discovered managed Kubernetes clusters (AKS/EKS/GKE), optionally per cloud."""
+    from ..orchestrator import kubernetes_snapshot
+
+    snap = kubernetes_snapshot(_k8s_provider_filter(provider))
+    return [c.model_dump() for c in snap["clusters"]]
+
+
+@app.get("/api/k8s/namespaces")
+def k8s_namespaces(provider: str = "all") -> list[dict[str, Any]]:
+    """Namespace cost allocation — node cost split by requested resources (M14.12)."""
+    from ..orchestrator import kubernetes_snapshot
+
+    snap = kubernetes_snapshot(_k8s_provider_filter(provider))
+    return [a.model_dump() for a in snap["namespace_costs"]]
+
+
+@app.get("/api/k8s/recommendations")
+def k8s_recommendations(provider: str = "all") -> list[dict[str, Any]]:
+    """K8s workload right-sizing + idle-namespace recommendations (advisory, M14.12)."""
+    from ..orchestrator import kubernetes_snapshot
+
+    snap = kubernetes_snapshot(_k8s_provider_filter(provider))
+    return [r.model_dump() for r in snap["recommendations"]]
+
+
+@app.post("/api/k8s/collect")
+def k8s_collect(provider: str = "all") -> dict[str, int]:
+    """Collect K8s inventory and persist it to AssetDB + namespace cost allocation (M14.12)."""
+    from ..orchestrator import run_kubernetes
+
+    return run_kubernetes(_k8s_provider_filter(provider))
+
+
 @app.get("/api/recommendations")
 def recommendations() -> list[dict[str, Any]]:
     with session_scope() as session:

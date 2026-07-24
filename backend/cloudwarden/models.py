@@ -70,6 +70,73 @@ class CostRow(BaseModel):
     tags: dict[str, str] = Field(default_factory=dict)
 
 
+class KubeCluster(BaseModel):
+    """A managed Kubernetes cluster discovered behind a cloud provider (M14.12).
+
+    ``node_monthly_cost`` is the cluster's compute-node bill — the pool total the
+    namespace allocation splits by requested resources. ``provider`` is the owning
+    cloud (aws=EKS | azure=AKS | gcp=GKE); the K8s resources it contains are tagged
+    ``provider="kubernetes"`` in AssetDB so they form their own inventory dimension."""
+
+    cluster_id: str
+    name: str
+    provider: str = "aws"  # owning cloud: aws (EKS) | azure (AKS) | gcp (GKE)
+    region: str | None = None
+    version: str | None = None
+    node_count: int = 0
+    node_monthly_cost: float = 0.0
+    currency: str = "USD"
+    account_id: str | None = None  # owning subscription / account / project
+    config: dict = Field(default_factory=dict)
+
+
+class KubeWorkload(BaseModel):
+    """A workload (Deployment/StatefulSet/DaemonSet) with aggregated per-pod
+    resource requests/limits (M14.12). CPU in cores, memory in GiB."""
+
+    cluster_id: str
+    namespace: str
+    name: str
+    kind: str = "Deployment"
+    replicas: int = 1
+    cpu_request: float = 0.0
+    mem_request: float = 0.0
+    cpu_limit: float = 0.0
+    mem_limit: float = 0.0
+    config: dict = Field(default_factory=dict)
+
+
+class KubeUsage(BaseModel):
+    """Observed actual usage for a workload over the window (M14.12), e.g. from
+    metrics-server / Prometheus. CPU in cores, memory in GiB.
+
+    ``samples == 0`` (or no row at all) means no usage was observed — the
+    right-sizing / idle detectors treat it as *unknown*, never as idle."""
+
+    cluster_id: str
+    namespace: str
+    workload: str
+    cpu_used: float = 0.0
+    mem_used: float = 0.0
+    samples: int = 0
+
+
+class NamespaceCost(BaseModel):
+    """One namespace's allocated slice of a cluster's node cost (M14.12).
+
+    The allocation partitions the cluster node cost by requested resources, so
+    ``sum(cost)`` over a cluster's namespaces reconciles to its ``node_monthly_cost``
+    and ``sum(share) == 1``. This is *allocated* (not metered) cost."""
+
+    cluster_id: str
+    namespace: str
+    cpu_request: float = 0.0
+    mem_request: float = 0.0
+    cost: float = 0.0
+    share: float = 0.0
+    currency: str = "USD"
+
+
 class MetricSample(BaseModel):
     resource_id: str
     metric_name: str

@@ -6,6 +6,26 @@ All notable changes to this project are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Kubernetes cost & governance — AKS/EKS/GKE (#145, M14.12).** Managed Kubernetes was a
+  blind spot — clusters appeared as opaque compute with no namespace/workload visibility.
+  This adds a `discover_kubernetes` capability per provider (behind the same `CloudProvider`
+  seam) plus a `k8s/` package (cluster **discovery**, **workload** inventory with per-pod
+  requests/limits, and injectable **usage** from metrics-server/Prometheus). `analysis/
+  k8s_rightsizing.py` allocates each cluster's node cost across namespaces **by requested
+  resources** — a partition that *reconciles* (`sum(cost) == node_monthly_cost`,
+  `sum(share) == 1`) — and flags **over-provisioned workloads** (usage well under both CPU
+  and memory requests → propose lower requests toward usage, with headroom) and **idle
+  namespaces** (observed ~0 usage → the allocated node cost as advisory saving). Everything
+  is **signal-gated**: a workload/namespace with no observed usage is *unknown*, never flagged
+  on the absence of data. K8s resources surface in **AssetDB** as their own `provider=
+  "kubernetes"` dimension scoped by cluster + namespace (`k8s.cluster` / `k8s.namespace` /
+  `k8s.workload`); the namespace allocation persists as `cost_type="Allocated"` rows (kept out
+  of the Amortized cloud-cost analytics) and drives a new Grafana **cost-by-namespace** panel.
+  New read APIs — `GET /api/k8s/clusters|namespaces|recommendations` — plus `POST /api/k8s/
+  collect` and a **Kubernetes** UI page. Clients are injectable/fixture-backed so it is fully
+  verified in **mock mode** (`FINOPS_MOCK=1`) with no live cluster; live SDK paths are stubbed
+  (no new dependencies → Trivy surface unchanged). New collectors/analysis at **100 % line
+  coverage** (7 named TDD cases). No live cluster credentials touched in tests.
 - **AWS & GCP cost analytics parity (#144, M14.11).** Governance was tri-cloud but the
   FinOps **cost/right-sizing pipeline was Azure-only** — the single largest parity gap.
   This adds a `collect_cost` capability per provider behind the `CloudProvider` abstraction:

@@ -130,6 +130,108 @@ def collect_costs(
     return rows
 
 
+def _discover_clusters(account: AccountContext | None, *, client: Any = None) -> list[Any]:
+    """Dispatch managed-Kubernetes discovery to the account's provider (M14.12)."""
+    from .providers import registry
+
+    name = account.provider if account is not None else "azure"
+    provider = registry.get(name)
+    discover = getattr(provider, "discover_kubernetes", None)
+    if discover is None:
+        return []
+    return discover(account=account, client=client)
+
+
+def collect_kubernetes(
+    accounts: list[AccountContext], *, clients: dict[str, Any] | None = None
+) -> tuple[list[Any], list[Any], list[Any]]:
+    """Discover clusters and enumerate workloads + usage per account (M14.12).
+
+    Provider-dispatched, with per-account and per-cluster isolation so a single
+    cloud (or cluster) failing never sinks the fan-out — mirroring ``collect_costs``.
+    Returns ``(clusters, workloads, usage)`` normalized behind the injectable clients.
+    """
+    from .k8s import usage as k8s_usage
+    from .k8s import workloads as k8s_workloads
+
+    clients = clients or {}
+    clusters: list[Any] = []
+    workloads: list[Any] = []
+    usage: list[Any] = []
+    for account in accounts:
+        try:
+            found = _discover_clusters(account, client=clients.get(account.provider))
+        except Exception:  # noqa: BLE001 - per-account isolation, never fail the fan-out
+            logger.warning("k8s discovery failed for %s", account.account_id, exc_info=True)
+            continue
+        for cluster in found:
+            clusters.append(cluster)
+            try:
+                workloads.extend(k8s_workloads.collect_workloads(cluster))
+                usage.extend(k8s_usage.collect_usage(cluster))
+            except Exception:  # noqa: BLE001 - per-cluster isolation
+                logger.warning("k8s inventory failed for %s", cluster.cluster_id, exc_info=True)
+    return clusters, workloads, usage
+
+
+def _k8s_accounts(providers: list[str] | None = None) -> list[AccountContext]:
+    """Default account contexts for the K8s-capable clouds (M14.12)."""
+    from .providers import registry
+
+    settings = get_settings()
+    names = providers or ["aws", "azure", "gcp"]
+    accounts: list[AccountContext] = []
+    for name in names:
+        provider = registry.get(name)
+        account_id = provider.default_account_id(settings) or ""
+        accounts.append(provider.account_context(account_id=account_id))
+    return accounts
+
+
+def kubernetes_snapshot(providers: list[str] | None = None) -> dict[str, Any]:
+    """The K8s picture for the API: clusters, namespace costs, right-size recs (M14.12).
+
+    Computed on demand (mock mode replays fixtures) so the read endpoints surface
+    live-shaped data without persisting into the shared recommendation/cost tables."""
+    from .analysis import k8s_rightsizing as krs
+
+    clusters, workloads, usage = collect_kubernetes(_k8s_accounts(providers))
+    namespace_costs: list[Any] = []
+    for cluster in clusters:
+        namespace_costs.extend(krs.allocate_namespace_cost(cluster, workloads))
+    return {
+        "clusters": clusters,
+        "namespace_costs": namespace_costs,
+        "recommendations": krs.detect_rightsizing(clusters, workloads, usage),
+    }
+
+
+def run_kubernetes(providers: list[str] | None = None) -> dict[str, int]:
+    """Collect Kubernetes inventory across the K8s-capable clouds and persist it (M14.12).
+
+    A separate cadence from the Azure FinOps ``run_pipeline`` (K8s inventory has its own
+    lifecycle): discover managed clusters, enumerate namespaces/workloads, persist K8s
+    resources to AssetDB scoped by cluster + namespace, and store the namespace node-cost
+    allocation as ``provider="kubernetes"`` / ``cost_type="Allocated"`` rows — self-
+    describing and excluded from the Amortized cloud-cost analytics. Right-size / idle
+    recommendations are surfaced on demand via :func:`kubernetes_snapshot` / ``/api/k8s/*``.
+    """
+    from .analysis import k8s_rightsizing as krs
+    from .k8s import inventory as k8s_inventory
+
+    init_db()
+    clusters, workloads, _usage = collect_kubernetes(_k8s_accounts(providers))
+    counts: dict[str, int] = {"k8s_clusters": len(clusters), "k8s_assets": 0, "k8s_cost_rows": 0}
+    if clusters:
+        records = k8s_inventory.build_records(clusters, workloads)
+        cost_rows = krs.namespace_cost_rows(clusters, workloads, date.today())
+        with session_scope() as session:
+            counts["k8s_assets"] = len(repo.upsert_assets(session, records))
+            counts["k8s_cost_rows"] = repo.upsert_cost_snapshots(session, cost_rows)
+    logger.info("k8s collection: %s", counts)
+    return counts
+
+
 def run_pipeline(
     mock: bool | None = None, subscription: AccountContext | None = None
 ) -> dict[str, Any]:
